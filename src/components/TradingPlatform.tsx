@@ -456,11 +456,34 @@ export default function TradingPlatform() {
                 <span style={{ fontSize: 11, color: "#8b949e" }}>{stockNames[selectedStock] || ""}</span>
               </div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 4 }}>
-                <span style={{ fontSize: 28, fontWeight: 700, color: "#e6edf3" }}>${last.close?.toFixed(2)}</span>
+                <span style={{ fontSize: 28, fontWeight: 700, color: "#e6edf3" }}>${(liveSel?.price ?? last.close)?.toFixed(2)}</span>
                 <span style={{ fontSize: 13, fontWeight: 600, color: change >= 0 ? "#39d353" : "#f85149" }}>
                   {change >= 0 ? "▲" : "▼"} ${Math.abs(change).toFixed(2)} ({changePct >= 0 ? "+" : ""}{changePct.toFixed(2)}%)
                 </span>
+                {liveSel && (() => {
+                  const s = liveSel.session;
+                  const label = s === "PRE" ? "PRE-MARKET" : s === "POST" ? "AFTER-HOURS" : s === "REGULAR" ? "LIVE" : "CLOSED";
+                  const color = s === "REGULAR" ? "#39d353" : s === "PRE" ? "#58a6ff" : s === "POST" ? "#d2a8ff" : "#8b949e";
+                  return (
+                    <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px" }}>
+                      ● {label}
+                    </span>
+                  );
+                })()}
               </div>
+              {liveSel && (liveSel.preMarketPrice || liveSel.postMarketPrice) && (
+                <div style={{ display: "flex", gap: 12, marginTop: 6, fontSize: 10, color: "#8b949e" }}>
+                  {typeof liveSel.regularPrice === "number" && (
+                    <span>Reg <span style={{ color: "#e6edf3" }}>${liveSel.regularPrice.toFixed(2)}</span></span>
+                  )}
+                  {typeof liveSel.preMarketPrice === "number" && (
+                    <span>Pre <span style={{ color: (liveSel.preMarketChangePercent ?? 0) >= 0 ? "#39d353" : "#f85149" }}>${liveSel.preMarketPrice.toFixed(2)} ({(liveSel.preMarketChangePercent ?? 0) >= 0 ? "+" : ""}{(liveSel.preMarketChangePercent ?? 0).toFixed(2)}%)</span></span>
+                  )}
+                  {typeof liveSel.postMarketPrice === "number" && (
+                    <span>After <span style={{ color: (liveSel.postMarketChangePercent ?? 0) >= 0 ? "#39d353" : "#f85149" }}>${liveSel.postMarketPrice.toFixed(2)} ({(liveSel.postMarketChangePercent ?? 0) >= 0 ? "+" : ""}{(liveSel.postMarketChangePercent ?? 0).toFixed(2)}%)</span></span>
+                  )}
+                </div>
+              )}
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <div style={{ background: signalBg, border: `1px solid ${signalColor}`, borderRadius: 6, padding: "6px 12px", minWidth: 80 }}>
