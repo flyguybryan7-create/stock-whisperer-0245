@@ -532,6 +532,14 @@ export default function TradingPlatform() {
               )}
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                onClick={() => { setSmsEnabled((v) => !v); showNotif(`SMS alerts ${!smsEnabled ? "ON" : "OFF"} → ${SMS_PHONE.replace(/(\d{3})(\d{3})(\d{4})/, "($1) $2-$3")}`); }}
+                title={`Auto-text BUY/SELL to ${SMS_PHONE} (T-Mobile)`}
+                style={{ background: smsEnabled ? "#1f3d2a" : "#0d1117", border: `1px solid ${smsEnabled ? "#39d353" : "#21262d"}`, borderRadius: 6, padding: "6px 10px", minWidth: 80, cursor: "pointer", color: smsEnabled ? "#39d353" : "#8b949e", fontFamily: "inherit" }}
+              >
+                <div style={{ fontSize: 9, letterSpacing: 1 }}>SMS ALERTS</div>
+                <div style={{ fontSize: 13, fontWeight: 800 }}>{smsEnabled ? "📱 ON" : "OFF"}</div>
+              </button>
               <div style={{ background: signalBg, border: `1px solid ${signalColor}`, borderRadius: 6, padding: "6px 12px", minWidth: 80 }}>
                 <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1 }}>AI SIGNAL</div>
                 <div style={{ fontSize: 16, fontWeight: 800, color: signalColor }}>{signal}</div>
