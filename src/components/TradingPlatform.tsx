@@ -864,16 +864,14 @@ export default function TradingPlatform() {
             </div>
           )}
 
-          {/* SMS setup */}
+          {/* Push setup */}
           <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 12 }}>
-            <div style={{ fontSize: 10, color: "#8b949e", letterSpacing: 1.5, marginBottom: 8 }}>📱 SMS ALERTS SETUP</div>
+            <div style={{ fontSize: 10, color: "#8b949e", letterSpacing: 1.5, marginBottom: 8 }}>🔔 PUSH NOTIFICATIONS</div>
             <div style={{ fontSize: 11, color: "#8b949e", lineHeight: 1.7 }}>
-              To enable real SMS alerts to your phone:<br />
-              1. Sign up at twilio.com (free trial available)<br />
-              2. Get your Account SID, Auth Token & phone number<br />
-              3. Deploy a simple backend endpoint that calls Twilio's API when prices trigger<br />
-              4. Set your phone number in the alert modal above<br />
-              <span style={{ color: "#e3b341" }}>Alerts are tracked locally and shown above. Connect a backend to send live SMS.</span>
+              BUY/SELL signals are pushed to every device where you tapped <b style={{ color: "#39d353" }}>PUSH ALERTS → ON</b>.<br />
+              <b>iPhone:</b> first add this app to your Home Screen (Safari → Share → Add to Home Screen), open it from the icon, then tap PUSH ALERTS.<br />
+              <b>Android/desktop:</b> just tap PUSH ALERTS in any browser tab.<br />
+              <span style={{ color: "#e3b341" }}>5-minute cooldown per symbol so you don't get spammed.</span>
             </div>
           </div>
         </div>
