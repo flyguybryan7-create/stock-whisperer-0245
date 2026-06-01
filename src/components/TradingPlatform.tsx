@@ -7,6 +7,7 @@ import {
 } from "@/lib/quotes.functions";
 import { sendSmsAlert } from "@/lib/alerts.functions";
 import { getSchwabAuthUrl } from "@/lib/schwab.functions";
+import { getShortInterest, type ShortInterest } from "@/lib/shortinterest.functions";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ReferenceLine, AreaChart, Area, ComposedChart, Bar, BarChart, Cell,
@@ -183,6 +184,7 @@ export default function TradingPlatform() {
   const fetchNews = useServerFn(getNews);
   const fetchSentiment = useServerFn(analyzeNewsSentiment);
   const fireSms = useServerFn(sendSmsAlert);
+  const fetchShort = useServerFn(getShortInterest);
 
   useEffect(() => {
     try {
@@ -209,6 +211,16 @@ export default function TradingPlatform() {
     enabled: watchlist.length > 0,
   });
   const live = (liveQuotes as Record<string, LiveQuote> | undefined) ?? {};
+
+  // Short interest / float — refresh every 30 min (Yahoo updates twice a month)
+  const { data: shortData } = useQuery({
+    queryKey: ["short", watchlist],
+    queryFn: () => fetchShort({ data: { symbols: watchlist } }),
+    staleTime: 30 * 60_000,
+    refetchInterval: 30 * 60_000,
+    enabled: watchlist.length > 0,
+  });
+  const shorts = (shortData as Record<string, ShortInterest> | undefined) ?? {};
 
   // News for selected stock
   const { data: newsData } = useQuery({
@@ -456,6 +468,14 @@ export default function TradingPlatform() {
               const lq = live[sym];
               const liveChg = lq ? lq.changePercent : chg;
               const livePrice = lq ? lq.price : l?.close;
+              const si = shorts[sym];
+              const siPct = si?.shortPercentOfFloat ?? null;
+              const siColor =
+                si?.risk === "EXTREME" ? "#f85149"
+                : si?.risk === "HIGH" ? "#ff7b29"
+                : si?.risk === "MODERATE" ? "#e3b341"
+                : si?.risk === "LOW" ? "#39d353"
+                : "#484f58";
               return (
                 <div key={sym} className="stock-row" onClick={() => setSelectedStock(sym)}
                   draggable
@@ -481,7 +501,17 @@ export default function TradingPlatform() {
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2, fontSize: 10 }}>
                     <span style={{ color: "#8b949e" }}>${livePrice?.toFixed(2)}</span>
-                    <span style={{ color: liveChg >= 0 ? "#39d353" : "#f85149" }}>{liveChg >= 0 ? "+" : ""}{liveChg.toFixed(2)}%</span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      {siPct != null && (
+                        <span
+                          title={`Short interest: ${siPct.toFixed(1)}% of float · ${si?.risk}${si?.shortRatio ? ` · ${si.shortRatio.toFixed(1)}d to cover` : ""}`}
+                          style={{ fontSize: 8, fontWeight: 700, color: siColor, border: `1px solid ${siColor}`, borderRadius: 3, padding: "1px 4px", letterSpacing: 0.5 }}
+                        >
+                          {si?.risk === "EXTREME" || si?.risk === "HIGH" ? "⚠ " : ""}S {siPct.toFixed(0)}%
+                        </span>
+                      )}
+                      <span style={{ color: liveChg >= 0 ? "#39d353" : "#f85149" }}>{liveChg >= 0 ? "+" : ""}{liveChg.toFixed(2)}%</span>
+                    </span>
                   </div>
                 </div>
               );
@@ -551,6 +581,37 @@ export default function TradingPlatform() {
                 <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1 }}>RSI</div>
                 <div style={{ fontSize: 16, color: (last.rsi ?? 50) < 30 ? "#39d353" : (last.rsi ?? 50) > 70 ? "#f85149" : "#e6edf3", fontWeight: 600 }}>{last.rsi?.toFixed(1)}</div>
               </div>
+              {(() => {
+                const si = shorts[selectedStock];
+                const pct = si?.shortPercentOfFloat;
+                const color =
+                  si?.risk === "EXTREME" ? "#f85149"
+                  : si?.risk === "HIGH" ? "#ff7b29"
+                  : si?.risk === "MODERATE" ? "#e3b341"
+                  : si?.risk === "LOW" ? "#39d353"
+                  : "#8b949e";
+                const fmtM = (n: number | null | undefined) =>
+                  n == null ? "—" : n >= 1e9 ? (n / 1e9).toFixed(2) + "B" : n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n.toLocaleString();
+                return (
+                  <div
+                    title={
+                      si
+                        ? `Float: ${fmtM(si.floatShares)}\nShares short: ${fmtM(si.sharesShort)}\nShort % of float: ${pct?.toFixed(2) ?? "—"}%\nDays to cover: ${si.shortRatio?.toFixed(1) ?? "—"}\nRisk: ${si.risk}`
+                        : "Short interest unavailable"
+                    }
+                    style={{ background: "#0d1117", border: `1px solid ${color}`, borderRadius: 6, padding: "6px 12px", minWidth: 96 }}
+                  >
+                    <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1 }}>SHORT / FLOAT</div>
+                    <div style={{ fontSize: 14, fontWeight: 800, color }}>
+                      {pct != null ? `${pct.toFixed(1)}%` : "—"}
+                      <span style={{ fontSize: 8, marginLeft: 6, letterSpacing: 1 }}>{si?.risk ?? ""}</span>
+                    </div>
+                    <div style={{ fontSize: 8, color: "#8b949e", marginTop: 1 }}>
+                      Float {fmtM(si?.floatShares)}{si?.shortRatio ? ` · ${si.shortRatio.toFixed(1)}d cover` : ""}
+                    </div>
+                  </div>
+                );
+              })()}
               <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 6, padding: "6px 12px", minWidth: 80 }}>
                 <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1 }}>MACD</div>
                 <div style={{ fontSize: 16, color: (last.macdHist ?? 0) > 0 ? "#39d353" : "#f85149", fontWeight: 600 }}>{last.macdHist?.toFixed(3)}</div>
