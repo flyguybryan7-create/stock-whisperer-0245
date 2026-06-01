@@ -5,6 +5,7 @@ import {
   getQuotes, searchSymbols, getLiveQuotes, getNews, analyzeNewsSentiment,
   type Candle, type SymbolSearchResult, type LiveQuote, type NewsItem, type SentimentResult,
 } from "@/lib/quotes.functions";
+import { sendSmsAlert } from "@/lib/alerts.functions";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ReferenceLine, AreaChart, Area, ComposedChart, Bar, BarChart, Cell,
@@ -16,6 +17,9 @@ const DEFAULT_STOCKS = [
   "CRWV","CBRS","RMBS","LSCC","MXL","AMBA","PLAB","ASYS","COHU","NLST","ACLS","STM","SATS","WDC",
 ];
 const WATCHLIST_KEY = "bryantrade.watchlist.v1";
+const SMS_PHONE = "9549391199";
+const SMS_CARRIER = "tmobile";
+const SMS_ENABLED_KEY = "bryantrade.smsAlerts.v1";
 
 const STOCK_NAMES: Record<string, string> = {
   NVDA:"NVIDIA Corp",MRVL:"Marvell Technology",SMTC:"Semtech Corp",TSEM:"Tower Semiconductor",
@@ -151,6 +155,8 @@ export default function TradingPlatform() {
   const [alertType, setAlertType] = useState<"above" | "below">("above");
   const [notification, setNotification] = useState<{ msg: string } | null>(null);
   const [chartRange, setChartRange] = useState(60);
+  const [smsEnabled, setSmsEnabled] = useState(true);
+  const lastSmsSignal = useRef<Record<string, "BUY" | "SELL">>({});
 
   // Load persisted watchlist
   useEffect(() => {
@@ -174,6 +180,17 @@ export default function TradingPlatform() {
   const fetchLive = useServerFn(getLiveQuotes);
   const fetchNews = useServerFn(getNews);
   const fetchSentiment = useServerFn(analyzeNewsSentiment);
+  const fireSms = useServerFn(sendSmsAlert);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SMS_ENABLED_KEY);
+      if (raw != null) setSmsEnabled(raw === "1");
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem(SMS_ENABLED_KEY, smsEnabled ? "1" : "0"); } catch {}
+  }, [smsEnabled]);
 
   const { data: rawQuotes } = useQuery({
     queryKey: ["quotes", watchlist],
@@ -259,6 +276,35 @@ export default function TradingPlatform() {
   const change = liveSel ? liveSel.change : (last.close && prev.close ? last.close - prev.close : 0);
   const changePct = liveSel ? liveSel.changePercent : (prev.close ? (change / prev.close) * 100 : 0);
   const signal = getSignal(chartData, sentiment.score);
+
+  // Watch every watchlist symbol; when its signal flips to BUY or SELL,
+  // fire an SMS via T-Mobile email-to-SMS gateway (server-side cooldown
+  // prevents flooding even if state churns).
+  useEffect(() => {
+    if (!smsEnabled) return;
+    for (const sym of Object.keys(allData)) {
+      const series = allData[sym];
+      if (!series || series.length === 0) continue;
+      const sig = getSignal(series, sym === selectedStock ? sentiment.score : 0);
+      if (sig !== "BUY" && sig !== "SELL") continue;
+      if (lastSmsSignal.current[sym] === sig) continue;
+      lastSmsSignal.current[sym] = sig;
+      const lq = live[sym];
+      const px = lq?.price ?? series[series.length - 1]?.close;
+      if (px == null) continue;
+      fireSms({
+        data: {
+          phone: SMS_PHONE,
+          carrier: SMS_CARRIER,
+          symbol: sym,
+          signal: sig,
+          price: px,
+          reason: sym === selectedStock && sentiment.summary ? sentiment.summary.slice(0, 80) : "",
+        },
+      }).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveQuotes, rawQuotes, smsEnabled, sentiment.score]);
 
   const filteredStocks = useMemo(() => {
     const q = search.toLowerCase();
@@ -486,6 +532,14 @@ export default function TradingPlatform() {
               )}
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                onClick={() => { setSmsEnabled((v) => !v); showNotif(`SMS alerts ${!smsEnabled ? "ON" : "OFF"} → ${SMS_PHONE.replace(/(\d{3})(\d{3})(\d{4})/, "($1) $2-$3")}`); }}
+                title={`Auto-text BUY/SELL to ${SMS_PHONE} (T-Mobile)`}
+                style={{ background: smsEnabled ? "#1f3d2a" : "#0d1117", border: `1px solid ${smsEnabled ? "#39d353" : "#21262d"}`, borderRadius: 6, padding: "6px 10px", minWidth: 80, cursor: "pointer", color: smsEnabled ? "#39d353" : "#8b949e", fontFamily: "inherit" }}
+              >
+                <div style={{ fontSize: 9, letterSpacing: 1 }}>SMS ALERTS</div>
+                <div style={{ fontSize: 13, fontWeight: 800 }}>{smsEnabled ? "📱 ON" : "OFF"}</div>
+              </button>
               <div style={{ background: signalBg, border: `1px solid ${signalColor}`, borderRadius: 6, padding: "6px 12px", minWidth: 80 }}>
                 <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1 }}>AI SIGNAL</div>
                 <div style={{ fontSize: 16, fontWeight: 800, color: signalColor }}>{signal}</div>
