@@ -6,6 +6,7 @@ import {
   type Candle, type SymbolSearchResult, type LiveQuote, type NewsItem, type SentimentResult,
 } from "@/lib/quotes.functions";
 import { sendSmsAlert } from "@/lib/alerts.functions";
+import { getSchwabAuthUrl } from "@/lib/schwab.functions";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ReferenceLine, AreaChart, Area, ComposedChart, Bar, BarChart, Cell,
@@ -20,6 +21,7 @@ const WATCHLIST_KEY = "bryantrade.watchlist.v1";
 const SMS_PHONE = "9549391199";
 const SMS_CARRIER = "tmobile";
 const SMS_ENABLED_KEY = "bryantrade.smsAlerts.v1";
+const SCHWAB_TOKEN_KEY = "bryantrade.schwab.tokens.v1";
 
 const STOCK_NAMES: Record<string, string> = {
   NVDA:"NVIDIA Corp",MRVL:"Marvell Technology",SMTC:"Semtech Corp",TSEM:"Tower Semiconductor",
@@ -532,6 +534,7 @@ export default function TradingPlatform() {
               )}
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <SchwabConnectButton />
               <button
                 onClick={() => { setSmsEnabled((v) => !v); showNotif(`SMS alerts ${!smsEnabled ? "ON" : "OFF"} → ${SMS_PHONE.replace(/(\d{3})(\d{3})(\d{4})/, "($1) $2-$3")}`); }}
                 title={`Auto-text BUY/SELL to ${SMS_PHONE} (T-Mobile)`}
