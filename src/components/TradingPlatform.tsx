@@ -468,6 +468,14 @@ export default function TradingPlatform() {
               const lq = live[sym];
               const liveChg = lq ? lq.changePercent : chg;
               const livePrice = lq ? lq.price : l?.close;
+              const si = shorts[sym];
+              const siPct = si?.shortPercentOfFloat ?? null;
+              const siColor =
+                si?.risk === "EXTREME" ? "#f85149"
+                : si?.risk === "HIGH" ? "#ff7b29"
+                : si?.risk === "MODERATE" ? "#e3b341"
+                : si?.risk === "LOW" ? "#39d353"
+                : "#484f58";
               return (
                 <div key={sym} className="stock-row" onClick={() => setSelectedStock(sym)}
                   draggable
@@ -493,7 +501,17 @@ export default function TradingPlatform() {
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2, fontSize: 10 }}>
                     <span style={{ color: "#8b949e" }}>${livePrice?.toFixed(2)}</span>
-                    <span style={{ color: liveChg >= 0 ? "#39d353" : "#f85149" }}>{liveChg >= 0 ? "+" : ""}{liveChg.toFixed(2)}%</span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      {siPct != null && (
+                        <span
+                          title={`Short interest: ${siPct.toFixed(1)}% of float · ${si?.risk}${si?.shortRatio ? ` · ${si.shortRatio.toFixed(1)}d to cover` : ""}`}
+                          style={{ fontSize: 8, fontWeight: 700, color: siColor, border: `1px solid ${siColor}`, borderRadius: 3, padding: "1px 4px", letterSpacing: 0.5 }}
+                        >
+                          {si?.risk === "EXTREME" || si?.risk === "HIGH" ? "⚠ " : ""}S {siPct.toFixed(0)}%
+                        </span>
+                      )}
+                      <span style={{ color: liveChg >= 0 ? "#39d353" : "#f85149" }}>{liveChg >= 0 ? "+" : ""}{liveChg.toFixed(2)}%</span>
+                    </span>
                   </div>
                 </div>
               );
