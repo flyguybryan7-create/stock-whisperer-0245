@@ -5,6 +5,7 @@ import {
   getQuotes, searchSymbols, getLiveQuotes, getNews, analyzeNewsSentiment,
   type Candle, type SymbolSearchResult, type LiveQuote, type NewsItem, type SentimentResult,
 } from "@/lib/quotes.functions";
+import { sendSmsAlert } from "@/lib/alerts.functions";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ReferenceLine, AreaChart, Area, ComposedChart, Bar, BarChart, Cell,
@@ -16,6 +17,9 @@ const DEFAULT_STOCKS = [
   "CRWV","CBRS","RMBS","LSCC","MXL","AMBA","PLAB","ASYS","COHU","NLST","ACLS","STM","SATS","WDC",
 ];
 const WATCHLIST_KEY = "bryantrade.watchlist.v1";
+const SMS_PHONE = "9549391199";
+const SMS_CARRIER = "tmobile";
+const SMS_ENABLED_KEY = "bryantrade.smsAlerts.v1";
 
 const STOCK_NAMES: Record<string, string> = {
   NVDA:"NVIDIA Corp",MRVL:"Marvell Technology",SMTC:"Semtech Corp",TSEM:"Tower Semiconductor",
@@ -151,6 +155,8 @@ export default function TradingPlatform() {
   const [alertType, setAlertType] = useState<"above" | "below">("above");
   const [notification, setNotification] = useState<{ msg: string } | null>(null);
   const [chartRange, setChartRange] = useState(60);
+  const [smsEnabled, setSmsEnabled] = useState(true);
+  const lastSmsSignal = useRef<Record<string, "BUY" | "SELL">>({});
 
   // Load persisted watchlist
   useEffect(() => {
@@ -174,6 +180,17 @@ export default function TradingPlatform() {
   const fetchLive = useServerFn(getLiveQuotes);
   const fetchNews = useServerFn(getNews);
   const fetchSentiment = useServerFn(analyzeNewsSentiment);
+  const fireSms = useServerFn(sendSmsAlert);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SMS_ENABLED_KEY);
+      if (raw != null) setSmsEnabled(raw === "1");
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem(SMS_ENABLED_KEY, smsEnabled ? "1" : "0"); } catch {}
+  }, [smsEnabled]);
 
   const { data: rawQuotes } = useQuery({
     queryKey: ["quotes", watchlist],
