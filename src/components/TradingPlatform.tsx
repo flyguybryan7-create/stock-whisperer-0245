@@ -349,7 +349,7 @@ export default function TradingPlatform() {
                 <Tooltip content={<CustomTooltip />} />
                 <ReferenceLine y={0} stroke="#30363d" />
                 <Bar dataKey="macdHist" name="Histogram">
-                  {displayData.map((d, i) => (
+                  {displayData.map((d: Row, i: number) => (
                     <Cell key={i} fill={(d.macdHist ?? 0) >= 0 ? "#39d353" : "#f85149"} fillOpacity={0.7} />
                   ))}
                 </Bar>
