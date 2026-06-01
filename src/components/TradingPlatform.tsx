@@ -325,7 +325,7 @@ export default function TradingPlatform() {
             <div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
                 <span style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 22, color: "#e6edf3" }}>{selectedStock}</span>
-                <span style={{ fontSize: 11, color: "#8b949e" }}>{STOCK_NAMES[selectedStock]}</span>
+                <span style={{ fontSize: 11, color: "#8b949e" }}>{stockNames[selectedStock] || ""}</span>
               </div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 4 }}>
                 <span style={{ fontSize: 28, fontWeight: 700, color: "#e6edf3" }}>${last.close?.toFixed(2)}</span>
