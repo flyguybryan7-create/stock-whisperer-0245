@@ -277,6 +277,35 @@ export default function TradingPlatform() {
   const changePct = liveSel ? liveSel.changePercent : (prev.close ? (change / prev.close) * 100 : 0);
   const signal = getSignal(chartData, sentiment.score);
 
+  // Watch every watchlist symbol; when its signal flips to BUY or SELL,
+  // fire an SMS via T-Mobile email-to-SMS gateway (server-side cooldown
+  // prevents flooding even if state churns).
+  useEffect(() => {
+    if (!smsEnabled) return;
+    for (const sym of Object.keys(allData)) {
+      const series = allData[sym];
+      if (!series || series.length === 0) continue;
+      const sig = getSignal(series, sym === selectedStock ? sentiment.score : 0);
+      if (sig !== "BUY" && sig !== "SELL") continue;
+      if (lastSmsSignal.current[sym] === sig) continue;
+      lastSmsSignal.current[sym] = sig;
+      const lq = live[sym];
+      const px = lq?.price ?? series[series.length - 1]?.close;
+      if (px == null) continue;
+      fireSms({
+        data: {
+          phone: SMS_PHONE,
+          carrier: SMS_CARRIER,
+          symbol: sym,
+          signal: sig,
+          price: px,
+          reason: sym === selectedStock && sentiment.summary ? sentiment.summary.slice(0, 80) : "",
+        },
+      }).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveQuotes, rawQuotes, smsEnabled, sentiment.score]);
+
   const filteredStocks = useMemo(() => {
     const q = search.toLowerCase();
     return watchlist.filter((s) =>
