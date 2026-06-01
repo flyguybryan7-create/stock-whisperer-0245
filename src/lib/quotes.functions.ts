@@ -125,6 +125,14 @@ export type LiveQuote = {
   changePercent: number;
   previousClose: number;
   marketState?: string;
+  session: "PRE" | "REGULAR" | "POST" | "CLOSED";
+  regularPrice?: number;
+  preMarketPrice?: number;
+  preMarketChange?: number;
+  preMarketChangePercent?: number;
+  postMarketPrice?: number;
+  postMarketChange?: number;
+  postMarketChangePercent?: number;
 };
 
 export const getLiveQuotes = createServerFn({ method: "POST" })
@@ -152,19 +160,62 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
             regularMarketChangePercent?: number;
             regularMarketPreviousClose?: number;
             marketState?: string;
+            preMarketPrice?: number;
+            preMarketChange?: number;
+            preMarketChangePercent?: number;
+            postMarketPrice?: number;
+            postMarketChange?: number;
+            postMarketChangePercent?: number;
           }>;
         };
       };
       const out: Record<string, LiveQuote> = {};
       for (const r of json.quoteResponse?.result ?? []) {
         if (typeof r.regularMarketPrice !== "number") continue;
+        const state = r.marketState ?? "REGULAR";
+        // PRE | PREPRE = pre-market; POST | POSTPOST = after-hours; REGULAR = open; CLOSED otherwise
+        let session: LiveQuote["session"] = "REGULAR";
+        let price = r.regularMarketPrice;
+        let change = r.regularMarketChange ?? 0;
+        let changePercent = r.regularMarketChangePercent ?? 0;
+        if ((state === "PRE" || state === "PREPRE") && typeof r.preMarketPrice === "number") {
+          session = "PRE";
+          price = r.preMarketPrice;
+          change = r.preMarketChange ?? 0;
+          changePercent = r.preMarketChangePercent ?? 0;
+        } else if ((state === "POST" || state === "POSTPOST") && typeof r.postMarketPrice === "number") {
+          session = "POST";
+          price = r.postMarketPrice;
+          change = r.postMarketChange ?? 0;
+          changePercent = r.postMarketChangePercent ?? 0;
+        } else if (state === "CLOSED") {
+          // Markets fully closed — prefer most recent extended-hours print if newer
+          if (typeof r.postMarketPrice === "number") {
+            session = "POST";
+            price = r.postMarketPrice;
+            change = r.postMarketChange ?? 0;
+            changePercent = r.postMarketChangePercent ?? 0;
+          } else {
+            session = "CLOSED";
+          }
+        } else if (state === "REGULAR") {
+          session = "REGULAR";
+        }
         out[r.symbol] = {
           symbol: r.symbol,
-          price: r.regularMarketPrice,
-          change: r.regularMarketChange ?? 0,
-          changePercent: r.regularMarketChangePercent ?? 0,
+          price,
+          change,
+          changePercent,
           previousClose: r.regularMarketPreviousClose ?? r.regularMarketPrice,
-          marketState: r.marketState,
+          marketState: state,
+          session,
+          regularPrice: r.regularMarketPrice,
+          preMarketPrice: r.preMarketPrice,
+          preMarketChange: r.preMarketChange,
+          preMarketChangePercent: r.preMarketChangePercent,
+          postMarketPrice: r.postMarketPrice,
+          postMarketChange: r.postMarketChange,
+          postMarketChangePercent: r.postMarketChangePercent,
         };
       }
       return out;
