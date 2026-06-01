@@ -135,6 +135,57 @@ export type LiveQuote = {
   postMarketChangePercent?: number;
 };
 
+// ============ Intraday 1-minute candles for day-trade signals ============
+export type IntradayBar = {
+  t: number; // unix seconds
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+};
+
+export const getIntraday = createServerFn({ method: "POST" })
+  .inputValidator((input: { symbol: string; interval?: "1m" | "2m" | "5m" }) => ({
+    symbol: String(input.symbol).toUpperCase().slice(0, 10),
+    interval: input.interval === "2m" || input.interval === "5m" ? input.interval : "1m",
+  }))
+  .handler(async ({ data }): Promise<IntradayBar[]> => {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(data.symbol)}?interval=${data.interval}&range=1d&includePrePost=true`;
+    try {
+      const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; BryanTrade/1.0)" } });
+      if (!res.ok) return [];
+      const json = (await res.json()) as {
+        chart: {
+          result?: Array<{
+            timestamp?: number[];
+            indicators: { quote: Array<{ open: (number | null)[]; high: (number | null)[]; low: (number | null)[]; close: (number | null)[]; volume: (number | null)[] }> };
+          }>;
+        };
+      };
+      const r = json.chart.result?.[0];
+      if (!r) return [];
+      const q = r.indicators.quote[0];
+      const ts = r.timestamp ?? [];
+      const out: IntradayBar[] = [];
+      for (let i = 0; i < ts.length; i++) {
+        const c = q.close[i];
+        if (c == null) continue;
+        out.push({
+          t: ts[i],
+          open: q.open[i] ?? c,
+          high: q.high[i] ?? c,
+          low: q.low[i] ?? c,
+          close: c,
+          volume: q.volume[i] ?? 0,
+        });
+      }
+      return out;
+    } catch {
+      return [];
+    }
+  });
+
 export const getLiveQuotes = createServerFn({ method: "POST" })
   .inputValidator((input: { symbols: string[] }) => {
     if (!input || !Array.isArray(input.symbols)) throw new Error("symbols required");
