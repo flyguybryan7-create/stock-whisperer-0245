@@ -22,6 +22,14 @@ function b64urlDecode(s: string): Uint8Array {
   return out;
 }
 
+// TS in strict mode treats Uint8Array<ArrayBufferLike> as incompatible with
+// BufferSource / BodyInit. Copy into a fresh ArrayBuffer-backed view to satisfy.
+function asBuf(u: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(u.byteLength);
+  copy.set(u);
+  return copy.buffer;
+}
+
 async function importVapidSigningKey(): Promise<CryptoKey> {
   // Public key is 0x04 || X(32) || Y(32)
   const pub = b64urlDecode(VAPID_PUBLIC_KEY);
