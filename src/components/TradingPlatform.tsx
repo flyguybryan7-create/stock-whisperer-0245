@@ -34,33 +34,6 @@ type Row = {
   macd?: number | null; macdSignal?: number | null; macdHist?: number | null;
 };
 
-function seededRand(seed: number) {
-  let s = seed;
-  return () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
-}
-
-function generatePriceData(basePrice: number, seed: number, days = 120): Row[] {
-  const rand = seededRand(seed);
-  const data: Row[] = [];
-  let price = basePrice * (0.75 + rand() * 0.25);
-  for (let i = days; i >= 0; i--) {
-    const change = (rand() - 0.48) * price * 0.025;
-    price = Math.max(price + change, price * 0.5);
-    const high = price * (1 + rand() * 0.015);
-    const low = price * (1 - rand() * 0.015);
-    const open = low + rand() * (high - low);
-    const vol = Math.floor(500000 + rand() * 4000000);
-    const date = new Date();
-    date.setDate(date.getDate() - i);
-    data.push({
-      date: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-      close: +price.toFixed(2), open: +open.toFixed(2),
-      high: +high.toFixed(2), low: +low.toFixed(2), volume: vol,
-    });
-  }
-  return data;
-}
-
 function calcSMA(data: Row[], period: number, key: "sma9"|"sma15"|"sma50") {
   return data.map((d, i) => {
     if (i < period - 1) return { ...d, [key]: null };
@@ -121,11 +94,6 @@ function buildChartData(p: Row[]) {
   d = calcMACD(d);
   return d;
 }
-
-const ALL_STOCK_DATA: Record<string, Row[]> = {};
-STOCKS.forEach((sym, idx) => {
-  ALL_STOCK_DATA[sym] = buildChartData(generatePriceData(BASE_PRICES[sym] || 100, idx + 1));
-});
 
 function getSignal(data: Row[]): "BUY" | "SELL" | "HOLD" {
   const last = data[data.length - 1];
