@@ -3,7 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
   getQuotes, searchSymbols, getLiveQuotes, getNews, analyzeNewsSentiment,
+  getIntraday,
   type Candle, type SymbolSearchResult, type LiveQuote, type NewsItem, type SentimentResult,
+  type IntradayBar,
 } from "@/lib/quotes.functions";
 import { sendAlert, sendTestPush, subscribeToPush, unsubscribeFromPush } from "@/lib/push.functions";
 import {
@@ -132,6 +134,88 @@ function getSignal(data: Row[], sentimentScore = 0): "BUY" | "SELL" | "HOLD" {
   return "HOLD";
 }
 
+// ============ Intraday day-trade signal ============
+// Uses 1m bars: EMA9 vs EMA21 cross, VWAP position, short RSI(7), momentum.
+function getDayTradeSignal(bars: IntradayBar[]): {
+  signal: "BUY" | "SELL" | "HOLD";
+  reason: string;
+  rsi: number | null;
+  vwap: number | null;
+  emaFast: number | null;
+  emaSlow: number | null;
+} {
+  if (!bars || bars.length < 25) {
+    return { signal: "HOLD", reason: "Not enough intraday data", rsi: null, vwap: null, emaFast: null, emaSlow: null };
+  }
+  // EMA helper
+  const ema = (period: number) => {
+    const k = 2 / (period + 1);
+    let e = bars[0].close;
+    const arr: number[] = [];
+    for (let i = 0; i < bars.length; i++) {
+      e = i === 0 ? bars[i].close : bars[i].close * k + e * (1 - k);
+      arr.push(e);
+    }
+    return arr;
+  };
+  const fast = ema(9);
+  const slow = ema(21);
+  // RSI(7)
+  const period = 7;
+  let avgG = 0, avgL = 0;
+  for (let i = 1; i <= period; i++) {
+    const ch = bars[i].close - bars[i - 1].close;
+    if (ch > 0) avgG += ch; else avgL += -ch;
+  }
+  avgG /= period; avgL /= period;
+  for (let i = period + 1; i < bars.length; i++) {
+    const ch = bars[i].close - bars[i - 1].close;
+    avgG = (avgG * (period - 1) + Math.max(ch, 0)) / period;
+    avgL = (avgL * (period - 1) + Math.max(-ch, 0)) / period;
+  }
+  const rs = avgL === 0 ? 100 : avgG / avgL;
+  const rsi = +(100 - 100 / (1 + rs)).toFixed(1);
+  // VWAP (regular session approx — uses all bars)
+  let pv = 0, vv = 0;
+  for (const b of bars) {
+    const typical = (b.high + b.low + b.close) / 3;
+    pv += typical * b.volume;
+    vv += b.volume;
+  }
+  const vwap = vv > 0 ? +(pv / vv).toFixed(2) : null;
+  const last = bars[bars.length - 1].close;
+  const prev = bars[bars.length - 2].close;
+  const fastL = fast[fast.length - 1], fastP = fast[fast.length - 2];
+  const slowL = slow[slow.length - 1], slowP = slow[slow.length - 2];
+  const crossUp = fastP <= slowP && fastL > slowL;
+  const crossDown = fastP >= slowP && fastL < slowL;
+  const aboveVwap = vwap != null && last > vwap;
+  const momentum = ((last - bars[Math.max(0, bars.length - 6)].close) / bars[Math.max(0, bars.length - 6)].close) * 100;
+  let bull = 0, bear = 0;
+  const reasons: string[] = [];
+  if (crossUp) { bull += 3; reasons.push("EMA9↑21 cross"); }
+  if (crossDown) { bear += 3; reasons.push("EMA9↓21 cross"); }
+  if (fastL > slowL) bull += 1; else bear += 1;
+  if (rsi < 30) { bull += 2; reasons.push(`RSI ${rsi} oversold`); }
+  if (rsi > 70) { bear += 2; reasons.push(`RSI ${rsi} overbought`); }
+  if (aboveVwap) { bull += 1; reasons.push(`Above VWAP ${vwap}`); }
+  else if (vwap != null) { bear += 1; reasons.push(`Below VWAP ${vwap}`); }
+  if (momentum > 0.3) { bull += 1; reasons.push(`+${momentum.toFixed(2)}% 5m`); }
+  if (momentum < -0.3) { bear += 1; reasons.push(`${momentum.toFixed(2)}% 5m`); }
+  if (last > prev) bull += 1; else if (last < prev) bear += 1;
+  let signal: "BUY" | "SELL" | "HOLD" = "HOLD";
+  if (bull >= bear + 3) signal = "BUY";
+  else if (bear >= bull + 3) signal = "SELL";
+  return {
+    signal,
+    reason: reasons.slice(0, 3).join(" · ") || "Mixed signals",
+    rsi,
+    vwap,
+    emaFast: +fastL.toFixed(2),
+    emaSlow: +slowL.toFixed(2),
+  };
+}
+
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
@@ -189,6 +273,7 @@ export default function TradingPlatform() {
   const fetchLive = useServerFn(getLiveQuotes);
   const fetchNews = useServerFn(getNews);
   const fetchSentiment = useServerFn(analyzeNewsSentiment);
+  const fetchIntraday = useServerFn(getIntraday);
   const firePush = useServerFn(sendAlert);
   const fireTestPush = useServerFn(sendTestPush);
   const callSubscribe = useServerFn(subscribeToPush);
@@ -284,6 +369,27 @@ export default function TradingPlatform() {
   });
   const newsItems: NewsItem[] = newsData?.items ?? [];
   const sector = newsData?.sector ?? null;
+
+  // Intraday 1m bars for day-trade signal — refresh every 15s
+  const { data: intradayData } = useQuery({
+    queryKey: ["intraday", selectedStock],
+    queryFn: () => fetchIntraday({ data: { symbol: selectedStock, interval: "1m" } }),
+    refetchInterval: 15_000,
+    enabled: !!selectedStock,
+  });
+  const intradayBars: IntradayBar[] = intradayData ?? [];
+  const dayTrade = useMemo(() => getDayTradeSignal(intradayBars), [intradayBars]);
+
+  // Market & world news (always-on, stock-agnostic) — refresh every 10 min
+  const { data: marketNewsData } = useQuery({
+    queryKey: ["marketNews"],
+    queryFn: () => fetchNews({ data: { symbol: "SPY", companyName: "S&P 500" } }),
+    staleTime: 10 * 60_000,
+    refetchInterval: 10 * 60_000,
+  });
+  const marketWorldNews: NewsItem[] = (marketNewsData?.items ?? []).filter(
+    (n) => n.scope === "market" || n.scope === "global",
+  );
 
   // AI sentiment based on headlines
   const { data: sentimentData } = useQuery({
@@ -671,6 +777,23 @@ export default function TradingPlatform() {
                 <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1 }}>AI SIGNAL</div>
                 <div style={{ fontSize: 16, fontWeight: 800, color: signalColor }}>{signal}</div>
               </div>
+              {(() => {
+                const pink = "#ff4fa3";
+                const dt = dayTrade.signal;
+                const bg = dt === "BUY" ? "rgba(255,79,163,0.18)" : dt === "SELL" ? "rgba(255,79,163,0.10)" : "rgba(255,79,163,0.05)";
+                return (
+                  <div
+                    title={`${dayTrade.reason}\nRSI7: ${dayTrade.rsi ?? "—"} · VWAP: ${dayTrade.vwap ?? "—"} · EMA9/21: ${dayTrade.emaFast ?? "—"}/${dayTrade.emaSlow ?? "—"}`}
+                    style={{ background: bg, border: `1.5px solid ${pink}`, borderRadius: 6, padding: "6px 12px", minWidth: 110, boxShadow: dt !== "HOLD" ? `0 0 12px ${pink}55` : "none" }}
+                  >
+                    <div style={{ fontSize: 9, color: pink, letterSpacing: 1, fontWeight: 700 }}>⚡ DAY TRADE</div>
+                    <div style={{ fontSize: 16, fontWeight: 900, color: pink }}>{dt}</div>
+                    <div style={{ fontSize: 8, color: "#d8a5c2", marginTop: 1, lineHeight: 1.2, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {dayTrade.reason}
+                    </div>
+                  </div>
+                );
+              })()}
               <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 6, padding: "6px 12px", minWidth: 70 }}>
                 <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1 }}>RSI</div>
                 <div style={{ fontSize: 16, color: (last.rsi ?? 50) < 30 ? "#39d353" : (last.rsi ?? 50) > 70 ? "#f85149" : "#e6edf3", fontWeight: 600 }}>{last.rsi?.toFixed(1)}</div>
@@ -725,6 +848,30 @@ export default function TradingPlatform() {
                 {r}D
               </button>
             ))}
+          </div>
+
+          {/* Market & World news strip — always visible, affects every ticker */}
+          <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 10, marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <span style={{ fontSize: 10, color: "#ffa657", letterSpacing: 1.5, fontWeight: 700 }}>🌍 MARKET &amp; WORLD</span>
+              <span style={{ fontSize: 9, color: "#8b949e" }}>headlines that can move every stock in your watchlist</span>
+            </div>
+            <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+              {marketWorldNews.length === 0 && (
+                <div style={{ fontSize: 10, color: "#8b949e" }}>Loading market &amp; world news…</div>
+              )}
+              {marketWorldNews.slice(0, 10).map((n, i) => {
+                const color = n.scope === "global" ? "#d2a8ff" : "#ffa657";
+                return (
+                  <a key={i} href={n.link} target="_blank" rel="noreferrer"
+                    style={{ flex: "0 0 240px", padding: "8px 10px", background: "#010409", border: `1px solid ${color}33`, borderRadius: 6, textDecoration: "none", color: "#e6edf3", fontSize: 11, lineHeight: 1.35 }}>
+                    <div style={{ fontSize: 8, fontWeight: 700, color, letterSpacing: 1, marginBottom: 4 }}>{n.scope.toUpperCase()}</div>
+                    <div style={{ display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{n.title}</div>
+                    <div style={{ fontSize: 9, color: "#8b949e", marginTop: 4 }}>{n.publisher}</div>
+                  </a>
+                );
+              })}
+            </div>
           </div>
 
           {/* Price chart */}
