@@ -273,6 +273,7 @@ export default function TradingPlatform() {
   const fetchLive = useServerFn(getLiveQuotes);
   const fetchNews = useServerFn(getNews);
   const fetchSentiment = useServerFn(analyzeNewsSentiment);
+  const fetchIntraday = useServerFn(getIntraday);
   const firePush = useServerFn(sendAlert);
   const fireTestPush = useServerFn(sendTestPush);
   const callSubscribe = useServerFn(subscribeToPush);
@@ -368,6 +369,27 @@ export default function TradingPlatform() {
   });
   const newsItems: NewsItem[] = newsData?.items ?? [];
   const sector = newsData?.sector ?? null;
+
+  // Intraday 1m bars for day-trade signal — refresh every 15s
+  const { data: intradayData } = useQuery({
+    queryKey: ["intraday", selectedStock],
+    queryFn: () => fetchIntraday({ data: { symbol: selectedStock, interval: "1m" } }),
+    refetchInterval: 15_000,
+    enabled: !!selectedStock,
+  });
+  const intradayBars: IntradayBar[] = intradayData ?? [];
+  const dayTrade = useMemo(() => getDayTradeSignal(intradayBars), [intradayBars]);
+
+  // Market & world news (always-on, stock-agnostic) — refresh every 10 min
+  const { data: marketNewsData } = useQuery({
+    queryKey: ["marketNews"],
+    queryFn: () => fetchNews({ data: { symbol: "SPY", companyName: "S&P 500" } }),
+    staleTime: 10 * 60_000,
+    refetchInterval: 10 * 60_000,
+  });
+  const marketWorldNews: NewsItem[] = (marketNewsData?.items ?? []).filter(
+    (n) => n.scope === "market" || n.scope === "global",
+  );
 
   // AI sentiment based on headlines
   const { data: sentimentData } = useQuery({
