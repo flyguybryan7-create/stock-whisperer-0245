@@ -285,10 +285,42 @@ export default function TradingPlatform() {
       <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", minHeight: "calc(100vh - 49px)" }}>
         {/* Watchlist */}
         <div style={{ borderRight: "1px solid #21262d", background: "#0d1117", overflowY: "auto", maxHeight: "calc(100vh - 49px)" }}>
-          <div style={{ padding: "10px 12px", borderBottom: "1px solid #21262d" }}>
+          <div style={{ padding: "10px 12px", borderBottom: "1px solid #21262d", position: "relative" }}>
             <div style={{ fontSize: 10, color: "#8b949e", letterSpacing: 1.5, marginBottom: 8 }}>BRYAN'S WATCHLIST</div>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..."
-              style={{ width: "100%", background: "#010409", border: "1px solid #21262d", borderRadius: 5, padding: "5px 8px", color: "#e6edf3", fontSize: 11, outline: "none", fontFamily: mono }} />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
+              placeholder="Search any ticker (AAPL, TSLA…)"
+              style={{ width: "100%", background: "#010409", border: "1px solid #21262d", borderRadius: 5, padding: "5px 8px", color: "#e6edf3", fontSize: 11, outline: "none", fontFamily: mono }}
+            />
+            {searchFocused && debouncedQuery.length >= 1 && (
+              <div style={{ position: "absolute", top: "100%", left: 12, right: 12, background: "#0d1117", border: "1px solid #30363d", borderRadius: 6, marginTop: 4, zIndex: 50, maxHeight: 280, overflowY: "auto", boxShadow: "0 8px 24px rgba(0,0,0,0.6)" }}>
+                {searching && newResults.length === 0 && (
+                  <div style={{ padding: "8px 10px", fontSize: 10, color: "#8b949e" }}>Searching…</div>
+                )}
+                {!searching && newResults.length === 0 && (
+                  <div style={{ padding: "8px 10px", fontSize: 10, color: "#8b949e" }}>No new symbols found</div>
+                )}
+                {newResults.map((r) => (
+                  <div
+                    key={r.symbol}
+                    onMouseDown={(e) => { e.preventDefault(); addStock(r); }}
+                    style={{ padding: "8px 10px", borderBottom: "1px solid #161b22", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}
+                    className="stock-row"
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#e6edf3" }}>{r.symbol}</div>
+                      <div style={{ fontSize: 9, color: "#8b949e", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {r.name}{r.exchange ? ` · ${r.exchange}` : ""}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 14, color: "#39d353" }}>+</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <div>
             {filteredStocks.map(sym => {
@@ -306,7 +338,14 @@ export default function TradingPlatform() {
                       {sym}
                       {hasAlert && <span style={{ fontSize: 9 }}>🔔</span>}
                     </div>
-                    <span style={{ fontSize: 9, color: sigC, fontWeight: 700 }}>{sig}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 9, color: sigC, fontWeight: 700 }}>{sig}</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); removeStock(sym); }}
+                        title="Remove from watchlist"
+                        style={{ background: "transparent", border: "none", color: "#8b949e", cursor: "pointer", fontSize: 11, padding: 0, lineHeight: 1 }}
+                      >✕</button>
+                    </div>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2, fontSize: 10 }}>
                     <span style={{ color: "#8b949e" }}>${l?.close?.toFixed(2)}</span>
@@ -315,6 +354,11 @@ export default function TradingPlatform() {
                 </div>
               );
             })}
+            {watchlist.length === 0 && (
+              <div style={{ padding: 16, fontSize: 10, color: "#8b949e", textAlign: "center" }}>
+                Your watchlist is empty. Search above to add stocks.
+              </div>
+            )}
           </div>
         </div>
 
