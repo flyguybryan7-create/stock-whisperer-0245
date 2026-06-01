@@ -405,11 +405,20 @@ export default function TradingPlatform() {
               const sig = d.length ? getSignal(d) : "HOLD";
               const hasAlert = (alerts[sym]?.length ?? 0) > 0;
               const sigC = sig === "BUY" ? "#39d353" : sig === "SELL" ? "#f85149" : "#e3b341";
+              const lq = live[sym];
+              const liveChg = lq ? lq.changePercent : chg;
+              const livePrice = lq ? lq.price : l?.close;
               return (
                 <div key={sym} className="stock-row" onClick={() => setSelectedStock(sym)}
+                  draggable
+                  onDragStart={() => onDragStart(sym)}
+                  onDragOver={onDragOver}
+                  onDrop={() => onDrop(sym)}
+                  title="Drag to reorder"
                   style={{ padding: "8px 12px", borderBottom: "1px solid #161b22", background: selectedStock === sym ? "#161b22" : "transparent", borderLeft: selectedStock === sym ? "2px solid #58a6ff" : "2px solid transparent" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div style={{ fontWeight: 600, fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ color: "#484f58", cursor: "grab", marginRight: 2 }}>⋮⋮</span>
                       {sym}
                       {hasAlert && <span style={{ fontSize: 9 }}>🔔</span>}
                     </div>
@@ -423,8 +432,8 @@ export default function TradingPlatform() {
                     </div>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2, fontSize: 10 }}>
-                    <span style={{ color: "#8b949e" }}>${l?.close?.toFixed(2)}</span>
-                    <span style={{ color: chg >= 0 ? "#39d353" : "#f85149" }}>{chg >= 0 ? "+" : ""}{chg.toFixed(2)}%</span>
+                    <span style={{ color: "#8b949e" }}>${livePrice?.toFixed(2)}</span>
+                    <span style={{ color: liveChg >= 0 ? "#39d353" : "#f85149" }}>{liveChg >= 0 ? "+" : ""}{liveChg.toFixed(2)}%</span>
                   </div>
                 </div>
               );
