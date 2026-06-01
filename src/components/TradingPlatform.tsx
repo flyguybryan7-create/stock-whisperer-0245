@@ -560,6 +560,57 @@ export default function TradingPlatform() {
             </ResponsiveContainer>
           </ChartCard>
 
+          {/* News + AI Sentiment */}
+          <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 12, marginBottom: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+              <div style={{ fontSize: 10, color: "#8b949e", letterSpacing: 1.5 }}>
+                📰 NEWS-AWARE AI · {selectedStock}{sector ? ` · ${sector}` : ""}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1 }}>SENTIMENT</span>
+                <span style={{
+                  fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 4,
+                  color: sentiment.label === "BULLISH" ? "#39d353" : sentiment.label === "BEARISH" ? "#f85149" : "#e3b341",
+                  background: sentiment.label === "BULLISH" ? "rgba(57,211,83,0.1)" : sentiment.label === "BEARISH" ? "rgba(248,81,73,0.1)" : "rgba(227,179,65,0.1)",
+                  border: `1px solid ${sentiment.label === "BULLISH" ? "#39d353" : sentiment.label === "BEARISH" ? "#f85149" : "#e3b341"}`,
+                }}>{sentiment.label} {sentiment.score >= 0 ? "+" : ""}{sentiment.score.toFixed(2)}</span>
+              </div>
+            </div>
+            {sentiment.summary && (
+              <div style={{ fontSize: 11, color: "#e6edf3", lineHeight: 1.6, marginBottom: 8 }}>{sentiment.summary}</div>
+            )}
+            {sentiment.drivers.length > 0 && (
+              <ul style={{ margin: "0 0 10px 16px", padding: 0, fontSize: 10, color: "#8b949e", lineHeight: 1.7 }}>
+                {sentiment.drivers.map((d, i) => <li key={i}>{d}</li>)}
+              </ul>
+            )}
+            <div style={{ display: "grid", gap: 6 }}>
+              {newsItems.length === 0 && (
+                <div style={{ fontSize: 10, color: "#8b949e" }}>Loading news…</div>
+              )}
+              {newsItems.slice(0, 12).map((n, i) => {
+                const scopeColor =
+                  n.scope === "company" ? "#58a6ff" :
+                  n.scope === "sector" ? "#d2a8ff" :
+                  n.scope === "market" ? "#ffa657" : "#8b949e";
+                return (
+                  <a key={i} href={n.link} target="_blank" rel="noreferrer"
+                    style={{ display: "flex", gap: 8, padding: "6px 8px", background: "#010409", borderRadius: 4, textDecoration: "none", color: "#e6edf3", fontSize: 11, lineHeight: 1.4, border: "1px solid #161b22" }}>
+                    <span style={{ fontSize: 8, fontWeight: 700, color: scopeColor, letterSpacing: 1, minWidth: 56, paddingTop: 2 }}>
+                      {n.scope.toUpperCase()}
+                    </span>
+                    <span style={{ flex: 1 }}>
+                      {n.title}
+                      <span style={{ display: "block", fontSize: 9, color: "#8b949e", marginTop: 2 }}>
+                        {n.publisher}{n.publishedAt ? ` · ${new Date(n.publishedAt * 1000).toLocaleString()}` : ""}
+                      </span>
+                    </span>
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Active alerts */}
           {alerts[selectedStock]?.length > 0 && (
             <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 12, marginBottom: 12 }}>
