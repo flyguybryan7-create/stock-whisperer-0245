@@ -184,6 +184,7 @@ export default function TradingPlatform() {
   const fetchNews = useServerFn(getNews);
   const fetchSentiment = useServerFn(analyzeNewsSentiment);
   const fireSms = useServerFn(sendSmsAlert);
+  const fetchShort = useServerFn(getShortInterest);
 
   useEffect(() => {
     try {
@@ -210,6 +211,16 @@ export default function TradingPlatform() {
     enabled: watchlist.length > 0,
   });
   const live = (liveQuotes as Record<string, LiveQuote> | undefined) ?? {};
+
+  // Short interest / float — refresh every 30 min (Yahoo updates twice a month)
+  const { data: shortData } = useQuery({
+    queryKey: ["short", watchlist],
+    queryFn: () => fetchShort({ data: { symbols: watchlist } }),
+    staleTime: 30 * 60_000,
+    refetchInterval: 30 * 60_000,
+    enabled: watchlist.length > 0,
+  });
+  const shorts = (shortData as Record<string, ShortInterest> | undefined) ?? {};
 
   // News for selected stock
   const { data: newsData } = useQuery({
