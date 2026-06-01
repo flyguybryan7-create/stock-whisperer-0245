@@ -145,83 +145,117 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
   })
   .handler(async ({ data }): Promise<Record<string, LiveQuote>> => {
     if (data.symbols.length === 0) return {};
-    const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(data.symbols.join(","))}`;
-    try {
-      const res = await fetch(url, {
-        headers: { "User-Agent": "Mozilla/5.0 (compatible; BryanTrade/1.0)" },
-      });
-      if (!res.ok) return {};
-      const json = (await res.json()) as {
-        quoteResponse?: {
-          result?: Array<{
-            symbol: string;
-            regularMarketPrice?: number;
-            regularMarketChange?: number;
-            regularMarketChangePercent?: number;
-            regularMarketPreviousClose?: number;
-            marketState?: string;
-            preMarketPrice?: number;
-            preMarketChange?: number;
-            preMarketChangePercent?: number;
-            postMarketPrice?: number;
-            postMarketChange?: number;
-            postMarketChangePercent?: number;
-          }>;
-        };
-      };
-      const out: Record<string, LiveQuote> = {};
-      for (const r of json.quoteResponse?.result ?? []) {
-        if (typeof r.regularMarketPrice !== "number") continue;
-        const state = r.marketState ?? "REGULAR";
-        // PRE | PREPRE = pre-market; POST | POSTPOST = after-hours; REGULAR = open; CLOSED otherwise
-        let session: LiveQuote["session"] = "REGULAR";
-        let price = r.regularMarketPrice;
-        let change = r.regularMarketChange ?? 0;
-        let changePercent = r.regularMarketChangePercent ?? 0;
-        if ((state === "PRE" || state === "PREPRE") && typeof r.preMarketPrice === "number") {
-          session = "PRE";
-          price = r.preMarketPrice;
-          change = r.preMarketChange ?? 0;
-          changePercent = r.preMarketChangePercent ?? 0;
-        } else if ((state === "POST" || state === "POSTPOST") && typeof r.postMarketPrice === "number") {
-          session = "POST";
-          price = r.postMarketPrice;
-          change = r.postMarketChange ?? 0;
-          changePercent = r.postMarketChangePercent ?? 0;
-        } else if (state === "CLOSED") {
-          // Markets fully closed — prefer most recent extended-hours print if newer
-          if (typeof r.postMarketPrice === "number") {
-            session = "POST";
-            price = r.postMarketPrice;
-            change = r.postMarketChange ?? 0;
-            changePercent = r.postMarketChangePercent ?? 0;
-          } else {
-            session = "CLOSED";
+    // Use v8 chart endpoint per-symbol with includePrePost=true.
+    // This returns the latest tick across PRE, REGULAR, and POST sessions
+    // (v7 quote often returns stale postMarketPrice or requires a crumb).
+    const out: Record<string, LiveQuote> = {};
+    await Promise.all(
+      data.symbols.map(async (sym) => {
+        try {
+          const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1m&range=1d&includePrePost=true`;
+          const res = await fetch(url, {
+            headers: { "User-Agent": "Mozilla/5.0 (compatible; BryanTrade/1.0)" },
+            // bypass any CDN caching
+            cf: { cacheTtl: 0 } as unknown as RequestInit["cf"],
+          });
+          if (!res.ok) return;
+          const json = (await res.json()) as {
+            chart: {
+              result?: Array<{
+                meta: {
+                  symbol: string;
+                  regularMarketPrice?: number;
+                  previousClose?: number;
+                  chartPreviousClose?: number;
+                  currentTradingPeriod?: {
+                    pre?: { start: number; end: number };
+                    regular?: { start: number; end: number };
+                    post?: { start: number; end: number };
+                  };
+                };
+                timestamp?: number[];
+                indicators: { quote: Array<{ close: (number | null)[] }> };
+              }>;
+            };
+          };
+          const r = json.chart.result?.[0];
+          if (!r) return;
+          const closes = r.indicators.quote[0]?.close ?? [];
+          const ts = r.timestamp ?? [];
+          // Find the most recent non-null tick
+          let lastIdx = -1;
+          for (let i = closes.length - 1; i >= 0; i--) {
+            if (closes[i] != null) { lastIdx = i; break; }
           }
-        } else if (state === "REGULAR") {
-          session = "REGULAR";
+          const meta = r.meta;
+          const regularPrice = meta.regularMarketPrice ?? null;
+          const prevClose = meta.chartPreviousClose ?? meta.previousClose ?? regularPrice ?? 0;
+          if (lastIdx === -1 || prevClose === 0) {
+            // Fallback to regular price
+            if (regularPrice != null) {
+              out[sym] = {
+                symbol: sym,
+                price: regularPrice,
+                change: regularPrice - (prevClose || regularPrice),
+                changePercent: prevClose ? ((regularPrice - prevClose) / prevClose) * 100 : 0,
+                previousClose: prevClose || regularPrice,
+                marketState: "CLOSED",
+                session: "CLOSED",
+                regularPrice: regularPrice ?? undefined,
+              };
+            }
+            return;
+          }
+          const lastPrice = closes[lastIdx]!;
+          const lastTs = ts[lastIdx];
+          const periods = meta.currentTradingPeriod ?? {};
+          // Determine session from timestamp vs period windows
+          let session: LiveQuote["session"] = "CLOSED";
+          let marketState = "CLOSED";
+          if (periods.regular && lastTs >= periods.regular.start && lastTs < periods.regular.end) {
+            session = "REGULAR"; marketState = "REGULAR";
+          } else if (periods.pre && lastTs >= periods.pre.start && lastTs < periods.pre.end) {
+            session = "PRE"; marketState = "PRE";
+          } else if (periods.post && lastTs >= periods.post.start && lastTs < periods.post.end) {
+            session = "POST"; marketState = "POST";
+          } else if (periods.post && lastTs >= periods.post.end) {
+            // After 8pm ET extended close — show most recent print as after-hours close
+            session = "POST"; marketState = "POSTPOST";
+          }
+          // Build pre/post derived prices: take the last tick within each window
+          const pickLastInWindow = (start?: number, end?: number) => {
+            if (!start || !end) return undefined;
+            for (let i = closes.length - 1; i >= 0; i--) {
+              if (closes[i] != null && ts[i] >= start && ts[i] < end) return closes[i]!;
+            }
+            return undefined;
+          };
+          const preLast = pickLastInWindow(periods.pre?.start, periods.pre?.end);
+          const postLast = pickLastInWindow(periods.post?.start, periods.post?.end);
+          const reg = regularPrice ?? pickLastInWindow(periods.regular?.start, periods.regular?.end);
+          const change = lastPrice - prevClose;
+          out[sym] = {
+            symbol: sym,
+            price: lastPrice,
+            change,
+            changePercent: (change / prevClose) * 100,
+            previousClose: prevClose,
+            marketState,
+            session,
+            regularPrice: reg ?? undefined,
+            preMarketPrice: preLast,
+            preMarketChange: preLast != null ? preLast - prevClose : undefined,
+            preMarketChangePercent: preLast != null ? ((preLast - prevClose) / prevClose) * 100 : undefined,
+            postMarketPrice: postLast,
+            postMarketChange: postLast != null && reg != null ? postLast - reg : undefined,
+            postMarketChangePercent: postLast != null && reg != null ? ((postLast - reg) / reg) * 100 : undefined,
+          };
+        } catch {
+          /* skip */
         }
-        out[r.symbol] = {
-          symbol: r.symbol,
-          price,
-          change,
-          changePercent,
-          previousClose: r.regularMarketPreviousClose ?? r.regularMarketPrice,
-          marketState: state,
-          session,
-          regularPrice: r.regularMarketPrice,
-          preMarketPrice: r.preMarketPrice,
-          preMarketChange: r.preMarketChange,
-          preMarketChangePercent: r.preMarketChangePercent,
-          postMarketPrice: r.postMarketPrice,
-          postMarketChange: r.postMarketChange,
-          postMarketChangePercent: r.postMarketChangePercent,
-        };
-      }
-      return out;
-    } catch {
-      return {};
-    }
+      })
+    );
+    return out;
   });
 
 // ============ News ============
