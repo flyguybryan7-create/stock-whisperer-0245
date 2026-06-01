@@ -5,7 +5,15 @@ import {
   getQuotes, searchSymbols, getLiveQuotes, getNews, analyzeNewsSentiment,
   type Candle, type SymbolSearchResult, type LiveQuote, type NewsItem, type SentimentResult,
 } from "@/lib/quotes.functions";
-import { sendSmsAlert } from "@/lib/alerts.functions";
+import { sendAlert, sendTestPush, subscribeToPush, unsubscribeFromPush } from "@/lib/push.functions";
+import {
+  pushSupported,
+  registerSwAndSubscribe,
+  getCurrentSubscriptionEndpoint,
+  unsubscribeLocal,
+  isPreviewIframe,
+  type PushPermission,
+} from "@/lib/push-client";
 import { getSchwabAuthUrl } from "@/lib/schwab.functions";
 import { getShortInterest, type ShortInterest } from "@/lib/shortinterest.functions";
 import {
@@ -19,9 +27,6 @@ const DEFAULT_STOCKS = [
   "CRWV","CBRS","RMBS","LSCC","MXL","AMBA","PLAB","ASYS","COHU","NLST","ACLS","STM","SATS","WDC",
 ];
 const WATCHLIST_KEY = "bryantrade.watchlist.v1";
-const SMS_PHONE = "9549391199";
-const SMS_CARRIER = "tmobile";
-const SMS_ENABLED_KEY = "bryantrade.smsAlerts.v1";
 const SCHWAB_TOKEN_KEY = "bryantrade.schwab.tokens.v1";
 
 const STOCK_NAMES: Record<string, string> = {
@@ -158,8 +163,9 @@ export default function TradingPlatform() {
   const [alertType, setAlertType] = useState<"above" | "below">("above");
   const [notification, setNotification] = useState<{ msg: string } | null>(null);
   const [chartRange, setChartRange] = useState(60);
-  const [smsEnabled, setSmsEnabled] = useState(true);
-  const lastSmsSignal = useRef<Record<string, "BUY" | "SELL">>({});
+  const [pushPerm, setPushPerm] = useState<PushPermission>("default");
+  const [pushBusy, setPushBusy] = useState(false);
+  const lastPushSignal = useRef<Record<string, "BUY" | "SELL">>({});
 
   // Load persisted watchlist
   useEffect(() => {
@@ -183,18 +189,64 @@ export default function TradingPlatform() {
   const fetchLive = useServerFn(getLiveQuotes);
   const fetchNews = useServerFn(getNews);
   const fetchSentiment = useServerFn(analyzeNewsSentiment);
-  const fireSms = useServerFn(sendSmsAlert);
+  const firePush = useServerFn(sendAlert);
+  const fireTestPush = useServerFn(sendTestPush);
+  const callSubscribe = useServerFn(subscribeToPush);
+  const callUnsubscribe = useServerFn(unsubscribeFromPush);
   const fetchShort = useServerFn(getShortInterest);
 
+  // Reflect current notification permission + existing subscription.
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(SMS_ENABLED_KEY);
-      if (raw != null) setSmsEnabled(raw === "1");
-    } catch {}
+    if (!pushSupported()) { setPushPerm("unsupported"); return; }
+    setPushPerm(Notification.permission as PushPermission);
   }, []);
-  useEffect(() => {
-    try { localStorage.setItem(SMS_ENABLED_KEY, smsEnabled ? "1" : "0"); } catch {}
-  }, [smsEnabled]);
+
+  const togglePush = async () => {
+    if (!pushSupported()) {
+      showNotif("Notifications not supported on this device");
+      return;
+    }
+    if (isPreviewIframe()) {
+      showNotif("Open the published app in Safari/Chrome to enable notifications");
+      return;
+    }
+    setPushBusy(true);
+    try {
+      if (Notification.permission === "granted") {
+        // unsubscribe
+        const endpoint = await unsubscribeLocal();
+        if (endpoint) await callUnsubscribe({ data: { endpoint } });
+        setPushPerm("default");
+        showNotif("🔕 Push notifications disabled on this device");
+      } else {
+        const perm = await Notification.requestPermission();
+        setPushPerm(perm as PushPermission);
+        if (perm !== "granted") {
+          showNotif("Notifications denied — enable in browser settings");
+          return;
+        }
+        const sub = await registerSwAndSubscribe();
+        if (!sub) throw new Error("subscription failed");
+        await callSubscribe({
+          data: { ...sub, userAgent: navigator.userAgent.slice(0, 200) },
+        });
+        showNotif("🔔 Push notifications enabled");
+      }
+    } catch (e) {
+      showNotif(`Push setup failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const sendTest = async () => {
+    try {
+      const r = await fireTestPush();
+      showNotif(`Test sent to ${("sent" in r ? (r as { sent?: number }).sent ?? 0 : 0)} device(s)`);
+    } catch (e) {
+      showNotif(`Test failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
 
   const { data: rawQuotes } = useQuery({
     queryKey: ["quotes", watchlist],
@@ -292,24 +344,21 @@ export default function TradingPlatform() {
   const signal = getSignal(chartData, sentiment.score);
 
   // Watch every watchlist symbol; when its signal flips to BUY or SELL,
-  // fire an SMS via T-Mobile email-to-SMS gateway (server-side cooldown
-  // prevents flooding even if state churns).
+  // fire a web push to every subscribed device (5-min server-side cooldown).
   useEffect(() => {
-    if (!smsEnabled) return;
+    if (pushPerm !== "granted") return;
     for (const sym of Object.keys(allData)) {
       const series = allData[sym];
       if (!series || series.length === 0) continue;
       const sig = getSignal(series, sym === selectedStock ? sentiment.score : 0);
       if (sig !== "BUY" && sig !== "SELL") continue;
-      if (lastSmsSignal.current[sym] === sig) continue;
-      lastSmsSignal.current[sym] = sig;
+      if (lastPushSignal.current[sym] === sig) continue;
+      lastPushSignal.current[sym] = sig;
       const lq = live[sym];
       const px = lq?.price ?? series[series.length - 1]?.close;
       if (px == null) continue;
-      fireSms({
+      firePush({
         data: {
-          phone: SMS_PHONE,
-          carrier: SMS_CARRIER,
           symbol: sym,
           signal: sig,
           price: px,
@@ -318,7 +367,7 @@ export default function TradingPlatform() {
       }).catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liveQuotes, rawQuotes, smsEnabled, sentiment.score]);
+  }, [liveQuotes, rawQuotes, pushPerm, sentiment.score]);
 
   const filteredStocks = useMemo(() => {
     const q = search.toLowerCase();
@@ -582,13 +631,42 @@ export default function TradingPlatform() {
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <SchwabConnectButton />
               <button
-                onClick={() => { setSmsEnabled((v) => !v); showNotif(`SMS alerts ${!smsEnabled ? "ON" : "OFF"} → ${SMS_PHONE.replace(/(\d{3})(\d{3})(\d{4})/, "($1) $2-$3")}`); }}
-                title={`Auto-text BUY/SELL to ${SMS_PHONE} (T-Mobile)`}
-                style={{ background: smsEnabled ? "#1f3d2a" : "#0d1117", border: `1px solid ${smsEnabled ? "#39d353" : "#21262d"}`, borderRadius: 6, padding: "6px 10px", minWidth: 80, cursor: "pointer", color: smsEnabled ? "#39d353" : "#8b949e", fontFamily: "inherit" }}
+                onClick={togglePush}
+                disabled={pushBusy || pushPerm === "unsupported"}
+                title={
+                  pushPerm === "unsupported"
+                    ? "Push not supported on this browser"
+                    : pushPerm === "granted"
+                      ? "Tap to disable BUY/SELL push notifications on this device"
+                      : "Tap to enable BUY/SELL push notifications"
+                }
+                style={{
+                  background: pushPerm === "granted" ? "#1f3d2a" : "#0d1117",
+                  border: `1px solid ${pushPerm === "granted" ? "#39d353" : "#21262d"}`,
+                  borderRadius: 6,
+                  padding: "6px 10px",
+                  minWidth: 90,
+                  cursor: pushBusy || pushPerm === "unsupported" ? "not-allowed" : "pointer",
+                  color: pushPerm === "granted" ? "#39d353" : "#8b949e",
+                  fontFamily: "inherit",
+                  opacity: pushBusy ? 0.6 : 1,
+                }}
               >
-                <div style={{ fontSize: 9, letterSpacing: 1 }}>SMS ALERTS</div>
-                <div style={{ fontSize: 13, fontWeight: 800 }}>{smsEnabled ? "📱 ON" : "OFF"}</div>
+                <div style={{ fontSize: 9, letterSpacing: 1 }}>PUSH ALERTS</div>
+                <div style={{ fontSize: 13, fontWeight: 800 }}>
+                  {pushPerm === "granted" ? "🔔 ON" : pushPerm === "denied" ? "BLOCKED" : pushPerm === "unsupported" ? "N/A" : "OFF"}
+                </div>
               </button>
+              {pushPerm === "granted" && (
+                <button
+                  onClick={sendTest}
+                  title="Send a test notification to all subscribed devices"
+                  style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 6, padding: "6px 10px", cursor: "pointer", color: "#8b949e", fontFamily: "inherit" }}
+                >
+                  <div style={{ fontSize: 9, letterSpacing: 1 }}>TEST</div>
+                  <div style={{ fontSize: 13, fontWeight: 800 }}>📨</div>
+                </button>
+              )}
               <div style={{ background: signalBg, border: `1px solid ${signalColor}`, borderRadius: 6, padding: "6px 12px", minWidth: 80 }}>
                 <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1 }}>AI SIGNAL</div>
                 <div style={{ fontSize: 16, fontWeight: 800, color: signalColor }}>{signal}</div>
@@ -786,16 +864,14 @@ export default function TradingPlatform() {
             </div>
           )}
 
-          {/* SMS setup */}
+          {/* Push setup */}
           <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 12 }}>
-            <div style={{ fontSize: 10, color: "#8b949e", letterSpacing: 1.5, marginBottom: 8 }}>📱 SMS ALERTS SETUP</div>
+            <div style={{ fontSize: 10, color: "#8b949e", letterSpacing: 1.5, marginBottom: 8 }}>🔔 PUSH NOTIFICATIONS</div>
             <div style={{ fontSize: 11, color: "#8b949e", lineHeight: 1.7 }}>
-              To enable real SMS alerts to your phone:<br />
-              1. Sign up at twilio.com (free trial available)<br />
-              2. Get your Account SID, Auth Token & phone number<br />
-              3. Deploy a simple backend endpoint that calls Twilio's API when prices trigger<br />
-              4. Set your phone number in the alert modal above<br />
-              <span style={{ color: "#e3b341" }}>Alerts are tracked locally and shown above. Connect a backend to send live SMS.</span>
+              BUY/SELL signals are pushed to every device where you tapped <b style={{ color: "#39d353" }}>PUSH ALERTS → ON</b>.<br />
+              <b>iPhone:</b> first add this app to your Home Screen (Safari → Share → Add to Home Screen), open it from the icon, then tap PUSH ALERTS.<br />
+              <b>Android/desktop:</b> just tap PUSH ALERTS in any browser tab.<br />
+              <span style={{ color: "#e3b341" }}>5-minute cooldown per symbol so you don't get spammed.</span>
             </div>
           </div>
         </div>
