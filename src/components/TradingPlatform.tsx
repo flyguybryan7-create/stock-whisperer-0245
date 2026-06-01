@@ -6,6 +6,7 @@ import {
   type Candle, type SymbolSearchResult, type LiveQuote, type NewsItem, type SentimentResult,
 } from "@/lib/quotes.functions";
 import { sendSmsAlert } from "@/lib/alerts.functions";
+import { getSchwabAuthUrl } from "@/lib/schwab.functions";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ReferenceLine, AreaChart, Area, ComposedChart, Bar, BarChart, Cell,
@@ -20,6 +21,7 @@ const WATCHLIST_KEY = "bryantrade.watchlist.v1";
 const SMS_PHONE = "9549391199";
 const SMS_CARRIER = "tmobile";
 const SMS_ENABLED_KEY = "bryantrade.smsAlerts.v1";
+const SCHWAB_TOKEN_KEY = "bryantrade.schwab.tokens.v1";
 
 const STOCK_NAMES: Record<string, string> = {
   NVDA:"NVIDIA Corp",MRVL:"Marvell Technology",SMTC:"Semtech Corp",TSEM:"Tower Semiconductor",
@@ -532,6 +534,7 @@ export default function TradingPlatform() {
               )}
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <SchwabConnectButton />
               <button
                 onClick={() => { setSmsEnabled((v) => !v); showNotif(`SMS alerts ${!smsEnabled ? "ON" : "OFF"} → ${SMS_PHONE.replace(/(\d{3})(\d{3})(\d{4})/, "($1) $2-$3")}`); }}
                 title={`Auto-text BUY/SELL to ${SMS_PHONE} (T-Mobile)`}
@@ -790,5 +793,54 @@ function ChartCard({ title, legend, children }: { title: string; legend?: { labe
       </div>
       {children}
     </div>
+  );
+}
+
+function SchwabConnectButton() {
+  const startAuth = useServerFn(getSchwabAuthUrl);
+  const [connected, setConnected] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SCHWAB_TOKEN_KEY);
+      setConnected(!!raw);
+    } catch {}
+  }, []);
+
+  const handleClick = async () => {
+    if (connected) {
+      if (confirm("Disconnect Schwab account?")) {
+        localStorage.removeItem(SCHWAB_TOKEN_KEY);
+        setConnected(false);
+      }
+      return;
+    }
+    setBusy(true);
+    try {
+      const redirectUri = `${window.location.origin}/auth/schwab/callback`;
+      const { url } = await startAuth({ data: { redirectUri } });
+      window.location.href = url;
+    } catch (e) {
+      alert(`Schwab connect failed: ${e instanceof Error ? e.message : String(e)}`);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={busy}
+      title={connected ? "Schwab connected — click to disconnect" : "Connect your Schwab / thinkorswim account for live 24/7 quotes"}
+      style={{
+        background: connected ? "#0d2a4d" : "#0d1117",
+        border: `1px solid ${connected ? "#1f6feb" : "#21262d"}`,
+        borderRadius: 6, padding: "6px 10px", minWidth: 110, cursor: busy ? "wait" : "pointer",
+        color: connected ? "#79c0ff" : "#e6edf3", fontFamily: "inherit",
+      }}
+    >
+      <div style={{ fontSize: 9, letterSpacing: 1 }}>SCHWAB</div>
+      <div style={{ fontSize: 13, fontWeight: 800 }}>{busy ? "…" : connected ? "✓ CONNECTED" : "🔐 CONNECT"}</div>
+    </button>
   );
 }
