@@ -117,7 +117,7 @@ export async function sendWebPush(
       TTL: "60",
       Urgency: "high",
     },
-    body: encrypted,
+    body: asBuf(encrypted),
   });
 
   return {
@@ -136,9 +136,9 @@ async function hkdf(
   info: Uint8Array,
   length: number,
 ): Promise<Uint8Array> {
-  const key = await crypto.subtle.importKey("raw", ikm, "HKDF", false, ["deriveBits"]);
+  const key = await crypto.subtle.importKey("raw", asBuf(ikm), "HKDF", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits(
-    { name: "HKDF", hash: "SHA-256", salt, info },
+    { name: "HKDF", hash: "SHA-256", salt: asBuf(salt), info: asBuf(info) },
     key,
     length * 8,
   );
@@ -177,7 +177,7 @@ async function encryptPayload(
   // 2. Import user's public key
   const userPubKey = await crypto.subtle.importKey(
     "raw",
-    userPub,
+    asBuf(userPub),
     { name: "ECDH", namedCurve: "P-256" },
     false,
     [],
@@ -222,11 +222,11 @@ async function encryptPayload(
   // 8. Plaintext padded: data || 0x02 || 0x00 * padLen  (we use no extra padding)
   const plain = concat(new TextEncoder().encode(plaintext), new Uint8Array([0x02]));
 
-  const cekKey = await crypto.subtle.importKey("raw", cek, { name: "AES-GCM" }, false, [
+  const cekKey = await crypto.subtle.importKey("raw", asBuf(cek), { name: "AES-GCM" }, false, [
     "encrypt",
   ]);
   const ciphertext = new Uint8Array(
-    await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce }, cekKey, plain),
+    await crypto.subtle.encrypt({ name: "AES-GCM", iv: asBuf(nonce) }, cekKey, asBuf(plain)),
   );
 
   // 9. Build aes128gcm header: salt(16) || rs(4=4096) || idlen(1) || keyid(idlen)
