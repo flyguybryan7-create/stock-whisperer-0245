@@ -850,6 +850,30 @@ export default function TradingPlatform() {
             ))}
           </div>
 
+          {/* Market & World news strip — always visible, affects every ticker */}
+          <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 10, marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <span style={{ fontSize: 10, color: "#ffa657", letterSpacing: 1.5, fontWeight: 700 }}>🌍 MARKET &amp; WORLD</span>
+              <span style={{ fontSize: 9, color: "#8b949e" }}>headlines that can move every stock in your watchlist</span>
+            </div>
+            <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+              {marketWorldNews.length === 0 && (
+                <div style={{ fontSize: 10, color: "#8b949e" }}>Loading market &amp; world news…</div>
+              )}
+              {marketWorldNews.slice(0, 10).map((n, i) => {
+                const color = n.scope === "global" ? "#d2a8ff" : "#ffa657";
+                return (
+                  <a key={i} href={n.link} target="_blank" rel="noreferrer"
+                    style={{ flex: "0 0 240px", padding: "8px 10px", background: "#010409", border: `1px solid ${color}33`, borderRadius: 6, textDecoration: "none", color: "#e6edf3", fontSize: 11, lineHeight: 1.35 }}>
+                    <div style={{ fontSize: 8, fontWeight: 700, color, letterSpacing: 1, marginBottom: 4 }}>{n.scope.toUpperCase()}</div>
+                    <div style={{ display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{n.title}</div>
+                    <div style={{ fontSize: 9, color: "#8b949e", marginTop: 4 }}>{n.publisher}</div>
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Price chart */}
           <ChartCard title="PRICE · MOVING AVERAGES · BOLLINGER BANDS"
             legend={[{ label: "SMA9", color: "#79c0ff" }, { label: "SMA15", color: "#d2a8ff" }, { label: "SMA50", color: "#ffa657" }, { label: "BB Upper/Lower", color: "#30363d" }]}>
