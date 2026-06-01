@@ -77,3 +77,42 @@ export const getQuotes = createServerFn({ method: "POST" })
     for (const [s, c] of entries) result[s] = c;
     return result;
   });
+
+export type SymbolSearchResult = {
+  symbol: string;
+  name: string;
+  exchange: string;
+  type: string;
+};
+
+export const searchSymbols = createServerFn({ method: "POST" })
+  .inputValidator((input: { query: string }) => {
+    const query = String(input?.query ?? "").trim().slice(0, 50);
+    return { query };
+  })
+  .handler(async ({ data }): Promise<SymbolSearchResult[]> => {
+    if (!data.query) return [];
+    const url = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(data.query)}&quotesCount=10&newsCount=0`;
+    const res = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; BryanTrade/1.0)" },
+    });
+    if (!res.ok) return [];
+    const json = (await res.json()) as {
+      quotes?: Array<{
+        symbol?: string;
+        shortname?: string;
+        longname?: string;
+        exchDisp?: string;
+        quoteType?: string;
+        isYahooFinance?: boolean;
+      }>;
+    };
+    return (json.quotes ?? [])
+      .filter((q) => q.isYahooFinance && q.symbol && (q.quoteType === "EQUITY" || q.quoteType === "ETF"))
+      .map((q) => ({
+        symbol: q.symbol!,
+        name: q.longname || q.shortname || q.symbol!,
+        exchange: q.exchDisp || "",
+        type: q.quoteType || "",
+      }));
+  });

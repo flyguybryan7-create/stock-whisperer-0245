@@ -1,17 +1,18 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { getQuotes, type Candle } from "@/lib/quotes.functions";
+import { getQuotes, searchSymbols, type Candle, type SymbolSearchResult } from "@/lib/quotes.functions";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ReferenceLine, AreaChart, Area, ComposedChart, Bar, BarChart, Cell,
 } from "recharts";
 
-const STOCKS = [
+const DEFAULT_STOCKS = [
   "NVDA","MRVL","SMTC","TSEM","INTC","QBTS","INFQ","HUT","CRDO","ALAB","SNOW","NVTS","MCHP","ANET",
   "MU","AMD","PLTR","GOOG","APLD","ARM","TSM","OKLO","NTAP","AMZN","GSAT","NXPI","ORCL","SMCI",
   "CRWV","CBRS","RMBS","LSCC","MXL","AMBA","PLAB","ASYS","COHU","NLST","ACLS","STM","SATS","WDC",
 ];
+const WATCHLIST_KEY = "bryantrade.watchlist.v1";
 
 const STOCK_NAMES: Record<string, string> = {
   NVDA:"NVIDIA Corp",MRVL:"Marvell Technology",SMTC:"Semtech Corp",TSEM:"Tower Semiconductor",
@@ -132,8 +133,11 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 type Alert = { price: number; type: "above" | "below"; phone: string; active: boolean };
 
 export default function TradingPlatform() {
+  const [watchlist, setWatchlist] = useState<string[]>(DEFAULT_STOCKS);
+  const [stockNames, setStockNames] = useState<Record<string, string>>(STOCK_NAMES);
   const [selectedStock, setSelectedStock] = useState("MRVL");
   const [search, setSearch] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
   const [alerts, setAlerts] = useState<Record<string, Alert[]>>({});
   const [phoneNumber, setPhoneNumber] = useState("");
   const [showAlertModal, setShowAlertModal] = useState(false);
@@ -142,17 +146,49 @@ export default function TradingPlatform() {
   const [notification, setNotification] = useState<{ msg: string } | null>(null);
   const [chartRange, setChartRange] = useState(60);
 
+  // Load persisted watchlist
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(WATCHLIST_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { symbols?: string[]; names?: Record<string, string> };
+        if (parsed.symbols?.length) setWatchlist(parsed.symbols);
+        if (parsed.names) setStockNames((s) => ({ ...s, ...parsed.names }));
+      }
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem(WATCHLIST_KEY, JSON.stringify({ symbols: watchlist, names: stockNames }));
+    } catch {}
+  }, [watchlist, stockNames]);
+
   const fetchQuotes = useServerFn(getQuotes);
+  const fetchSearch = useServerFn(searchSymbols);
+
   const { data: rawQuotes } = useQuery({
-    queryKey: ["quotes", STOCKS],
-    queryFn: () => fetchQuotes({ data: { symbols: STOCKS } }),
+    queryKey: ["quotes", watchlist],
+    queryFn: () => fetchQuotes({ data: { symbols: watchlist } }),
     staleTime: 60_000,
     refetchInterval: 60_000,
   });
 
+  // Debounced symbol search
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQuery(search.trim()), 250);
+    return () => clearTimeout(id);
+  }, [search]);
+  const { data: searchResults = [], isFetching: searching } = useQuery({
+    queryKey: ["symbolSearch", debouncedQuery],
+    queryFn: () => fetchSearch({ data: { query: debouncedQuery } }),
+    enabled: debouncedQuery.length >= 1,
+    staleTime: 30_000,
+  });
+
   const allData: Record<string, Row[]> = {};
   if (rawQuotes) {
-    for (const sym of STOCKS) {
+    for (const sym of watchlist) {
       const candles = (rawQuotes as Record<string, Candle[]>)[sym] || [];
       if (candles.length > 0) allData[sym] = buildChartData(candles as Row[]);
     }
@@ -166,10 +202,34 @@ export default function TradingPlatform() {
   const changePct = prev.close ? (change / prev.close) * 100 : 0;
   const signal = getSignal(chartData);
 
-  const filteredStocks = STOCKS.filter(s =>
-    s.toLowerCase().includes(search.toLowerCase()) ||
-    (STOCK_NAMES[s] || "").toLowerCase().includes(search.toLowerCase())
+  const filteredStocks = useMemo(() => {
+    const q = search.toLowerCase();
+    return watchlist.filter((s) =>
+      s.toLowerCase().includes(q) || (stockNames[s] || "").toLowerCase().includes(q),
+    );
+  }, [watchlist, stockNames, search]);
+
+  const newResults: SymbolSearchResult[] = (searchResults as SymbolSearchResult[]).filter(
+    (r) => !watchlist.includes(r.symbol.toUpperCase()),
   );
+
+  const addStock = (r: SymbolSearchResult) => {
+    const sym = r.symbol.toUpperCase();
+    setWatchlist((prev) => (prev.includes(sym) ? prev : [sym, ...prev]));
+    setStockNames((prev) => ({ ...prev, [sym]: r.name }));
+    setSelectedStock(sym);
+    setSearch("");
+    setSearchFocused(false);
+    showNotif(`Added ${sym} to watchlist`);
+  };
+
+  const removeStock = (sym: string) => {
+    setWatchlist((prev) => {
+      const next = prev.filter((s) => s !== sym);
+      if (selectedStock === sym && next.length) setSelectedStock(next[0]);
+      return next;
+    });
+  };
 
   const showNotif = (msg: string) => {
     setNotification({ msg });
@@ -225,10 +285,42 @@ export default function TradingPlatform() {
       <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", minHeight: "calc(100vh - 49px)" }}>
         {/* Watchlist */}
         <div style={{ borderRight: "1px solid #21262d", background: "#0d1117", overflowY: "auto", maxHeight: "calc(100vh - 49px)" }}>
-          <div style={{ padding: "10px 12px", borderBottom: "1px solid #21262d" }}>
+          <div style={{ padding: "10px 12px", borderBottom: "1px solid #21262d", position: "relative" }}>
             <div style={{ fontSize: 10, color: "#8b949e", letterSpacing: 1.5, marginBottom: 8 }}>BRYAN'S WATCHLIST</div>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..."
-              style={{ width: "100%", background: "#010409", border: "1px solid #21262d", borderRadius: 5, padding: "5px 8px", color: "#e6edf3", fontSize: 11, outline: "none", fontFamily: mono }} />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
+              placeholder="Search any ticker (AAPL, TSLA…)"
+              style={{ width: "100%", background: "#010409", border: "1px solid #21262d", borderRadius: 5, padding: "5px 8px", color: "#e6edf3", fontSize: 11, outline: "none", fontFamily: mono }}
+            />
+            {searchFocused && debouncedQuery.length >= 1 && (
+              <div style={{ position: "absolute", top: "100%", left: 12, right: 12, background: "#0d1117", border: "1px solid #30363d", borderRadius: 6, marginTop: 4, zIndex: 50, maxHeight: 280, overflowY: "auto", boxShadow: "0 8px 24px rgba(0,0,0,0.6)" }}>
+                {searching && newResults.length === 0 && (
+                  <div style={{ padding: "8px 10px", fontSize: 10, color: "#8b949e" }}>Searching…</div>
+                )}
+                {!searching && newResults.length === 0 && (
+                  <div style={{ padding: "8px 10px", fontSize: 10, color: "#8b949e" }}>No new symbols found</div>
+                )}
+                {newResults.map((r) => (
+                  <div
+                    key={r.symbol}
+                    onMouseDown={(e) => { e.preventDefault(); addStock(r); }}
+                    style={{ padding: "8px 10px", borderBottom: "1px solid #161b22", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}
+                    className="stock-row"
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#e6edf3" }}>{r.symbol}</div>
+                      <div style={{ fontSize: 9, color: "#8b949e", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {r.name}{r.exchange ? ` · ${r.exchange}` : ""}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 14, color: "#39d353" }}>+</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <div>
             {filteredStocks.map(sym => {
@@ -246,7 +338,14 @@ export default function TradingPlatform() {
                       {sym}
                       {hasAlert && <span style={{ fontSize: 9 }}>🔔</span>}
                     </div>
-                    <span style={{ fontSize: 9, color: sigC, fontWeight: 700 }}>{sig}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 9, color: sigC, fontWeight: 700 }}>{sig}</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); removeStock(sym); }}
+                        title="Remove from watchlist"
+                        style={{ background: "transparent", border: "none", color: "#8b949e", cursor: "pointer", fontSize: 11, padding: 0, lineHeight: 1 }}
+                      >✕</button>
+                    </div>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2, fontSize: 10 }}>
                     <span style={{ color: "#8b949e" }}>${l?.close?.toFixed(2)}</span>
@@ -255,6 +354,11 @@ export default function TradingPlatform() {
                 </div>
               );
             })}
+            {watchlist.length === 0 && (
+              <div style={{ padding: 16, fontSize: 10, color: "#8b949e", textAlign: "center" }}>
+                Your watchlist is empty. Search above to add stocks.
+              </div>
+            )}
           </div>
         </div>
 
@@ -265,7 +369,7 @@ export default function TradingPlatform() {
             <div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
                 <span style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 22, color: "#e6edf3" }}>{selectedStock}</span>
-                <span style={{ fontSize: 11, color: "#8b949e" }}>{STOCK_NAMES[selectedStock]}</span>
+                <span style={{ fontSize: 11, color: "#8b949e" }}>{stockNames[selectedStock] || ""}</span>
               </div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 4 }}>
                 <span style={{ fontSize: 28, fontWeight: 700, color: "#e6edf3" }}>${last.close?.toFixed(2)}</span>
