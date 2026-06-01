@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { getQuotes, type Candle } from "@/lib/quotes.functions";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ReferenceLine, AreaChart, Area, ComposedChart, Bar, BarChart, Cell,
@@ -24,47 +27,12 @@ const STOCK_NAMES: Record<string, string> = {
   SATS:"EchoStar Corp",WDC:"Western Digital",
 };
 
-const BASE_PRICES: Record<string, number> = {
-  NVDA:222,MRVL:217,SMTC:148,TSEM:244,INTC:110,QBTS:29.6,INFQ:18,HUT:131,CRDO:237,ALAB:325,
-  SNOW:277,NVTS:24.3,MCHP:91.5,ANET:169,MU:1037,AMD:507,PLTR:161,GOOG:371,APLD:47.7,
-  ARM:414,TSM:442,OKLO:68.1,NTAP:174.7,AMZN:262,GSAT:83.1,NXPI:312,ORCL:244.8,SMCI:47.1,
-  CRWV:123,CBRS:222,RMBS:146,LSCC:144,MXL:88.8,AMBA:75.8,PLAB:32,ASYS:20.8,COHU:53.2,
-  NLST:3.26,ACLS:149.9,STM:68.7,SATS:127.2,WDC:554,
-};
-
 type Row = {
   date: string; close: number; open: number; high: number; low: number; volume: number;
   sma9?: number | null; sma15?: number | null; sma50?: number | null; ema9?: number | null;
   rsi?: number | null; bbUpper?: number | null; bbMiddle?: number | null; bbLower?: number | null;
   macd?: number | null; macdSignal?: number | null; macdHist?: number | null;
 };
-
-function seededRand(seed: number) {
-  let s = seed;
-  return () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
-}
-
-function generatePriceData(basePrice: number, seed: number, days = 120): Row[] {
-  const rand = seededRand(seed);
-  const data: Row[] = [];
-  let price = basePrice * (0.75 + rand() * 0.25);
-  for (let i = days; i >= 0; i--) {
-    const change = (rand() - 0.48) * price * 0.025;
-    price = Math.max(price + change, price * 0.5);
-    const high = price * (1 + rand() * 0.015);
-    const low = price * (1 - rand() * 0.015);
-    const open = low + rand() * (high - low);
-    const vol = Math.floor(500000 + rand() * 4000000);
-    const date = new Date();
-    date.setDate(date.getDate() - i);
-    data.push({
-      date: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-      close: +price.toFixed(2), open: +open.toFixed(2),
-      high: +high.toFixed(2), low: +low.toFixed(2), volume: vol,
-    });
-  }
-  return data;
-}
 
 function calcSMA(data: Row[], period: number, key: "sma9"|"sma15"|"sma50") {
   return data.map((d, i) => {
@@ -127,11 +95,6 @@ function buildChartData(p: Row[]) {
   return d;
 }
 
-const ALL_STOCK_DATA: Record<string, Row[]> = {};
-STOCKS.forEach((sym, idx) => {
-  ALL_STOCK_DATA[sym] = buildChartData(generatePriceData(BASE_PRICES[sym] || 100, idx + 1));
-});
-
 function getSignal(data: Row[]): "BUY" | "SELL" | "HOLD" {
   const last = data[data.length - 1];
   const prev = data[data.length - 2];
@@ -179,7 +142,23 @@ export default function TradingPlatform() {
   const [notification, setNotification] = useState<{ msg: string } | null>(null);
   const [chartRange, setChartRange] = useState(60);
 
-  const chartData = ALL_STOCK_DATA[selectedStock] || [];
+  const fetchQuotes = useServerFn(getQuotes);
+  const { data: rawQuotes } = useQuery({
+    queryKey: ["quotes", STOCKS],
+    queryFn: () => fetchQuotes({ data: { symbols: STOCKS } }),
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  });
+
+  const allData: Record<string, Row[]> = {};
+  if (rawQuotes) {
+    for (const sym of STOCKS) {
+      const candles = (rawQuotes as Record<string, Candle[]>)[sym] || [];
+      if (candles.length > 0) allData[sym] = buildChartData(candles as Row[]);
+    }
+  }
+
+  const chartData = allData[selectedStock] || [];
   const displayData = chartData.slice(-chartRange);
   const last = chartData[chartData.length - 1] || ({} as Row);
   const prev = chartData[chartData.length - 2] || ({} as Row);
@@ -253,10 +232,10 @@ export default function TradingPlatform() {
           </div>
           <div>
             {filteredStocks.map(sym => {
-              const d = ALL_STOCK_DATA[sym];
+              const d = allData[sym] || [];
               const l = d[d.length - 1]; const p = d[d.length - 2];
               const chg = l && p ? ((l.close - p.close) / p.close) * 100 : 0;
-              const sig = getSignal(d);
+              const sig = d.length ? getSignal(d) : "HOLD";
               const hasAlert = (alerts[sym]?.length ?? 0) > 0;
               const sigC = sig === "BUY" ? "#39d353" : sig === "SELL" ? "#f85149" : "#e3b341";
               return (
@@ -370,7 +349,7 @@ export default function TradingPlatform() {
                 <Tooltip content={<CustomTooltip />} />
                 <ReferenceLine y={0} stroke="#30363d" />
                 <Bar dataKey="macdHist" name="Histogram">
-                  {displayData.map((d, i) => (
+                  {displayData.map((d: Row, i: number) => (
                     <Cell key={i} fill={(d.macdHist ?? 0) >= 0 ? "#39d353" : "#f85149"} fillOpacity={0.7} />
                   ))}
                 </Bar>
