@@ -777,6 +777,23 @@ export default function TradingPlatform() {
                 <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1 }}>AI SIGNAL</div>
                 <div style={{ fontSize: 16, fontWeight: 800, color: signalColor }}>{signal}</div>
               </div>
+              {(() => {
+                const pink = "#ff4fa3";
+                const dt = dayTrade.signal;
+                const bg = dt === "BUY" ? "rgba(255,79,163,0.18)" : dt === "SELL" ? "rgba(255,79,163,0.10)" : "rgba(255,79,163,0.05)";
+                return (
+                  <div
+                    title={`${dayTrade.reason}\nRSI7: ${dayTrade.rsi ?? "—"} · VWAP: ${dayTrade.vwap ?? "—"} · EMA9/21: ${dayTrade.emaFast ?? "—"}/${dayTrade.emaSlow ?? "—"}`}
+                    style={{ background: bg, border: `1.5px solid ${pink}`, borderRadius: 6, padding: "6px 12px", minWidth: 110, boxShadow: dt !== "HOLD" ? `0 0 12px ${pink}55` : "none" }}
+                  >
+                    <div style={{ fontSize: 9, color: pink, letterSpacing: 1, fontWeight: 700 }}>⚡ DAY TRADE</div>
+                    <div style={{ fontSize: 16, fontWeight: 900, color: pink }}>{dt}</div>
+                    <div style={{ fontSize: 8, color: "#d8a5c2", marginTop: 1, lineHeight: 1.2, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {dayTrade.reason}
+                    </div>
+                  </div>
+                );
+              })()}
               <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 6, padding: "6px 12px", minWidth: 70 }}>
                 <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1 }}>RSI</div>
                 <div style={{ fontSize: 16, color: (last.rsi ?? 50) < 30 ? "#39d353" : (last.rsi ?? 50) > 70 ? "#f85149" : "#e6edf3", fontWeight: 600 }}>{last.rsi?.toFixed(1)}</div>
