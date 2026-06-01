@@ -344,24 +344,21 @@ export default function TradingPlatform() {
   const signal = getSignal(chartData, sentiment.score);
 
   // Watch every watchlist symbol; when its signal flips to BUY or SELL,
-  // fire an SMS via T-Mobile email-to-SMS gateway (server-side cooldown
-  // prevents flooding even if state churns).
+  // fire a web push to every subscribed device (5-min server-side cooldown).
   useEffect(() => {
-    if (!smsEnabled) return;
+    if (pushPerm !== "granted") return;
     for (const sym of Object.keys(allData)) {
       const series = allData[sym];
       if (!series || series.length === 0) continue;
       const sig = getSignal(series, sym === selectedStock ? sentiment.score : 0);
       if (sig !== "BUY" && sig !== "SELL") continue;
-      if (lastSmsSignal.current[sym] === sig) continue;
-      lastSmsSignal.current[sym] = sig;
+      if (lastPushSignal.current[sym] === sig) continue;
+      lastPushSignal.current[sym] = sig;
       const lq = live[sym];
       const px = lq?.price ?? series[series.length - 1]?.close;
       if (px == null) continue;
-      fireSms({
+      firePush({
         data: {
-          phone: SMS_PHONE,
-          carrier: SMS_CARRIER,
           symbol: sym,
           signal: sig,
           price: px,
@@ -370,7 +367,7 @@ export default function TradingPlatform() {
       }).catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liveQuotes, rawQuotes, smsEnabled, sentiment.score]);
+  }, [liveQuotes, rawQuotes, pushPerm, sentiment.score]);
 
   const filteredStocks = useMemo(() => {
     const q = search.toLowerCase();
