@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { getQuotes, searchSymbols, type Candle, type SymbolSearchResult } from "@/lib/quotes.functions";
+import {
+  getQuotes, searchSymbols, getLiveQuotes, getNews, analyzeNewsSentiment,
+  type Candle, type SymbolSearchResult, type LiveQuote, type NewsItem, type SentimentResult,
+} from "@/lib/quotes.functions";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ReferenceLine, AreaChart, Area, ComposedChart, Bar, BarChart, Cell,
@@ -96,7 +99,7 @@ function buildChartData(p: Row[]) {
   return d;
 }
 
-function getSignal(data: Row[]): "BUY" | "SELL" | "HOLD" {
+function getSignal(data: Row[], sentimentScore = 0): "BUY" | "SELL" | "HOLD" {
   const last = data[data.length - 1];
   const prev = data[data.length - 2];
   if (!last || !prev) return "HOLD";
@@ -109,6 +112,9 @@ function getSignal(data: Row[]): "BUY" | "SELL" | "HOLD" {
   if (last.sma9 && last.sma15 && last.close < last.sma9 && last.sma9 < last.sma15) bear++;
   if (last.bbLower && last.close <= last.bbLower) bull += 2;
   if (last.bbUpper && last.close >= last.bbUpper) bear += 2;
+  // News sentiment overlay (-1..+1) — adds up to ±3 weight
+  if (sentimentScore > 0.15) bull += Math.round(sentimentScore * 3);
+  if (sentimentScore < -0.15) bear += Math.round(-sentimentScore * 3);
   if (bull > bear + 1) return "BUY";
   if (bear > bull + 1) return "SELL";
   return "HOLD";
@@ -165,6 +171,9 @@ export default function TradingPlatform() {
 
   const fetchQuotes = useServerFn(getQuotes);
   const fetchSearch = useServerFn(searchSymbols);
+  const fetchLive = useServerFn(getLiveQuotes);
+  const fetchNews = useServerFn(getNews);
+  const fetchSentiment = useServerFn(analyzeNewsSentiment);
 
   const { data: rawQuotes } = useQuery({
     queryKey: ["quotes", watchlist],
@@ -172,6 +181,40 @@ export default function TradingPlatform() {
     staleTime: 60_000,
     refetchInterval: 60_000,
   });
+
+  // Live intraday prices — refresh every 1s
+  const { data: liveQuotes } = useQuery({
+    queryKey: ["live", watchlist],
+    queryFn: () => fetchLive({ data: { symbols: watchlist } }),
+    refetchInterval: 1000,
+    enabled: watchlist.length > 0,
+  });
+  const live = (liveQuotes as Record<string, LiveQuote> | undefined) ?? {};
+
+  // News for selected stock
+  const { data: newsData } = useQuery({
+    queryKey: ["news", selectedStock, stockNames[selectedStock] || ""],
+    queryFn: () => fetchNews({ data: { symbol: selectedStock, companyName: stockNames[selectedStock] } }),
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
+    enabled: !!selectedStock,
+  });
+  const newsItems: NewsItem[] = newsData?.items ?? [];
+  const sector = newsData?.sector ?? null;
+
+  // AI sentiment based on headlines
+  const { data: sentimentData } = useQuery({
+    queryKey: ["sentiment", selectedStock, newsItems.map((n) => n.title).join("|")],
+    queryFn: () => fetchSentiment({
+      data: {
+        symbol: selectedStock,
+        headlines: newsItems.map((n) => ({ title: n.title, scope: n.scope })),
+      },
+    }),
+    enabled: newsItems.length > 0,
+    staleTime: 5 * 60_000,
+  });
+  const sentiment: SentimentResult = sentimentData ?? { score: 0, label: "NEUTRAL", summary: "", drivers: [] };
 
   // Debounced symbol search
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -194,13 +237,28 @@ export default function TradingPlatform() {
     }
   }
 
+  // Overlay live price into the last bar of each series so the chart "tickles"
+  for (const sym of Object.keys(allData)) {
+    const lq = live[sym];
+    const series = allData[sym];
+    if (lq && series.length > 0) {
+      const lastBar = { ...series[series.length - 1] };
+      lastBar.close = lq.price;
+      if (lq.price > lastBar.high) lastBar.high = lq.price;
+      if (lq.price < lastBar.low) lastBar.low = lq.price;
+      series[series.length - 1] = lastBar;
+      allData[sym] = buildChartData(series);
+    }
+  }
+
   const chartData = allData[selectedStock] || [];
   const displayData = chartData.slice(-chartRange);
   const last = chartData[chartData.length - 1] || ({} as Row);
   const prev = chartData[chartData.length - 2] || ({} as Row);
-  const change = last.close && prev.close ? last.close - prev.close : 0;
-  const changePct = prev.close ? (change / prev.close) * 100 : 0;
-  const signal = getSignal(chartData);
+  const liveSel = live[selectedStock];
+  const change = liveSel ? liveSel.change : (last.close && prev.close ? last.close - prev.close : 0);
+  const changePct = liveSel ? liveSel.changePercent : (prev.close ? (change / prev.close) * 100 : 0);
+  const signal = getSignal(chartData, sentiment.score);
 
   const filteredStocks = useMemo(() => {
     const q = search.toLowerCase();
@@ -227,6 +285,23 @@ export default function TradingPlatform() {
     setWatchlist((prev) => {
       const next = prev.filter((s) => s !== sym);
       if (selectedStock === sym && next.length) setSelectedStock(next[0]);
+      return next;
+    });
+  };
+
+  // Drag-and-drop reorder
+  const dragSym = useRef<string | null>(null);
+  const onDragStart = (sym: string) => { dragSym.current = sym; };
+  const onDragOver = (e: React.DragEvent) => { e.preventDefault(); };
+  const onDrop = (target: string) => {
+    const src = dragSym.current;
+    dragSym.current = null;
+    if (!src || src === target) return;
+    setWatchlist((prev) => {
+      const next = prev.filter((s) => s !== src);
+      const idx = next.indexOf(target);
+      if (idx < 0) return prev;
+      next.splice(idx, 0, src);
       return next;
     });
   };
@@ -330,11 +405,20 @@ export default function TradingPlatform() {
               const sig = d.length ? getSignal(d) : "HOLD";
               const hasAlert = (alerts[sym]?.length ?? 0) > 0;
               const sigC = sig === "BUY" ? "#39d353" : sig === "SELL" ? "#f85149" : "#e3b341";
+              const lq = live[sym];
+              const liveChg = lq ? lq.changePercent : chg;
+              const livePrice = lq ? lq.price : l?.close;
               return (
                 <div key={sym} className="stock-row" onClick={() => setSelectedStock(sym)}
+                  draggable
+                  onDragStart={() => onDragStart(sym)}
+                  onDragOver={onDragOver}
+                  onDrop={() => onDrop(sym)}
+                  title="Drag to reorder"
                   style={{ padding: "8px 12px", borderBottom: "1px solid #161b22", background: selectedStock === sym ? "#161b22" : "transparent", borderLeft: selectedStock === sym ? "2px solid #58a6ff" : "2px solid transparent" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div style={{ fontWeight: 600, fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ color: "#484f58", cursor: "grab", marginRight: 2 }}>⋮⋮</span>
                       {sym}
                       {hasAlert && <span style={{ fontSize: 9 }}>🔔</span>}
                     </div>
@@ -348,8 +432,8 @@ export default function TradingPlatform() {
                     </div>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2, fontSize: 10 }}>
-                    <span style={{ color: "#8b949e" }}>${l?.close?.toFixed(2)}</span>
-                    <span style={{ color: chg >= 0 ? "#39d353" : "#f85149" }}>{chg >= 0 ? "+" : ""}{chg.toFixed(2)}%</span>
+                    <span style={{ color: "#8b949e" }}>${livePrice?.toFixed(2)}</span>
+                    <span style={{ color: liveChg >= 0 ? "#39d353" : "#f85149" }}>{liveChg >= 0 ? "+" : ""}{liveChg.toFixed(2)}%</span>
                   </div>
                 </div>
               );
@@ -475,6 +559,57 @@ export default function TradingPlatform() {
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
+
+          {/* News + AI Sentiment */}
+          <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 12, marginBottom: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+              <div style={{ fontSize: 10, color: "#8b949e", letterSpacing: 1.5 }}>
+                📰 NEWS-AWARE AI · {selectedStock}{sector ? ` · ${sector}` : ""}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1 }}>SENTIMENT</span>
+                <span style={{
+                  fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 4,
+                  color: sentiment.label === "BULLISH" ? "#39d353" : sentiment.label === "BEARISH" ? "#f85149" : "#e3b341",
+                  background: sentiment.label === "BULLISH" ? "rgba(57,211,83,0.1)" : sentiment.label === "BEARISH" ? "rgba(248,81,73,0.1)" : "rgba(227,179,65,0.1)",
+                  border: `1px solid ${sentiment.label === "BULLISH" ? "#39d353" : sentiment.label === "BEARISH" ? "#f85149" : "#e3b341"}`,
+                }}>{sentiment.label} {sentiment.score >= 0 ? "+" : ""}{sentiment.score.toFixed(2)}</span>
+              </div>
+            </div>
+            {sentiment.summary && (
+              <div style={{ fontSize: 11, color: "#e6edf3", lineHeight: 1.6, marginBottom: 8 }}>{sentiment.summary}</div>
+            )}
+            {sentiment.drivers.length > 0 && (
+              <ul style={{ margin: "0 0 10px 16px", padding: 0, fontSize: 10, color: "#8b949e", lineHeight: 1.7 }}>
+                {sentiment.drivers.map((d, i) => <li key={i}>{d}</li>)}
+              </ul>
+            )}
+            <div style={{ display: "grid", gap: 6 }}>
+              {newsItems.length === 0 && (
+                <div style={{ fontSize: 10, color: "#8b949e" }}>Loading news…</div>
+              )}
+              {newsItems.slice(0, 12).map((n, i) => {
+                const scopeColor =
+                  n.scope === "company" ? "#58a6ff" :
+                  n.scope === "sector" ? "#d2a8ff" :
+                  n.scope === "market" ? "#ffa657" : "#8b949e";
+                return (
+                  <a key={i} href={n.link} target="_blank" rel="noreferrer"
+                    style={{ display: "flex", gap: 8, padding: "6px 8px", background: "#010409", borderRadius: 4, textDecoration: "none", color: "#e6edf3", fontSize: 11, lineHeight: 1.4, border: "1px solid #161b22" }}>
+                    <span style={{ fontSize: 8, fontWeight: 700, color: scopeColor, letterSpacing: 1, minWidth: 56, paddingTop: 2 }}>
+                      {n.scope.toUpperCase()}
+                    </span>
+                    <span style={{ flex: 1 }}>
+                      {n.title}
+                      <span style={{ display: "block", fontSize: 9, color: "#8b949e", marginTop: 2 }}>
+                        {n.publisher}{n.publishedAt ? ` · ${new Date(n.publishedAt * 1000).toLocaleString()}` : ""}
+                      </span>
+                    </span>
+                  </a>
+                );
+              })}
+            </div>
+          </div>
 
           {/* Active alerts */}
           {alerts[selectedStock]?.length > 0 && (
