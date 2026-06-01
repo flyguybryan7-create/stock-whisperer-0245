@@ -89,6 +89,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:description", content: "Pro trading terminal with AI signals, RSI/MACD, short-interest risk and price alerts." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
+      { name: "twitter:title", content: "BryanTrade Pro Terminal" },
+      { name: "twitter:description", content: "Pro trading terminal with AI signals, RSI/MACD, short-interest risk and price alerts." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/44e463c0-b25b-4800-9a2a-48d636181494/id-preview-88519202--326e5fc3-8819-4c6a-86d7-4a9b1b611b45.lovable.app-1780354753032.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/44e463c0-b25b-4800-9a2a-48d636181494/id-preview-88519202--326e5fc3-8819-4c6a-86d7-4a9b1b611b45.lovable.app-1780354753032.png" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
