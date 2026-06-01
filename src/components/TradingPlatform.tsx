@@ -7,6 +7,7 @@ import {
 } from "@/lib/quotes.functions";
 import { sendSmsAlert } from "@/lib/alerts.functions";
 import { getSchwabAuthUrl } from "@/lib/schwab.functions";
+import { getShortInterest, type ShortInterest } from "@/lib/shortinterest.functions";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ReferenceLine, AreaChart, Area, ComposedChart, Bar, BarChart, Cell,
