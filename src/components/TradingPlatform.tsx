@@ -500,7 +500,9 @@ export default function TradingPlatform() {
                     </div>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2, fontSize: 10 }}>
-                    <span style={{ color: "#8b949e" }}>${livePrice?.toFixed(2)}</span>
+                    <span style={{ color: "#8b949e" }}>
+                      {livePrice != null ? `$${livePrice.toFixed(2)}` : <span style={{ opacity: 0.6 }}>Loading…</span>}
+                    </span>
                     <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       {siPct != null && (
                         <span
@@ -510,7 +512,11 @@ export default function TradingPlatform() {
                           {si?.risk === "EXTREME" || si?.risk === "HIGH" ? "⚠ " : ""}S {siPct.toFixed(0)}%
                         </span>
                       )}
-                      <span style={{ color: liveChg >= 0 ? "#39d353" : "#f85149" }}>{liveChg >= 0 ? "+" : ""}{liveChg.toFixed(2)}%</span>
+                      {livePrice != null ? (
+                        <span style={{ color: liveChg >= 0 ? "#39d353" : "#f85149" }}>{liveChg >= 0 ? "+" : ""}{liveChg.toFixed(2)}%</span>
+                      ) : (
+                        <span style={{ color: "#484f58" }}>—</span>
+                      )}
                     </span>
                   </div>
                 </div>
@@ -534,10 +540,20 @@ export default function TradingPlatform() {
                 <span style={{ fontSize: 11, color: "#8b949e" }}>{stockNames[selectedStock] || ""}</span>
               </div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 4 }}>
-                <span style={{ fontSize: 28, fontWeight: 700, color: "#e6edf3" }}>${(liveSel?.price ?? last.close)?.toFixed(2)}</span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: change >= 0 ? "#39d353" : "#f85149" }}>
-                  {change >= 0 ? "▲" : "▼"} ${Math.abs(change).toFixed(2)} ({changePct >= 0 ? "+" : ""}{changePct.toFixed(2)}%)
-                </span>
+                {(() => {
+                  const headPrice = liveSel?.price ?? last.close;
+                  if (headPrice == null) {
+                    return <span style={{ fontSize: 22, fontWeight: 600, color: "#8b949e" }}>Loading…</span>;
+                  }
+                  return (
+                    <>
+                      <span style={{ fontSize: 28, fontWeight: 700, color: "#e6edf3" }}>${headPrice.toFixed(2)}</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: change >= 0 ? "#39d353" : "#f85149" }}>
+                        {change >= 0 ? "▲" : "▼"} ${Math.abs(change).toFixed(2)} ({changePct >= 0 ? "+" : ""}{changePct.toFixed(2)}%)
+                      </span>
+                    </>
+                  );
+                })()}
                 {liveSel && (() => {
                   const s = liveSel.session;
                   const label = s === "PRE" ? "PRE-MARKET" : s === "POST" ? "AFTER-HOURS" : s === "REGULAR" ? "LIVE" : "CLOSED";
