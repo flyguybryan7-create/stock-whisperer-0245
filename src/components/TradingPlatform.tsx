@@ -3,7 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
   getQuotes, searchSymbols, getLiveQuotes, getNews, analyzeNewsSentiment,
+  getIntraday,
   type Candle, type SymbolSearchResult, type LiveQuote, type NewsItem, type SentimentResult,
+  type IntradayBar,
 } from "@/lib/quotes.functions";
 import { sendAlert, sendTestPush, subscribeToPush, unsubscribeFromPush } from "@/lib/push.functions";
 import {
