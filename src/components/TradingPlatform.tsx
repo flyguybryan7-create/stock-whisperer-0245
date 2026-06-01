@@ -241,8 +241,8 @@ export default function TradingPlatform() {
 
   const sendTest = async () => {
     try {
-      const r = await fireTestPush({});
-      showNotif(`Test sent to ${("sent" in r) ? r.sent : 0} device(s)`);
+      const r = await fireTestPush();
+      showNotif(`Test sent to ${("sent" in r ? (r as { sent?: number }).sent ?? 0 : 0)} device(s)`);
     } catch (e) {
       showNotif(`Test failed: ${e instanceof Error ? e.message : String(e)}`);
     }
