@@ -5,7 +5,15 @@ import {
   getQuotes, searchSymbols, getLiveQuotes, getNews, analyzeNewsSentiment,
   type Candle, type SymbolSearchResult, type LiveQuote, type NewsItem, type SentimentResult,
 } from "@/lib/quotes.functions";
-import { sendSmsAlert } from "@/lib/alerts.functions";
+import { sendAlert, sendTestPush, subscribeToPush, unsubscribeFromPush } from "@/lib/push.functions";
+import {
+  pushSupported,
+  registerSwAndSubscribe,
+  getCurrentSubscriptionEndpoint,
+  unsubscribeLocal,
+  isPreviewIframe,
+  type PushPermission,
+} from "@/lib/push-client";
 import { getSchwabAuthUrl } from "@/lib/schwab.functions";
 import { getShortInterest, type ShortInterest } from "@/lib/shortinterest.functions";
 import {
@@ -19,9 +27,6 @@ const DEFAULT_STOCKS = [
   "CRWV","CBRS","RMBS","LSCC","MXL","AMBA","PLAB","ASYS","COHU","NLST","ACLS","STM","SATS","WDC",
 ];
 const WATCHLIST_KEY = "bryantrade.watchlist.v1";
-const SMS_PHONE = "9549391199";
-const SMS_CARRIER = "tmobile";
-const SMS_ENABLED_KEY = "bryantrade.smsAlerts.v1";
 const SCHWAB_TOKEN_KEY = "bryantrade.schwab.tokens.v1";
 
 const STOCK_NAMES: Record<string, string> = {
@@ -158,8 +163,9 @@ export default function TradingPlatform() {
   const [alertType, setAlertType] = useState<"above" | "below">("above");
   const [notification, setNotification] = useState<{ msg: string } | null>(null);
   const [chartRange, setChartRange] = useState(60);
-  const [smsEnabled, setSmsEnabled] = useState(true);
-  const lastSmsSignal = useRef<Record<string, "BUY" | "SELL">>({});
+  const [pushPerm, setPushPerm] = useState<PushPermission>("default");
+  const [pushBusy, setPushBusy] = useState(false);
+  const lastPushSignal = useRef<Record<string, "BUY" | "SELL">>({});
 
   // Load persisted watchlist
   useEffect(() => {
@@ -183,18 +189,64 @@ export default function TradingPlatform() {
   const fetchLive = useServerFn(getLiveQuotes);
   const fetchNews = useServerFn(getNews);
   const fetchSentiment = useServerFn(analyzeNewsSentiment);
-  const fireSms = useServerFn(sendSmsAlert);
+  const firePush = useServerFn(sendAlert);
+  const fireTestPush = useServerFn(sendTestPush);
+  const callSubscribe = useServerFn(subscribeToPush);
+  const callUnsubscribe = useServerFn(unsubscribeFromPush);
   const fetchShort = useServerFn(getShortInterest);
 
+  // Reflect current notification permission + existing subscription.
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(SMS_ENABLED_KEY);
-      if (raw != null) setSmsEnabled(raw === "1");
-    } catch {}
+    if (!pushSupported()) { setPushPerm("unsupported"); return; }
+    setPushPerm(Notification.permission as PushPermission);
   }, []);
-  useEffect(() => {
-    try { localStorage.setItem(SMS_ENABLED_KEY, smsEnabled ? "1" : "0"); } catch {}
-  }, [smsEnabled]);
+
+  const togglePush = async () => {
+    if (!pushSupported()) {
+      showNotif("Notifications not supported on this device");
+      return;
+    }
+    if (isPreviewIframe()) {
+      showNotif("Open the published app in Safari/Chrome to enable notifications");
+      return;
+    }
+    setPushBusy(true);
+    try {
+      if (Notification.permission === "granted") {
+        // unsubscribe
+        const endpoint = await unsubscribeLocal();
+        if (endpoint) await callUnsubscribe({ data: { endpoint } });
+        setPushPerm("default");
+        showNotif("🔕 Push notifications disabled on this device");
+      } else {
+        const perm = await Notification.requestPermission();
+        setPushPerm(perm as PushPermission);
+        if (perm !== "granted") {
+          showNotif("Notifications denied — enable in browser settings");
+          return;
+        }
+        const sub = await registerSwAndSubscribe();
+        if (!sub) throw new Error("subscription failed");
+        await callSubscribe({
+          data: { ...sub, userAgent: navigator.userAgent.slice(0, 200) },
+        });
+        showNotif("🔔 Push notifications enabled");
+      }
+    } catch (e) {
+      showNotif(`Push setup failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const sendTest = async () => {
+    try {
+      const r = await fireTestPush({});
+      showNotif(`Test sent to ${("sent" in r) ? r.sent : 0} device(s)`);
+    } catch (e) {
+      showNotif(`Test failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
 
   const { data: rawQuotes } = useQuery({
     queryKey: ["quotes", watchlist],
