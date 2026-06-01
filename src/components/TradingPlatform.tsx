@@ -171,6 +171,9 @@ export default function TradingPlatform() {
 
   const fetchQuotes = useServerFn(getQuotes);
   const fetchSearch = useServerFn(searchSymbols);
+  const fetchLive = useServerFn(getLiveQuotes);
+  const fetchNews = useServerFn(getNews);
+  const fetchSentiment = useServerFn(analyzeNewsSentiment);
 
   const { data: rawQuotes } = useQuery({
     queryKey: ["quotes", watchlist],
@@ -178,6 +181,40 @@ export default function TradingPlatform() {
     staleTime: 60_000,
     refetchInterval: 60_000,
   });
+
+  // Live intraday prices — refresh every 1s
+  const { data: liveQuotes } = useQuery({
+    queryKey: ["live", watchlist],
+    queryFn: () => fetchLive({ data: { symbols: watchlist } }),
+    refetchInterval: 1000,
+    enabled: watchlist.length > 0,
+  });
+  const live = (liveQuotes as Record<string, LiveQuote> | undefined) ?? {};
+
+  // News for selected stock
+  const { data: newsData } = useQuery({
+    queryKey: ["news", selectedStock, stockNames[selectedStock] || ""],
+    queryFn: () => fetchNews({ data: { symbol: selectedStock, companyName: stockNames[selectedStock] } }),
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
+    enabled: !!selectedStock,
+  });
+  const newsItems: NewsItem[] = newsData?.items ?? [];
+  const sector = newsData?.sector ?? null;
+
+  // AI sentiment based on headlines
+  const { data: sentimentData } = useQuery({
+    queryKey: ["sentiment", selectedStock, newsItems.map((n) => n.title).join("|")],
+    queryFn: () => fetchSentiment({
+      data: {
+        symbol: selectedStock,
+        headlines: newsItems.map((n) => ({ title: n.title, scope: n.scope })),
+      },
+    }),
+    enabled: newsItems.length > 0,
+    staleTime: 5 * 60_000,
+  });
+  const sentiment: SentimentResult = sentimentData ?? { score: 0, label: "NEUTRAL", summary: "", drivers: [] };
 
   // Debounced symbol search
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -200,13 +237,28 @@ export default function TradingPlatform() {
     }
   }
 
+  // Overlay live price into the last bar of each series so the chart "tickles"
+  for (const sym of Object.keys(allData)) {
+    const lq = live[sym];
+    const series = allData[sym];
+    if (lq && series.length > 0) {
+      const lastBar = { ...series[series.length - 1] };
+      lastBar.close = lq.price;
+      if (lq.price > lastBar.high) lastBar.high = lq.price;
+      if (lq.price < lastBar.low) lastBar.low = lq.price;
+      series[series.length - 1] = lastBar;
+      allData[sym] = buildChartData(series);
+    }
+  }
+
   const chartData = allData[selectedStock] || [];
   const displayData = chartData.slice(-chartRange);
   const last = chartData[chartData.length - 1] || ({} as Row);
   const prev = chartData[chartData.length - 2] || ({} as Row);
-  const change = last.close && prev.close ? last.close - prev.close : 0;
-  const changePct = prev.close ? (change / prev.close) * 100 : 0;
-  const signal = getSignal(chartData);
+  const liveSel = live[selectedStock];
+  const change = liveSel ? liveSel.change : (last.close && prev.close ? last.close - prev.close : 0);
+  const changePct = liveSel ? liveSel.changePercent : (prev.close ? (change / prev.close) * 100 : 0);
+  const signal = getSignal(chartData, sentiment.score);
 
   const filteredStocks = useMemo(() => {
     const q = search.toLowerCase();
@@ -233,6 +285,23 @@ export default function TradingPlatform() {
     setWatchlist((prev) => {
       const next = prev.filter((s) => s !== sym);
       if (selectedStock === sym && next.length) setSelectedStock(next[0]);
+      return next;
+    });
+  };
+
+  // Drag-and-drop reorder
+  const dragSym = useRef<string | null>(null);
+  const onDragStart = (sym: string) => { dragSym.current = sym; };
+  const onDragOver = (e: React.DragEvent) => { e.preventDefault(); };
+  const onDrop = (target: string) => {
+    const src = dragSym.current;
+    dragSym.current = null;
+    if (!src || src === target) return;
+    setWatchlist((prev) => {
+      const next = prev.filter((s) => s !== src);
+      const idx = next.indexOf(target);
+      if (idx < 0) return prev;
+      next.splice(idx, 0, src);
       return next;
     });
   };
