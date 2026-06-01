@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { getQuotes, type Candle } from "@/lib/quotes.functions";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ReferenceLine, AreaChart, Area, ComposedChart, Bar, BarChart, Cell,
@@ -22,14 +25,6 @@ const STOCK_NAMES: Record<string, string> = {
   MXL:"MaxLinear Inc",AMBA:"Ambarella Inc",PLAB:"Photronics Inc",ASYS:"Amtech Systems",
   COHU:"Cohu Inc",NLST:"Netlist Inc",ACLS:"Axcelis Tech",STM:"STMicroelectronics",
   SATS:"EchoStar Corp",WDC:"Western Digital",
-};
-
-const BASE_PRICES: Record<string, number> = {
-  NVDA:222,MRVL:217,SMTC:148,TSEM:244,INTC:110,QBTS:29.6,INFQ:18,HUT:131,CRDO:237,ALAB:325,
-  SNOW:277,NVTS:24.3,MCHP:91.5,ANET:169,MU:1037,AMD:507,PLTR:161,GOOG:371,APLD:47.7,
-  ARM:414,TSM:442,OKLO:68.1,NTAP:174.7,AMZN:262,GSAT:83.1,NXPI:312,ORCL:244.8,SMCI:47.1,
-  CRWV:123,CBRS:222,RMBS:146,LSCC:144,MXL:88.8,AMBA:75.8,PLAB:32,ASYS:20.8,COHU:53.2,
-  NLST:3.26,ACLS:149.9,STM:68.7,SATS:127.2,WDC:554,
 };
 
 type Row = {
