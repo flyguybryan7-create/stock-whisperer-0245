@@ -143,7 +143,7 @@ export default function TradingPlatform() {
   const [chartRange, setChartRange] = useState(60);
 
   const fetchQuotes = useServerFn(getQuotes);
-  const { data: rawQuotes, isLoading, error } = useQuery({
+  const { data: rawQuotes } = useQuery({
     queryKey: ["quotes", STOCKS],
     queryFn: () => fetchQuotes({ data: { symbols: STOCKS } }),
     staleTime: 60_000,
