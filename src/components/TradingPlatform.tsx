@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  ReferenceLine, AreaChart, Area, ComposedChart, Bar, BarChart,
+  ReferenceLine, AreaChart, Area, ComposedChart, Bar, BarChart, Cell,
 } from "recharts";
 
 const STOCKS = [
@@ -371,7 +371,7 @@ export default function TradingPlatform() {
                 <ReferenceLine y={0} stroke="#30363d" />
                 <Bar dataKey="macdHist" name="Histogram">
                   {displayData.map((d, i) => (
-                    <BarCell key={i} value={d.macdHist ?? 0} />
+                    <Cell key={i} fill={(d.macdHist ?? 0) >= 0 ? "#39d353" : "#f85149"} fillOpacity={0.7} />
                   ))}
                 </Bar>
                 <Line type="monotone" dataKey="macd" stroke="#79c0ff" strokeWidth={1.5} dot={false} name="MACD" />
@@ -496,9 +496,4 @@ function ChartCard({ title, legend, children }: { title: string; legend?: { labe
       {children}
     </div>
   );
-}
-
-function BarCell({ value }: { value: number }) {
-  // recharts will read fill from parent Bar; this is a no-op placeholder
-  return null as any;
 }
