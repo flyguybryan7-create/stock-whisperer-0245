@@ -631,13 +631,42 @@ export default function TradingPlatform() {
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <SchwabConnectButton />
               <button
-                onClick={() => { setSmsEnabled((v) => !v); showNotif(`SMS alerts ${!smsEnabled ? "ON" : "OFF"} → ${SMS_PHONE.replace(/(\d{3})(\d{3})(\d{4})/, "($1) $2-$3")}`); }}
-                title={`Auto-text BUY/SELL to ${SMS_PHONE} (T-Mobile)`}
-                style={{ background: smsEnabled ? "#1f3d2a" : "#0d1117", border: `1px solid ${smsEnabled ? "#39d353" : "#21262d"}`, borderRadius: 6, padding: "6px 10px", minWidth: 80, cursor: "pointer", color: smsEnabled ? "#39d353" : "#8b949e", fontFamily: "inherit" }}
+                onClick={togglePush}
+                disabled={pushBusy || pushPerm === "unsupported"}
+                title={
+                  pushPerm === "unsupported"
+                    ? "Push not supported on this browser"
+                    : pushPerm === "granted"
+                      ? "Tap to disable BUY/SELL push notifications on this device"
+                      : "Tap to enable BUY/SELL push notifications"
+                }
+                style={{
+                  background: pushPerm === "granted" ? "#1f3d2a" : "#0d1117",
+                  border: `1px solid ${pushPerm === "granted" ? "#39d353" : "#21262d"}`,
+                  borderRadius: 6,
+                  padding: "6px 10px",
+                  minWidth: 90,
+                  cursor: pushBusy || pushPerm === "unsupported" ? "not-allowed" : "pointer",
+                  color: pushPerm === "granted" ? "#39d353" : "#8b949e",
+                  fontFamily: "inherit",
+                  opacity: pushBusy ? 0.6 : 1,
+                }}
               >
-                <div style={{ fontSize: 9, letterSpacing: 1 }}>SMS ALERTS</div>
-                <div style={{ fontSize: 13, fontWeight: 800 }}>{smsEnabled ? "📱 ON" : "OFF"}</div>
+                <div style={{ fontSize: 9, letterSpacing: 1 }}>PUSH ALERTS</div>
+                <div style={{ fontSize: 13, fontWeight: 800 }}>
+                  {pushPerm === "granted" ? "🔔 ON" : pushPerm === "denied" ? "BLOCKED" : pushPerm === "unsupported" ? "N/A" : "OFF"}
+                </div>
               </button>
+              {pushPerm === "granted" && (
+                <button
+                  onClick={sendTest}
+                  title="Send a test notification to all subscribed devices"
+                  style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 6, padding: "6px 10px", cursor: "pointer", color: "#8b949e", fontFamily: "inherit" }}
+                >
+                  <div style={{ fontSize: 9, letterSpacing: 1 }}>TEST</div>
+                  <div style={{ fontSize: 13, fontWeight: 800 }}>📨</div>
+                </button>
+              )}
               <div style={{ background: signalBg, border: `1px solid ${signalColor}`, borderRadius: 6, padding: "6px 12px", minWidth: 80 }}>
                 <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1 }}>AI SIGNAL</div>
                 <div style={{ fontSize: 16, fontWeight: 800, color: signalColor }}>{signal}</div>
