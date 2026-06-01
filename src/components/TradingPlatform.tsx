@@ -134,6 +134,88 @@ function getSignal(data: Row[], sentimentScore = 0): "BUY" | "SELL" | "HOLD" {
   return "HOLD";
 }
 
+// ============ Intraday day-trade signal ============
+// Uses 1m bars: EMA9 vs EMA21 cross, VWAP position, short RSI(7), momentum.
+function getDayTradeSignal(bars: IntradayBar[]): {
+  signal: "BUY" | "SELL" | "HOLD";
+  reason: string;
+  rsi: number | null;
+  vwap: number | null;
+  emaFast: number | null;
+  emaSlow: number | null;
+} {
+  if (!bars || bars.length < 25) {
+    return { signal: "HOLD", reason: "Not enough intraday data", rsi: null, vwap: null, emaFast: null, emaSlow: null };
+  }
+  // EMA helper
+  const ema = (period: number) => {
+    const k = 2 / (period + 1);
+    let e = bars[0].close;
+    const arr: number[] = [];
+    for (let i = 0; i < bars.length; i++) {
+      e = i === 0 ? bars[i].close : bars[i].close * k + e * (1 - k);
+      arr.push(e);
+    }
+    return arr;
+  };
+  const fast = ema(9);
+  const slow = ema(21);
+  // RSI(7)
+  const period = 7;
+  let avgG = 0, avgL = 0;
+  for (let i = 1; i <= period; i++) {
+    const ch = bars[i].close - bars[i - 1].close;
+    if (ch > 0) avgG += ch; else avgL += -ch;
+  }
+  avgG /= period; avgL /= period;
+  for (let i = period + 1; i < bars.length; i++) {
+    const ch = bars[i].close - bars[i - 1].close;
+    avgG = (avgG * (period - 1) + Math.max(ch, 0)) / period;
+    avgL = (avgL * (period - 1) + Math.max(-ch, 0)) / period;
+  }
+  const rs = avgL === 0 ? 100 : avgG / avgL;
+  const rsi = +(100 - 100 / (1 + rs)).toFixed(1);
+  // VWAP (regular session approx — uses all bars)
+  let pv = 0, vv = 0;
+  for (const b of bars) {
+    const typical = (b.high + b.low + b.close) / 3;
+    pv += typical * b.volume;
+    vv += b.volume;
+  }
+  const vwap = vv > 0 ? +(pv / vv).toFixed(2) : null;
+  const last = bars[bars.length - 1].close;
+  const prev = bars[bars.length - 2].close;
+  const fastL = fast[fast.length - 1], fastP = fast[fast.length - 2];
+  const slowL = slow[slow.length - 1], slowP = slow[slow.length - 2];
+  const crossUp = fastP <= slowP && fastL > slowL;
+  const crossDown = fastP >= slowP && fastL < slowL;
+  const aboveVwap = vwap != null && last > vwap;
+  const momentum = ((last - bars[Math.max(0, bars.length - 6)].close) / bars[Math.max(0, bars.length - 6)].close) * 100;
+  let bull = 0, bear = 0;
+  const reasons: string[] = [];
+  if (crossUp) { bull += 3; reasons.push("EMA9↑21 cross"); }
+  if (crossDown) { bear += 3; reasons.push("EMA9↓21 cross"); }
+  if (fastL > slowL) bull += 1; else bear += 1;
+  if (rsi < 30) { bull += 2; reasons.push(`RSI ${rsi} oversold`); }
+  if (rsi > 70) { bear += 2; reasons.push(`RSI ${rsi} overbought`); }
+  if (aboveVwap) { bull += 1; reasons.push(`Above VWAP ${vwap}`); }
+  else if (vwap != null) { bear += 1; reasons.push(`Below VWAP ${vwap}`); }
+  if (momentum > 0.3) { bull += 1; reasons.push(`+${momentum.toFixed(2)}% 5m`); }
+  if (momentum < -0.3) { bear += 1; reasons.push(`${momentum.toFixed(2)}% 5m`); }
+  if (last > prev) bull += 1; else if (last < prev) bear += 1;
+  let signal: "BUY" | "SELL" | "HOLD" = "HOLD";
+  if (bull >= bear + 3) signal = "BUY";
+  else if (bear >= bull + 3) signal = "SELL";
+  return {
+    signal,
+    reason: reasons.slice(0, 3).join(" · ") || "Mixed signals",
+    rsi,
+    vwap,
+    emaFast: +fastL.toFixed(2),
+    emaSlow: +slowL.toFixed(2),
+  };
+}
+
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
