@@ -1,0 +1,25 @@
+{
+  "name": "BryanTrade Pro Terminal",
+  "short_name": "BryanTrade",
+  "description": "Pro trading terminal with AI signals, RSI/MACD, short-interest risk and price alerts.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0d1117",
+  "theme_color": "#0d1117",
+  "icons": [
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
