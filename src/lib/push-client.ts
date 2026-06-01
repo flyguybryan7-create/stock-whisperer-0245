@@ -39,9 +39,12 @@ export async function registerSwAndSubscribe(): Promise<{
 
   let sub = await reg.pushManager.getSubscription();
   if (!sub) {
+    const keyBytes = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+    const keyBuf = new ArrayBuffer(keyBytes.byteLength);
+    new Uint8Array(keyBuf).set(keyBytes);
     sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      applicationServerKey: keyBuf,
     });
   }
   const p256dh = bufToB64Url(sub.getKey("p256dh"));
