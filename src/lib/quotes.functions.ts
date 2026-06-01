@@ -155,8 +155,6 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
           const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1m&range=1d&includePrePost=true`;
           const res = await fetch(url, {
             headers: { "User-Agent": "Mozilla/5.0 (compatible; BryanTrade/1.0)" },
-            // bypass any CDN caching
-            cf: { cacheTtl: 0 } as unknown as RequestInit["cf"],
           });
           if (!res.ok) return;
           const json = (await res.json()) as {
