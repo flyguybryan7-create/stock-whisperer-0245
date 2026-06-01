@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { getQuotes, searchSymbols, type Candle, type SymbolSearchResult } from "@/lib/quotes.functions";
+import {
+  getQuotes, searchSymbols, getLiveQuotes, getNews, analyzeNewsSentiment,
+  type Candle, type SymbolSearchResult, type LiveQuote, type NewsItem, type SentimentResult,
+} from "@/lib/quotes.functions";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ReferenceLine, AreaChart, Area, ComposedChart, Bar, BarChart, Cell,
@@ -96,7 +99,7 @@ function buildChartData(p: Row[]) {
   return d;
 }
 
-function getSignal(data: Row[]): "BUY" | "SELL" | "HOLD" {
+function getSignal(data: Row[], sentimentScore = 0): "BUY" | "SELL" | "HOLD" {
   const last = data[data.length - 1];
   const prev = data[data.length - 2];
   if (!last || !prev) return "HOLD";
@@ -109,6 +112,9 @@ function getSignal(data: Row[]): "BUY" | "SELL" | "HOLD" {
   if (last.sma9 && last.sma15 && last.close < last.sma9 && last.sma9 < last.sma15) bear++;
   if (last.bbLower && last.close <= last.bbLower) bull += 2;
   if (last.bbUpper && last.close >= last.bbUpper) bear += 2;
+  // News sentiment overlay (-1..+1) — adds up to ±3 weight
+  if (sentimentScore > 0.15) bull += Math.round(sentimentScore * 3);
+  if (sentimentScore < -0.15) bear += Math.round(-sentimentScore * 3);
   if (bull > bear + 1) return "BUY";
   if (bear > bull + 1) return "SELL";
   return "HOLD";
