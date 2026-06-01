@@ -142,7 +142,23 @@ export default function TradingPlatform() {
   const [notification, setNotification] = useState<{ msg: string } | null>(null);
   const [chartRange, setChartRange] = useState(60);
 
-  const chartData = ALL_STOCK_DATA[selectedStock] || [];
+  const fetchQuotes = useServerFn(getQuotes);
+  const { data: rawQuotes, isLoading, error } = useQuery({
+    queryKey: ["quotes", STOCKS],
+    queryFn: () => fetchQuotes({ data: { symbols: STOCKS } }),
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  });
+
+  const allData: Record<string, Row[]> = {};
+  if (rawQuotes) {
+    for (const sym of STOCKS) {
+      const candles = (rawQuotes as Record<string, Candle[]>)[sym] || [];
+      if (candles.length > 0) allData[sym] = buildChartData(candles as Row[]);
+    }
+  }
+
+  const chartData = allData[selectedStock] || [];
   const displayData = chartData.slice(-chartRange);
   const last = chartData[chartData.length - 1] || ({} as Row);
   const prev = chartData[chartData.length - 2] || ({} as Row);
@@ -216,10 +232,10 @@ export default function TradingPlatform() {
           </div>
           <div>
             {filteredStocks.map(sym => {
-              const d = ALL_STOCK_DATA[sym];
+              const d = allData[sym] || [];
               const l = d[d.length - 1]; const p = d[d.length - 2];
               const chg = l && p ? ((l.close - p.close) / p.close) * 100 : 0;
-              const sig = getSignal(d);
+              const sig = d.length ? getSignal(d) : "HOLD";
               const hasAlert = (alerts[sym]?.length ?? 0) > 0;
               const sigC = sig === "BUY" ? "#39d353" : sig === "SELL" ? "#f85149" : "#e3b341";
               return (
