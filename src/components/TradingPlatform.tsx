@@ -752,11 +752,18 @@ export default function TradingPlatform() {
                   <span style={{ background: signalBg, border: `1px solid ${signalColor}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 800, color: signalColor, lineHeight: 1 }} title="AI signal (daily charts)">
                     AI {signal}
                   </span>
-                  <span
-                    title={`Day-trade signal (1-min): ${dayTrade.reason}\nRSI7 ${dayTrade.rsi ?? "—"} · VWAP ${dayTrade.vwap ?? "—"} · EMA9/21 ${dayTrade.emaFast ?? "—"}/${dayTrade.emaSlow ?? "—"}`}
-                    style={{ background: dtBg, border: `1.5px solid ${pink}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 900, color: pink, lineHeight: 1, boxShadow: dt !== "HOLD" ? `0 0 8px ${pink}55` : "none" }}>
-                    ⚡ {dt}
-                  </span>
+                  {isPro ? (
+                    <span
+                      title={`Day-trade signal (1-min): ${dayTrade.reason}\nRSI7 ${dayTrade.rsi ?? "—"} · VWAP ${dayTrade.vwap ?? "—"} · EMA9/21 ${dayTrade.emaFast ?? "—"}/${dayTrade.emaSlow ?? "—"}`}
+                      style={{ background: dtBg, border: `1.5px solid ${pink}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 900, color: pink, lineHeight: 1, boxShadow: dt !== "HOLD" ? `0 0 8px ${pink}55` : "none" }}>
+                      ⚡ {dt}
+                    </span>
+                  ) : (
+                    <Link to="/pricing" title="Day-trade signals are a Pro feature"
+                      style={{ background: "rgba(255,79,163,0.05)", border: `1.5px dashed ${pink}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 900, color: pink, lineHeight: 1, textDecoration: "none" }}>
+                      ⚡ PRO
+                    </Link>
+                  )}
                   <button
                     onClick={togglePush}
                     disabled={pushBusy || pushPerm === "unsupported"}
