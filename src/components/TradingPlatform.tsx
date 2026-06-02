@@ -589,6 +589,10 @@ export default function TradingPlatform() {
             style={{ background: "#21262d", border: "1px solid #30363d", color: "#e6edf3", padding: "6px 12px", borderRadius: 6, fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
             🔔 Set Alert
           </button>
+          <Link to="/pricing"
+            style={{ background: isPro ? "#1f3d2a" : "#21262d", border: `1px solid ${isPro ? "#39d353" : "#30363d"}`, color: isPro ? "#39d353" : "#e6edf3", padding: "6px 12px", borderRadius: 6, fontSize: 11, textDecoration: "none", display: "flex", alignItems: "center", gap: 6 }}>
+            {tier === "pro" ? "✓ PRO" : tier === "basic" ? "✓ BASIC" : "💳 Upgrade"}
+          </Link>
         </div>
       </div>
 
