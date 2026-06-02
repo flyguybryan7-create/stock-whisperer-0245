@@ -326,26 +326,21 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
     if (data.symbols.length === 0) return {};
     // Primary: Yahoo's v7 quote endpoint (same data their website ticks live,
     // including postMarketPrice during extended hours). Free, requires crumb.
+    const out: Record<string, LiveQuote> = {};
+    let remaining = data.symbols;
     try {
       const v7 = await fetchYahooV7Quotes(data.symbols);
-      if (Object.keys(v7).length === data.symbols.length) return v7;
-      // Partial result — merge and fall through to chart for missing symbols
-      if (Object.keys(v7).length > 0) {
-        const missing = data.symbols.filter((s) => !v7[s]);
-        if (missing.length === 0) return v7;
-        data = { symbols: missing };
-        // Accumulate v7 results below
-        Object.assign(_v7Accum, v7);
-      }
+      Object.assign(out, v7);
+      remaining = data.symbols.filter((s) => !v7[s]);
+      if (remaining.length === 0) return out;
     } catch {
-      /* fall through to chart */
+      /* fall through to chart for all symbols */
     }
     // Fallback: v8 chart endpoint per-symbol with includePrePost=true.
     // This returns the latest tick across PRE, REGULAR, and POST sessions
     // (v7 quote often returns stale postMarketPrice or requires a crumb).
-    const out: Record<string, LiveQuote> = {};
     await Promise.all(
-      data.symbols.map(async (sym) => {
+      remaining.map(async (sym) => {
         try {
           // Use range=2d so the response spans overnight (post-close 8pm ET through next-day pre-market 4am ET).
           const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1m&range=2d&includePrePost=true`;
