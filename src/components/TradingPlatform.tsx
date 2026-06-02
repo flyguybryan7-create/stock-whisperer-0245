@@ -281,7 +281,11 @@ export default function TradingPlatform() {
       const raw = localStorage.getItem(WATCHLIST_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as { symbols?: string[]; names?: Record<string, string> };
-        if (parsed.symbols?.length) setWatchlist(parsed.symbols);
+        if (parsed.symbols?.length) {
+          const existing = parsed.symbols;
+          const missing = DEFAULT_STOCKS.filter((s) => !existing.includes(s));
+          setWatchlist(missing.length ? [...existing, ...missing] : existing);
+        }
         if (parsed.names) setStockNames((s) => ({ ...s, ...parsed.names }));
       }
     } catch {}
@@ -299,7 +303,9 @@ export default function TradingPlatform() {
         .maybeSingle();
       if (cancelled) return;
       if (data?.symbols?.length) {
-        setWatchlist(data.symbols);
+        const existing = data.symbols;
+        const missing = DEFAULT_STOCKS.filter((s) => !existing.includes(s));
+        setWatchlist(missing.length ? [...existing, ...missing] : existing);
         if (data.names && typeof data.names === "object") {
           setStockNames((s) => ({ ...s, ...(data.names as Record<string, string>) }));
         }
