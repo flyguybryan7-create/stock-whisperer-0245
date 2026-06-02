@@ -592,12 +592,15 @@ export default function TradingPlatform() {
   // fire a web push to every subscribed device (5-min server-side cooldown).
   useEffect(() => {
     if (pushPerm !== "granted") return;
+    // Only during US regular trading hours, and only on breakout signals.
+    if (!isUsMarketOpen()) return;
     for (const sym of Object.keys(allData)) {
       const series = allData[sym];
       if (!series || series.length === 0) continue;
       const sig = getSignal(series, sym === selectedStock ? sentiment.score : 0);
       if (sig !== "BUY" && sig !== "SELL") continue;
       if (lastPushSignal.current[sym] === sig) continue;
+      if (!isBreakout(series, sig)) continue;
       lastPushSignal.current[sym] = sig;
       const lq = live[sym];
       const px = lq?.price ?? series[series.length - 1]?.close;
@@ -607,7 +610,9 @@ export default function TradingPlatform() {
           symbol: sym,
           signal: sig,
           price: px,
-          reason: sym === selectedStock && sentiment.summary ? sentiment.summary.slice(0, 80) : "",
+          reason:
+            `Breakout ${sig === "BUY" ? "↑ above" : "↓ below"} 20-day ${sig === "BUY" ? "high" : "low"}` +
+            (sym === selectedStock && sentiment.summary ? ` · ${sentiment.summary.slice(0, 60)}` : ""),
         },
       }).catch(() => {});
     }
