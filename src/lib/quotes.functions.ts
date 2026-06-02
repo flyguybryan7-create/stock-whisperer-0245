@@ -324,7 +324,23 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
   })
   .handler(async ({ data }): Promise<Record<string, LiveQuote>> => {
     if (data.symbols.length === 0) return {};
-    // Use v8 chart endpoint per-symbol with includePrePost=true.
+    // Primary: Yahoo's v7 quote endpoint (same data their website ticks live,
+    // including postMarketPrice during extended hours). Free, requires crumb.
+    try {
+      const v7 = await fetchYahooV7Quotes(data.symbols);
+      if (Object.keys(v7).length === data.symbols.length) return v7;
+      // Partial result — merge and fall through to chart for missing symbols
+      if (Object.keys(v7).length > 0) {
+        const missing = data.symbols.filter((s) => !v7[s]);
+        if (missing.length === 0) return v7;
+        data = { symbols: missing };
+        // Accumulate v7 results below
+        Object.assign(_v7Accum, v7);
+      }
+    } catch {
+      /* fall through to chart */
+    }
+    // Fallback: v8 chart endpoint per-symbol with includePrePost=true.
     // This returns the latest tick across PRE, REGULAR, and POST sessions
     // (v7 quote often returns stale postMarketPrice or requires a crumb).
     const out: Record<string, LiveQuote> = {};
