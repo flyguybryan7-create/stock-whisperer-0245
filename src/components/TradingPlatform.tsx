@@ -28,9 +28,13 @@ import {
 } from "recharts";
 
 const DEFAULT_STOCKS = [
-  "NVDA","MRVL","SMTC","TSEM","INTC","QBTS","INFQ","HUT","CRDO","ALAB","SNOW","NVTS","MCHP","ANET",
-  "MU","AMD","PLTR","GOOG","APLD","ARM","TSM","OKLO","NTAP","AMZN","GSAT","NXPI","ORCL","SMCI",
+  "NVDA","MRVL","SMTC","TSEM","CRDO","INTC","QBTS","INFQ","HUT","ALAB","SNOW","NVTS","MCHP","ANET",
   "CRWV","CBRS","RMBS","LSCC","MXL","AMBA","PLAB","ASYS","COHU","NLST","ACLS","STM","SATS","WDC",
+  "MU","AMD","PLTR","GOOG","APLD","ARM","TSM","OKLO","NTAP","AMZN","GSAT","NXPI","ORCL","SMCI",
+  "CDNS","INOD","ACVA","AAL","JBLU","FHN","FRST","HBAN","RF","RRC","MJNA","NAK","BCTX","CMCSA",
+  "CANF","TSLA","APO","AAPL","FUSE","CCJ","VST","NEE","SMR","XE","BEPC","NTRA","TEAM","GFS",
+  "RGTI","XNDU","QUBT","IONQ","CLSK","HXL","SATL","ASTS","PL","LUNR","DELL","MX","IPWR","ACMR",
+  "QUIK","PKE","INTT","IREN",
 ];
 const WATCHLIST_KEY = "bryantrade.watchlist.v1";
 const SCHWAB_TOKEN_KEY = "bryantrade.schwab.tokens.v1";
@@ -47,6 +51,18 @@ const STOCK_NAMES: Record<string, string> = {
   MXL:"MaxLinear Inc",AMBA:"Ambarella Inc",PLAB:"Photronics Inc",ASYS:"Amtech Systems",
   COHU:"Cohu Inc",NLST:"Netlist Inc",ACLS:"Axcelis Tech",STM:"STMicroelectronics",
   SATS:"EchoStar Corp",WDC:"Western Digital",
+  CDNS:"Cadence Design",INOD:"Innodata Inc",ACVA:"ACV Auctions",AAL:"American Airlines",
+  JBLU:"JetBlue Airways",FHN:"First Horizon",FRST:"Primis Financial",HBAN:"Huntington Bancshares",
+  RF:"Regions Financial",RRC:"Range Resources",MJNA:"Medical Marijuana",NAK:"Northern Dynasty",
+  BCTX:"BriaCell Therapeutics",CMCSA:"Comcast Corp",CANF:"Can-Fite BioPharma",TSLA:"Tesla Inc",
+  APO:"Apollo Global",AAPL:"Apple Inc",FUSE:"Fusion Fuel Green",CCJ:"Cameco Corp",
+  VST:"Vistra Corp",NEE:"NextEra Energy",SMR:"NuScale Power",XE:"XCF Global",
+  BEPC:"Brookfield Renewable",NTRA:"Natera Inc",TEAM:"Atlassian Corp",GFS:"GlobalFoundries",
+  RGTI:"Rigetti Computing",XNDU:"Xanadu Quantum",QUBT:"Quantum Computing",IONQ:"IonQ Inc",
+  CLSK:"CleanSpark Inc",HXL:"Hexcel Corp",SATL:"Satellogic Inc",ASTS:"AST SpaceMobile",
+  PL:"Planet Labs",LUNR:"Intuitive Machines",DELL:"Dell Technologies",MX:"Magnachip Semi",
+  IPWR:"Ideal Power",ACMR:"ACM Research",QUIK:"QuickLogic Corp",PKE:"Park Aerospace",
+  INTT:"inTEST Corp",IREN:"IREN Limited",
 };
 
 type Row = {
@@ -265,7 +281,11 @@ export default function TradingPlatform() {
       const raw = localStorage.getItem(WATCHLIST_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as { symbols?: string[]; names?: Record<string, string> };
-        if (parsed.symbols?.length) setWatchlist(parsed.symbols);
+        if (parsed.symbols?.length) {
+          const existing = parsed.symbols;
+          const missing = DEFAULT_STOCKS.filter((s) => !existing.includes(s));
+          setWatchlist(missing.length ? [...existing, ...missing] : existing);
+        }
         if (parsed.names) setStockNames((s) => ({ ...s, ...parsed.names }));
       }
     } catch {}
@@ -283,7 +303,9 @@ export default function TradingPlatform() {
         .maybeSingle();
       if (cancelled) return;
       if (data?.symbols?.length) {
-        setWatchlist(data.symbols);
+        const existing = data.symbols;
+        const missing = DEFAULT_STOCKS.filter((s) => !existing.includes(s));
+        setWatchlist(missing.length ? [...existing, ...missing] : existing);
         if (data.names && typeof data.names === "object") {
           setStockNames((s) => ({ ...s, ...(data.names as Record<string, string>) }));
         }
