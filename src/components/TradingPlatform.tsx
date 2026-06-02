@@ -655,7 +655,18 @@ export default function TradingPlatform() {
                   style={{ padding: "8px 12px", borderBottom: "1px solid #161b22", background: selectedStock === sym ? "#161b22" : "transparent", borderLeft: selectedStock === sym ? "2px solid #58a6ff" : "2px solid transparent" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div style={{ fontWeight: 600, fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
-                      <span style={{ color: "#484f58", cursor: "grab", marginRight: 2 }}>⋮⋮</span>
+                      <span style={{ display: "inline-flex", flexDirection: "column", marginRight: 2 }}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); moveSym(sym, -1); }}
+                          title="Move up"
+                          style={{ background: "transparent", border: "none", color: "#8b949e", cursor: "pointer", padding: 0, fontSize: 10, lineHeight: 1 }}
+                        >▲</button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); moveSym(sym, 1); }}
+                          title="Move down"
+                          style={{ background: "transparent", border: "none", color: "#8b949e", cursor: "pointer", padding: 0, fontSize: 10, lineHeight: 1 }}
+                        >▼</button>
+                      </span>
                       {sym}
                       {hasAlert && <span style={{ fontSize: 9 }}>🔔</span>}
                     </div>
