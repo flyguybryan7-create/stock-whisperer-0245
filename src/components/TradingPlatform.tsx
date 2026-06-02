@@ -232,7 +232,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-type Alert = { price: number; type: "above" | "below"; phone: string; active: boolean };
+type Alert = { price: number; type: "above" | "below"; active: boolean };
 
 export default function TradingPlatform() {
   const [watchlist, setWatchlist] = useState<string[]>(DEFAULT_STOCKS);
