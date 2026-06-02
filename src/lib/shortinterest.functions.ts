@@ -112,7 +112,7 @@ export const getShortInterest = createServerFn({ method: "POST" })
     if (!input || !Array.isArray(input.symbols)) throw new Error("symbols required");
     const symbols = input.symbols
       .filter((s) => typeof s === "string" && /^[A-Z.\-]{1,10}$/i.test(s))
-      .slice(0, 50);
+      .slice(0, 200);
     return { symbols };
   })
   .handler(async ({ data }): Promise<Record<string, ShortInterest>> => {
