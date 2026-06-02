@@ -1070,9 +1070,17 @@ export default function TradingPlatform() {
 
           {/* Range */}
           <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
+            <button onClick={() => setChartMode("1D")}
+              style={{ background: chartMode === "1D" ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "2px 8px", fontSize: 10, color: chartMode === "1D" ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
+              1D
+            </button>
+            <button onClick={() => setChartMode("5D")}
+              style={{ background: chartMode === "5D" ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "2px 8px", fontSize: 10, color: chartMode === "5D" ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
+              5D
+            </button>
             {[14, 30, 60, 90, 120].map(r => (
-              <button key={r} onClick={() => setChartRange(r)}
-                style={{ background: chartRange === r ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "2px 8px", fontSize: 10, color: chartRange === r ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
+              <button key={r} onClick={() => { setChartMode("D"); setChartRange(r); }}
+                style={{ background: chartMode === "D" && chartRange === r ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "2px 8px", fontSize: 10, color: chartMode === "D" && chartRange === r ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
                 {r}D
               </button>
             ))}
