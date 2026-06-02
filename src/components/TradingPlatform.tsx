@@ -300,6 +300,8 @@ export default function TradingPlatform() {
   const [alertType, setAlertType] = useState<"above" | "below">("above");
   const [notification, setNotification] = useState<{ msg: string } | null>(null);
   const [chartRange, setChartRange] = useState(60);
+  // "D" = daily candles (existing behavior). "1D"/"5D" use intraday bars.
+  const [chartMode, setChartMode] = useState<"D" | "1D" | "5D">("D");
   const [pushPerm, setPushPerm] = useState<PushPermission>("default");
   const [pushBusy, setPushBusy] = useState(false);
   const lastPushSignal = useRef<Record<string, "BUY" | "SELL">>({});
