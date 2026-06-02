@@ -515,12 +515,26 @@ export default function TradingPlatform() {
   // Intraday 1m bars for day-trade signal — refresh every 15s
   const { data: intradayData } = useQuery({
     queryKey: ["intraday", selectedStock],
-    queryFn: () => fetchIntraday({ data: { symbol: selectedStock, interval: "1m" } }),
+    queryFn: () => fetchIntraday({ data: { symbol: selectedStock, interval: "1m", range: "1d" } }),
     refetchInterval: 15_000,
     enabled: !!selectedStock,
   });
   const intradayBars: IntradayBar[] = intradayData ?? [];
   const dayTrade = useMemo(() => getDayTradeSignal(intradayBars), [intradayBars]);
+
+  // Intraday chart series — driven by chartMode (1D = 1-min, 5D = 5-min).
+  const { data: intradayChartData } = useQuery({
+    queryKey: ["intradayChart", selectedStock, chartMode],
+    queryFn: () => fetchIntraday({
+      data: {
+        symbol: selectedStock,
+        interval: chartMode === "5D" ? "5m" : "1m",
+        range: chartMode === "5D" ? "5d" : "1d",
+      },
+    }),
+    refetchInterval: 15_000,
+    enabled: !!selectedStock && (chartMode === "1D" || chartMode === "5D"),
+  });
 
   // AI sentiment based on headlines
   const { data: sentimentData } = useQuery({
