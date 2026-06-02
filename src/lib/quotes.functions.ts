@@ -200,6 +200,17 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
   })
   .handler(async ({ data }): Promise<Record<string, LiveQuote>> => {
     if (data.symbols.length === 0) return {};
+    // Prefer Polygon.io when configured — covers PRE/REGULAR/POST and
+    // OVERNIGHT (Blue Ocean ATS) in a single batch snapshot call.
+    const polyKey = process.env.POLYGON_API_KEY;
+    if (polyKey) {
+      try {
+        const polyOut = await fetchPolygonLive(data.symbols, polyKey);
+        if (Object.keys(polyOut).length > 0) return polyOut;
+      } catch {
+        // fall through to Yahoo
+      }
+    }
     // Use v8 chart endpoint per-symbol with includePrePost=true.
     // This returns the latest tick across PRE, REGULAR, and POST sessions
     // (v7 quote often returns stale postMarketPrice or requires a crumb).
