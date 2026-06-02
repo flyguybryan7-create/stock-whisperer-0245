@@ -1,5 +1,129 @@
 import { createServerFn } from "@tanstack/react-start";
 
+// ============ Yahoo crumb+cookie cache (required for v7 quote endpoint) ============
+let yahooAuth: { cookie: string; crumb: string; at: number } | undefined;
+const YAHOO_AUTH_TTL_MS = 30 * 60 * 1000; // 30 min
+const YAHOO_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+
+async function getYahooAuth(): Promise<{ cookie: string; crumb: string } | null> {
+  if (yahooAuth && Date.now() - yahooAuth.at < YAHOO_AUTH_TTL_MS) {
+    return { cookie: yahooAuth.cookie, crumb: yahooAuth.crumb };
+  }
+  try {
+    // Step 1: hit fc.yahoo.com to receive A1/A3 session cookies
+    const c = await fetch("https://fc.yahoo.com/", {
+      headers: { "User-Agent": YAHOO_UA },
+      redirect: "manual",
+    });
+    const setCookie = c.headers.get("set-cookie") ?? "";
+    // Reduce to "name=value" pairs joined with "; "
+    const cookie = setCookie
+      .split(/,(?=[^ ]+=)/)
+      .map((p) => p.split(";")[0].trim())
+      .filter(Boolean)
+      .join("; ");
+    if (!cookie) return null;
+    // Step 2: fetch the crumb using that cookie
+    const r = await fetch("https://query2.finance.yahoo.com/v1/test/getcrumb", {
+      headers: { "User-Agent": YAHOO_UA, Cookie: cookie },
+    });
+    if (!r.ok) return null;
+    const crumb = (await r.text()).trim();
+    if (!crumb || crumb.length < 4) return null;
+    yahooAuth = { cookie, crumb, at: Date.now() };
+    return { cookie, crumb };
+  } catch {
+    return null;
+  }
+}
+
+type YahooQuoteV7 = {
+  symbol: string;
+  regularMarketPrice?: number;
+  regularMarketChange?: number;
+  regularMarketChangePercent?: number;
+  regularMarketPreviousClose?: number;
+  marketState?: string;
+  preMarketPrice?: number;
+  preMarketChange?: number;
+  preMarketChangePercent?: number;
+  preMarketTime?: number;
+  postMarketPrice?: number;
+  postMarketChange?: number;
+  postMarketChangePercent?: number;
+  postMarketTime?: number;
+  regularMarketTime?: number;
+};
+
+async function fetchYahooV7Quotes(symbols: string[]): Promise<Record<string, LiveQuote>> {
+  const auth = await getYahooAuth();
+  if (!auth) return {};
+  const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(
+    symbols.join(","),
+  )}&crumb=${encodeURIComponent(auth.crumb)}`;
+  const res = await fetch(url, {
+    headers: { "User-Agent": YAHOO_UA, Cookie: auth.cookie },
+  });
+  if (!res.ok) {
+    // Crumb may have expired — invalidate and let caller retry/fallback
+    if (res.status === 401 || res.status === 403) yahooAuth = undefined;
+    return {};
+  }
+  const json = (await res.json()) as { quoteResponse?: { result?: YahooQuoteV7[] } };
+  const out: Record<string, LiveQuote> = {};
+  for (const q of json.quoteResponse?.result ?? []) {
+    const reg = q.regularMarketPrice;
+    const prev = q.regularMarketPreviousClose ?? reg ?? 0;
+    if (reg == null || !prev) continue;
+    const state = (q.marketState ?? "").toUpperCase();
+    // Pick the "live" price + tick time Yahoo's website shows
+    let price = reg;
+    let lastTickTime = q.regularMarketTime;
+    let session: LiveQuote["session"] = "REGULAR";
+    let marketState = state || "REGULAR";
+    if (state === "PRE" && q.preMarketPrice != null) {
+      price = q.preMarketPrice;
+      lastTickTime = q.preMarketTime ?? lastTickTime;
+      session = "PRE";
+    } else if ((state === "POST" || state === "POSTPOST" || state === "CLOSED") && q.postMarketPrice != null) {
+      price = q.postMarketPrice;
+      lastTickTime = q.postMarketTime ?? lastTickTime;
+      session = state === "POSTPOST" || state === "CLOSED" ? "OVERNIGHT" : "POST";
+      marketState = session;
+    } else if (state === "REGULAR") {
+      session = "REGULAR";
+    } else if (state === "PREPRE") {
+      session = "OVERNIGHT";
+      marketState = "OVERNIGHT";
+    }
+    const change = price - prev;
+    out[q.symbol] = {
+      symbol: q.symbol,
+      price,
+      change,
+      changePercent: (change / prev) * 100,
+      previousClose: prev,
+      marketState,
+      session,
+      regularPrice: reg,
+      preMarketPrice: q.preMarketPrice,
+      preMarketChange: q.preMarketChange,
+      preMarketChangePercent: q.preMarketChangePercent,
+      postMarketPrice: q.postMarketPrice,
+      postMarketChange: q.postMarketChange,
+      postMarketChangePercent: q.postMarketChangePercent,
+      // When in overnight window, surface post* as overnight* too
+      overnightPrice: session === "OVERNIGHT" ? q.postMarketPrice : undefined,
+      overnightChange: session === "OVERNIGHT" && q.postMarketPrice != null ? q.postMarketPrice - prev : undefined,
+      overnightChangePercent:
+        session === "OVERNIGHT" && q.postMarketPrice != null ? ((q.postMarketPrice - prev) / prev) * 100 : undefined,
+      lastTickTime,
+    };
+  }
+  return out;
+}
+
 type YahooChart = {
   chart: {
     result?: Array<{
@@ -200,12 +324,23 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
   })
   .handler(async ({ data }): Promise<Record<string, LiveQuote>> => {
     if (data.symbols.length === 0) return {};
-    // Use v8 chart endpoint per-symbol with includePrePost=true.
+    // Primary: Yahoo's v7 quote endpoint (same data their website ticks live,
+    // including postMarketPrice during extended hours). Free, requires crumb.
+    const out: Record<string, LiveQuote> = {};
+    let remaining = data.symbols;
+    try {
+      const v7 = await fetchYahooV7Quotes(data.symbols);
+      Object.assign(out, v7);
+      remaining = data.symbols.filter((s) => !v7[s]);
+      if (remaining.length === 0) return out;
+    } catch {
+      /* fall through to chart for all symbols */
+    }
+    // Fallback: v8 chart endpoint per-symbol with includePrePost=true.
     // This returns the latest tick across PRE, REGULAR, and POST sessions
     // (v7 quote often returns stale postMarketPrice or requires a crumb).
-    const out: Record<string, LiveQuote> = {};
     await Promise.all(
-      data.symbols.map(async (sym) => {
+      remaining.map(async (sym) => {
         try {
           // Use range=2d so the response spans overnight (post-close 8pm ET through next-day pre-market 4am ET).
           const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1m&range=2d&includePrePost=true`;
