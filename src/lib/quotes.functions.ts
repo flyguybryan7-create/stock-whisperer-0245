@@ -54,6 +54,8 @@ type YahooQuoteV7 = {
   postMarketChangePercent?: number;
   postMarketTime?: number;
   regularMarketTime?: number;
+  fiftyTwoWeekHigh?: number;
+  fiftyTwoWeekLow?: number;
 };
 
 async function fetchYahooV7Quotes(symbols: string[]): Promise<Record<string, LiveQuote>> {
@@ -126,6 +128,8 @@ async function fetchYahooV7Quotes(symbols: string[]): Promise<Record<string, Liv
       overnightChangePercent:
         session === "OVERNIGHT" && q.postMarketPrice != null ? ((q.postMarketPrice - prev) / prev) * 100 : undefined,
       lastTickTime,
+      fiftyTwoWeekHigh: q.fiftyTwoWeekHigh,
+      fiftyTwoWeekLow: q.fiftyTwoWeekLow,
     };
   }
   return out;
