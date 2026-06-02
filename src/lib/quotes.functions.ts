@@ -125,7 +125,7 @@ export type LiveQuote = {
   changePercent: number;
   previousClose: number;
   marketState?: string;
-  session: "PRE" | "REGULAR" | "POST" | "CLOSED";
+  session: "PRE" | "REGULAR" | "POST" | "OVERNIGHT" | "CLOSED";
   regularPrice?: number;
   preMarketPrice?: number;
   preMarketChange?: number;
@@ -133,6 +133,10 @@ export type LiveQuote = {
   postMarketPrice?: number;
   postMarketChange?: number;
   postMarketChangePercent?: number;
+  overnightPrice?: number;
+  overnightChange?: number;
+  overnightChangePercent?: number;
+  lastTickTime?: number;
 };
 
 // ============ Intraday 1-minute candles for day-trade signals ============
