@@ -20,6 +20,7 @@ import { getSchwabAuthUrl } from "@/lib/schwab.functions";
 import { getShortInterest, type ShortInterest } from "@/lib/shortinterest.functions";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { useSubscription } from "@/hooks/useSubscription";
+import { supabase } from "@/integrations/supabase/client";
 import { Link } from "@tanstack/react-router";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -257,7 +258,8 @@ export default function TradingPlatform() {
   const [pushBusy, setPushBusy] = useState(false);
   const lastPushSignal = useRef<Record<string, "BUY" | "SELL">>({});
 
-  // Load persisted watchlist
+  // Load persisted watchlist from localStorage on first mount (fast path / signed-out users)
+  const hydratedFromCloud = useRef(false);
   useEffect(() => {
     try {
       const raw = localStorage.getItem(WATCHLIST_KEY);
@@ -268,11 +270,54 @@ export default function TradingPlatform() {
       }
     } catch {}
   }, []);
+
+  // When signed in, pull cloud watchlist and merge local additions up to the cloud
+  useEffect(() => {
+    if (!user?.id) { hydratedFromCloud.current = false; return; }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("watchlists")
+        .select("symbols, names")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (cancelled) return;
+      if (data?.symbols?.length) {
+        setWatchlist(data.symbols);
+        if (data.names && typeof data.names === "object") {
+          setStockNames((s) => ({ ...s, ...(data.names as Record<string, string>) }));
+        }
+      } else {
+        // No cloud row yet — seed it from whatever is currently loaded (localStorage/defaults)
+        await supabase.from("watchlists").upsert({
+          user_id: user.id,
+          symbols: watchlist,
+          names: stockNames,
+          updated_at: new Date().toISOString(),
+        });
+      }
+      hydratedFromCloud.current = true;
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  // Persist changes: always to localStorage; also to cloud when signed in
   useEffect(() => {
     try {
       localStorage.setItem(WATCHLIST_KEY, JSON.stringify({ symbols: watchlist, names: stockNames }));
     } catch {}
-  }, [watchlist, stockNames]);
+    if (!user?.id || !hydratedFromCloud.current) return;
+    const t = setTimeout(() => {
+      supabase.from("watchlists").upsert({
+        user_id: user.id,
+        symbols: watchlist,
+        names: stockNames,
+        updated_at: new Date().toISOString(),
+      }).then(() => {});
+    }, 400);
+    return () => clearTimeout(t);
+  }, [watchlist, stockNames, user?.id]);
 
   const fetchQuotes = useServerFn(getQuotes);
   const fetchSearch = useServerFn(searchSymbols);
