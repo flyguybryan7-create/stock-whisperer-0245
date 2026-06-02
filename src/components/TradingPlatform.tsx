@@ -300,8 +300,9 @@ export default function TradingPlatform() {
   const [alertType, setAlertType] = useState<"above" | "below">("above");
   const [notification, setNotification] = useState<{ msg: string } | null>(null);
   const [chartRange, setChartRange] = useState(60);
-  // "D" = daily candles (existing behavior). "1D"/"5D" use intraday bars.
-  const [chartMode, setChartMode] = useState<"D" | "1D" | "5D">("D");
+  const [chartMode, setChartMode] = useState<"D" | "INTRADAY">("INTRADAY");
+  const [intradayRange, setIntradayRange] = useState<"1D" | "2D" | "5D">("1D");
+  const [intradayInterval, setIntradayInterval] = useState<"1m" | "5m" | "15m">("1m");
   const [pushPerm, setPushPerm] = useState<PushPermission>("default");
   const [pushBusy, setPushBusy] = useState(false);
   const lastPushSignal = useRef<Record<string, "BUY" | "SELL">>({});
@@ -512,29 +513,24 @@ export default function TradingPlatform() {
   const newsItems: NewsItem[] = (newsData?.items ?? []).filter((n) => n.scope === "company");
   const sector = newsData?.sector ?? null;
 
-  // Intraday 1m bars for day-trade signal — refresh every 15s
+  const intradayRequest = useMemo(
+    () => ({
+      symbol: selectedStock,
+      interval: intradayInterval,
+      range: intradayRange.toLowerCase() as "1d" | "2d" | "5d",
+    }),
+    [selectedStock, intradayInterval, intradayRange],
+  );
+
+  // Intraday bars drive both the live signal and intraday charting.
   const { data: intradayData } = useQuery({
-    queryKey: ["intraday", selectedStock],
-    queryFn: () => fetchIntraday({ data: { symbol: selectedStock, interval: "1m", range: "1d" } }),
+    queryKey: ["intraday", selectedStock, intradayRange, intradayInterval],
+    queryFn: () => fetchIntraday({ data: intradayRequest }),
     refetchInterval: 15_000,
     enabled: !!selectedStock,
   });
   const intradayBars: IntradayBar[] = intradayData ?? [];
   const dayTrade = useMemo(() => getDayTradeSignal(intradayBars), [intradayBars]);
-
-  // Intraday chart series — driven by chartMode (1D = 1-min, 5D = 5-min).
-  const { data: intradayChartData } = useQuery({
-    queryKey: ["intradayChart", selectedStock, chartMode],
-    queryFn: () => fetchIntraday({
-      data: {
-        symbol: selectedStock,
-        interval: chartMode === "5D" ? "5m" : "1m",
-        range: chartMode === "5D" ? "5d" : "1d",
-      },
-    }),
-    refetchInterval: 15_000,
-    enabled: !!selectedStock && (chartMode === "1D" || chartMode === "5D"),
-  });
 
   // AI sentiment based on headlines
   const { data: sentimentData } = useQuery({
@@ -588,23 +584,25 @@ export default function TradingPlatform() {
   const dailyChartData = allData[selectedStock] || [];
   // Convert intraday bars -> Row[] (same shape) so we can reuse buildChartData/charts.
   const intradayRows: Row[] = useMemo(() => {
-    const bars = (intradayChartData ?? []) as IntradayBar[];
+    const bars = intradayBars;
     if (!bars.length) return [];
     const rows: Row[] = bars.map((b) => ({
       date: new Date(b.t * 1000).toLocaleString([], { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }),
       close: b.close, open: b.open, high: b.high, low: b.low, volume: b.volume,
     }));
     return buildChartData(rows);
-  }, [intradayChartData]);
+  }, [intradayBars]);
 
   const chartData = chartMode === "D" ? dailyChartData : intradayRows;
+  const signalData = intradayRows.length >= 30 ? intradayRows : dailyChartData;
   const displayData = chartMode === "D" ? chartData.slice(-chartRange) : chartData;
   const last = chartData[chartData.length - 1] || ({} as Row);
   const prev = chartData[chartData.length - 2] || ({} as Row);
   const liveSel = live[selectedStock];
   const change = liveSel ? liveSel.change : (last.close && prev.close ? last.close - prev.close : 0);
   const changePct = liveSel ? liveSel.changePercent : (prev.close ? (change / prev.close) * 100 : 0);
-  const signal = getSignal(chartData, sentiment.score);
+  const signal = getSignal(signalData, intradayRows.length >= 30 ? 0 : sentiment.score);
+  const signalFrameLabel = intradayRows.length >= 30 ? `${intradayInterval} · ${intradayRange}` : "daily fallback";
 
   // Watch every watchlist symbol; when its signal flips to BUY or SELL,
   // fire a web push to every subscribed device (5-min server-side cooldown).
@@ -846,7 +844,7 @@ export default function TradingPlatform() {
               const d = allData[sym] || [];
               const l = d[d.length - 1]; const p = d[d.length - 2];
               const chg = l && p ? ((l.close - p.close) / p.close) * 100 : 0;
-              const sig = d.length ? getSignal(d) : "HOLD";
+              const sig = sym === selectedStock ? signal : d.length ? getSignal(d) : "HOLD";
               const hasAlert = (alerts[sym]?.length ?? 0) > 0;
               const sigC = sig === "BUY" ? "#39d353" : sig === "SELL" ? "#f85149" : "#e3b341";
               const lq = live[sym];
@@ -995,12 +993,12 @@ export default function TradingPlatform() {
                     <span style={{ fontSize: 8, fontWeight: 700, color: sessColor, border: `1px solid ${sessColor}`, borderRadius: 3, padding: "1px 4px", lineHeight: 1 }}>● {sessLabel}</span>
                   )}
                   <span style={{ flex: 1 }} />
-                  <span style={{ background: signalBg, border: `1px solid ${signalColor}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 800, color: signalColor, lineHeight: 1 }} title="AI signal (daily charts)">
+                  <span style={{ background: signalBg, border: `1px solid ${signalColor}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 800, color: signalColor, lineHeight: 1 }} title={`AI signal (${signalFrameLabel})`}>
                     AI {signal}
                   </span>
                   {isPro ? (
                     <span
-                      title={`Day-trade signal (1-min): ${dayTrade.reason}\nRSI7 ${dayTrade.rsi ?? "—"} · VWAP ${dayTrade.vwap ?? "—"} · EMA9/21 ${dayTrade.emaFast ?? "—"}/${dayTrade.emaSlow ?? "—"}`}
+                      title={`Day-trade signal (${intradayInterval} / ${intradayRange}): ${dayTrade.reason}\nRSI7 ${dayTrade.rsi ?? "—"} · VWAP ${dayTrade.vwap ?? "—"} · EMA9/21 ${dayTrade.emaFast ?? "—"}/${dayTrade.emaSlow ?? "—"}`}
                       style={{ background: dtBg, border: `1.5px solid ${pink}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 900, color: pink, lineHeight: 1, boxShadow: dt !== "HOLD" ? `0 0 8px ${pink}55` : "none" }}>
                       ⚡ {dt}
                     </span>
@@ -1069,21 +1067,29 @@ export default function TradingPlatform() {
           })()}
 
           {/* Range */}
-          <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
-            <button onClick={() => setChartMode("1D")}
-              style={{ background: chartMode === "1D" ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "2px 8px", fontSize: 10, color: chartMode === "1D" ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
-              1D
-            </button>
-            <button onClick={() => setChartMode("5D")}
-              style={{ background: chartMode === "5D" ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "2px 8px", fontSize: 10, color: chartMode === "5D" ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
-              5D
-            </button>
-            {[14, 30, 60, 90, 120].map(r => (
-              <button key={r} onClick={() => { setChartMode("D"); setChartRange(r); }}
-                style={{ background: chartMode === "D" && chartRange === r ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "2px 8px", fontSize: 10, color: chartMode === "D" && chartRange === r ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
-                {r}D
-              </button>
-            ))}
+          <div style={{ display: "grid", gap: 4, marginBottom: 4 }}>
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+              {(["1D", "2D", "5D"] as const).map((r) => (
+                <button key={r} onClick={() => { setChartMode("INTRADAY"); setIntradayRange(r); }}
+                  style={{ background: chartMode === "INTRADAY" && intradayRange === r ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "2px 8px", fontSize: 10, color: chartMode === "INTRADAY" && intradayRange === r ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
+                  {r}
+                </button>
+              ))}
+              {[14, 30, 60, 90, 120].map(r => (
+                <button key={r} onClick={() => { setChartMode("D"); setChartRange(r); }}
+                  style={{ background: chartMode === "D" && chartRange === r ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "2px 8px", fontSize: 10, color: chartMode === "D" && chartRange === r ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
+                  {r}D
+                </button>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+              {(["1m", "5m", "15m"] as const).map((interval) => (
+                <button key={interval} onClick={() => { setChartMode("INTRADAY"); setIntradayInterval(interval); }}
+                  style={{ background: chartMode === "INTRADAY" && intradayInterval === interval ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "2px 8px", fontSize: 10, color: chartMode === "INTRADAY" && intradayInterval === interval ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
+                  {interval}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Price chart */}
