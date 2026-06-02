@@ -155,7 +155,7 @@ export const getIntraday = createServerFn({ method: "POST" })
     interval: input.interval === "2m" || input.interval === "5m" ? input.interval : "1m",
   }))
   .handler(async ({ data }): Promise<IntradayBar[]> => {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(data.symbol)}?interval=${data.interval}&range=1d&includePrePost=true`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(data.symbol)}?interval=${data.interval}&range=2d&includePrePost=true`;
     try {
       const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; BryanTrade/1.0)" } });
       if (!res.ok) return [];
