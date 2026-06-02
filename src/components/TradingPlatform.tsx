@@ -300,6 +300,8 @@ export default function TradingPlatform() {
   const [alertType, setAlertType] = useState<"above" | "below">("above");
   const [notification, setNotification] = useState<{ msg: string } | null>(null);
   const [chartRange, setChartRange] = useState(60);
+  // "D" = daily candles (existing behavior). "1D"/"5D" use intraday bars.
+  const [chartMode, setChartMode] = useState<"D" | "1D" | "5D">("D");
   const [pushPerm, setPushPerm] = useState<PushPermission>("default");
   const [pushBusy, setPushBusy] = useState(false);
   const lastPushSignal = useRef<Record<string, "BUY" | "SELL">>({});
@@ -513,12 +515,26 @@ export default function TradingPlatform() {
   // Intraday 1m bars for day-trade signal — refresh every 15s
   const { data: intradayData } = useQuery({
     queryKey: ["intraday", selectedStock],
-    queryFn: () => fetchIntraday({ data: { symbol: selectedStock, interval: "1m" } }),
+    queryFn: () => fetchIntraday({ data: { symbol: selectedStock, interval: "1m", range: "1d" } }),
     refetchInterval: 15_000,
     enabled: !!selectedStock,
   });
   const intradayBars: IntradayBar[] = intradayData ?? [];
   const dayTrade = useMemo(() => getDayTradeSignal(intradayBars), [intradayBars]);
+
+  // Intraday chart series — driven by chartMode (1D = 1-min, 5D = 5-min).
+  const { data: intradayChartData } = useQuery({
+    queryKey: ["intradayChart", selectedStock, chartMode],
+    queryFn: () => fetchIntraday({
+      data: {
+        symbol: selectedStock,
+        interval: chartMode === "5D" ? "5m" : "1m",
+        range: chartMode === "5D" ? "5d" : "1d",
+      },
+    }),
+    refetchInterval: 15_000,
+    enabled: !!selectedStock && (chartMode === "1D" || chartMode === "5D"),
+  });
 
   // AI sentiment based on headlines
   const { data: sentimentData } = useQuery({
@@ -569,8 +585,20 @@ export default function TradingPlatform() {
     }
   }
 
-  const chartData = allData[selectedStock] || [];
-  const displayData = chartData.slice(-chartRange);
+  const dailyChartData = allData[selectedStock] || [];
+  // Convert intraday bars -> Row[] (same shape) so we can reuse buildChartData/charts.
+  const intradayRows: Row[] = useMemo(() => {
+    const bars = (intradayChartData ?? []) as IntradayBar[];
+    if (!bars.length) return [];
+    const rows: Row[] = bars.map((b) => ({
+      date: new Date(b.t * 1000).toLocaleString([], { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }),
+      close: b.close, open: b.open, high: b.high, low: b.low, volume: b.volume,
+    }));
+    return buildChartData(rows);
+  }, [intradayChartData]);
+
+  const chartData = chartMode === "D" ? dailyChartData : intradayRows;
+  const displayData = chartMode === "D" ? chartData.slice(-chartRange) : chartData;
   const last = chartData[chartData.length - 1] || ({} as Row);
   const prev = chartData[chartData.length - 2] || ({} as Row);
   const liveSel = live[selectedStock];
@@ -1021,6 +1049,9 @@ export default function TradingPlatform() {
                       {liveSel?.fiftyTwoWeekLow != null && (
                         <span title="52-week low">52W L <span style={{ color: "#f85149", fontWeight: 700 }}>${liveSel.fiftyTwoWeekLow.toFixed(2)}</span></span>
                       )}
+                      {liveSel?.previousClose != null && (
+                        <span title="Previous regular-session close">PREV CLOSE <span style={{ color: "#e6edf3", fontWeight: 700 }}>${liveSel.previousClose.toFixed(2)}</span></span>
+                      )}
                     </span>
                   )}
                   {liveSel?.preMarketPrice != null && (
@@ -1039,9 +1070,17 @@ export default function TradingPlatform() {
 
           {/* Range */}
           <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
+            <button onClick={() => setChartMode("1D")}
+              style={{ background: chartMode === "1D" ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "2px 8px", fontSize: 10, color: chartMode === "1D" ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
+              1D
+            </button>
+            <button onClick={() => setChartMode("5D")}
+              style={{ background: chartMode === "5D" ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "2px 8px", fontSize: 10, color: chartMode === "5D" ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
+              5D
+            </button>
             {[14, 30, 60, 90, 120].map(r => (
-              <button key={r} onClick={() => setChartRange(r)}
-                style={{ background: chartRange === r ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "2px 8px", fontSize: 10, color: chartRange === r ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
+              <button key={r} onClick={() => { setChartMode("D"); setChartRange(r); }}
+                style={{ background: chartMode === "D" && chartRange === r ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "2px 8px", fontSize: 10, color: chartMode === "D" && chartRange === r ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
                 {r}D
               </button>
             ))}
