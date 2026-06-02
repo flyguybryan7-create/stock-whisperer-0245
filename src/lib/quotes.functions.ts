@@ -139,6 +139,96 @@ export type LiveQuote = {
   lastTickTime?: number;
 };
 
+// ============ Polygon.io snapshot (covers 24h incl. Blue Ocean overnight) ============
+function classifySessionET(ts: number): LiveQuote["session"] {
+  // ts in ms. Determine ET hour:min using Intl.
+  const d = new Date(ts);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    weekday: "short",
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  const hh = parseInt(get("hour"), 10);
+  const mm = parseInt(get("minute"), 10);
+  const wd = get("weekday");
+  const mins = hh * 60 + mm;
+  // Weekend → CLOSED (overnight crypto-ish window still rendered as OVERNIGHT for visibility)
+  if (wd === "Sat" || wd === "Sun") return "OVERNIGHT";
+  if (mins >= 4 * 60 && mins < 9 * 60 + 30) return "PRE";
+  if (mins >= 9 * 60 + 30 && mins < 16 * 60) return "REGULAR";
+  if (mins >= 16 * 60 && mins < 20 * 60) return "POST";
+  return "OVERNIGHT"; // 20:00–04:00 ET → Blue Ocean / 24h
+}
+
+async function fetchPolygonLive(
+  symbols: string[],
+  apiKey: string,
+): Promise<Record<string, LiveQuote>> {
+  const url = `https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers?tickers=${encodeURIComponent(
+    symbols.join(","),
+  )}&apiKey=${apiKey}`;
+  const res = await fetch(url);
+  if (!res.ok) return {};
+  const json = (await res.json()) as {
+    status?: string;
+    tickers?: Array<{
+      ticker: string;
+      todaysChange?: number;
+      todaysChangePerc?: number;
+      day?: { c?: number; o?: number };
+      prevDay?: { c?: number };
+      lastTrade?: { p?: number; t?: number };
+      min?: { c?: number; t?: number };
+      updated?: number;
+    }>;
+  };
+  const out: Record<string, LiveQuote> = {};
+  for (const t of json.tickers ?? []) {
+    const prev = t.prevDay?.c ?? 0;
+    const last = t.lastTrade?.p ?? t.min?.c ?? t.day?.c ?? prev;
+    if (!prev || !last) continue;
+    // Polygon timestamps: lastTrade.t is nanoseconds; min.t and updated are ms (updated is ns on some endpoints).
+    const tradeTsNs = t.lastTrade?.t;
+    const tsMs = tradeTsNs ? Math.floor(tradeTsNs / 1_000_000) : t.min?.t ?? Date.now();
+    const session = classifySessionET(tsMs);
+    const regClose = t.day?.c; // session close as of "day" — during regular hours this is the running last
+    const dayOpen = t.day?.o;
+    const change = last - prev;
+    const changePct = (change / prev) * 100;
+    const q: LiveQuote = {
+      symbol: t.ticker,
+      price: last,
+      change,
+      changePercent: changePct,
+      previousClose: prev,
+      marketState: session,
+      session,
+      regularPrice: regClose ?? dayOpen,
+      lastTickTime: Math.floor(tsMs / 1000),
+    };
+    if (session === "PRE") {
+      q.preMarketPrice = last;
+      q.preMarketChange = change;
+      q.preMarketChangePercent = changePct;
+    } else if (session === "POST") {
+      q.postMarketPrice = last;
+      if (regClose) {
+        q.postMarketChange = last - regClose;
+        q.postMarketChangePercent = ((last - regClose) / regClose) * 100;
+      }
+    } else if (session === "OVERNIGHT") {
+      q.overnightPrice = last;
+      q.overnightChange = change;
+      q.overnightChangePercent = changePct;
+    }
+    out[t.ticker] = q;
+  }
+  return out;
+}
+
 // ============ Intraday 1-minute candles for day-trade signals ============
 export type IntradayBar = {
   t: number; // unix seconds
@@ -155,6 +245,33 @@ export const getIntraday = createServerFn({ method: "POST" })
     interval: input.interval === "2m" || input.interval === "5m" ? input.interval : "1m",
   }))
   .handler(async ({ data }): Promise<IntradayBar[]> => {
+    // Prefer Polygon for true 24h coverage (incl. Blue Ocean overnight) when configured.
+    const polyKey = process.env.POLYGON_API_KEY;
+    if (polyKey) {
+      try {
+        const mult = data.interval === "5m" ? 5 : data.interval === "2m" ? 2 : 1;
+        const to = Date.now();
+        const from = to - 2 * 24 * 60 * 60 * 1000;
+        const url = `https://api.polygon.io/v2/aggs/ticker/${encodeURIComponent(data.symbol)}/range/${mult}/minute/${from}/${to}?adjusted=true&sort=asc&limit=5000&apiKey=${polyKey}`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const json = (await res.json()) as {
+            results?: Array<{ t: number; o: number; h: number; l: number; c: number; v: number }>;
+          };
+          const bars = (json.results ?? []).map((b) => ({
+            t: Math.floor(b.t / 1000),
+            open: b.o,
+            high: b.h,
+            low: b.l,
+            close: b.c,
+            volume: b.v,
+          }));
+          if (bars.length > 0) return bars;
+        }
+      } catch {
+        // fall through to Yahoo
+      }
+    }
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(data.symbol)}?interval=${data.interval}&range=2d&includePrePost=true`;
     try {
       const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; BryanTrade/1.0)" } });
@@ -200,6 +317,17 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
   })
   .handler(async ({ data }): Promise<Record<string, LiveQuote>> => {
     if (data.symbols.length === 0) return {};
+    // Prefer Polygon.io when configured — covers PRE/REGULAR/POST and
+    // OVERNIGHT (Blue Ocean ATS) in a single batch snapshot call.
+    const polyKey = process.env.POLYGON_API_KEY;
+    if (polyKey) {
+      try {
+        const polyOut = await fetchPolygonLive(data.symbols, polyKey);
+        if (Object.keys(polyOut).length > 0) return polyOut;
+      } catch {
+        // fall through to Yahoo
+      }
+    }
     // Use v8 chart endpoint per-symbol with includePrePost=true.
     // This returns the latest tick across PRE, REGULAR, and POST sessions
     // (v7 quote often returns stale postMarketPrice or requires a crumb).
