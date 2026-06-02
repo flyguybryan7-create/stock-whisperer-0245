@@ -303,26 +303,60 @@ export default function TradingPlatform() {
     }
     setPushBusy(true);
     try {
+      // If iOS/Safari has the permission permanently denied, requestPermission()
+      // resolves "denied" instantly and we can never re-prompt from JS. The user
+      // has to flip it in iOS Settings.
+      if (Notification.permission === "denied") {
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        showNotif(
+          isIOS
+            ? "iOS blocked alerts. Open iOS Settings → Notifications → BryanTrade and turn Allow Notifications back on."
+            : "Notifications blocked. Enable them in your browser site settings, then try again.",
+        );
+        return;
+      }
+
       if (Notification.permission === "granted") {
-        // unsubscribe
+        // Already granted: make sure we actually have a push subscription on
+        // this device. If the previous one was cleared (iOS often drops it
+        // after a PWA reinstall), re-subscribe instead of toggling off.
+        const existing = await getCurrentSubscriptionEndpoint();
+        if (!existing) {
+          const sub = await registerSwAndSubscribe();
+          if (!sub) throw new Error("subscription failed");
+          await callSubscribe({
+            data: { ...sub, userAgent: navigator.userAgent.slice(0, 200) },
+          });
+          setPushPerm("granted");
+          showNotif("🔔 Push notifications re-enabled");
+          return;
+        }
+        // Subscription exists → user is toggling off.
         const endpoint = await unsubscribeLocal();
         if (endpoint) await callUnsubscribe({ data: { endpoint } });
         setPushPerm("default");
         showNotif("🔕 Push notifications disabled on this device");
-      } else {
-        const perm = await Notification.requestPermission();
-        setPushPerm(perm as PushPermission);
-        if (perm !== "granted") {
-          showNotif("Notifications denied — enable in browser settings");
-          return;
-        }
-        const sub = await registerSwAndSubscribe();
-        if (!sub) throw new Error("subscription failed");
-        await callSubscribe({
-          data: { ...sub, userAgent: navigator.userAgent.slice(0, 200) },
-        });
-        showNotif("🔔 Push notifications enabled");
+        return;
       }
+
+      // permission === "default" → request it.
+      const perm = await Notification.requestPermission();
+      setPushPerm(perm as PushPermission);
+      if (perm !== "granted") {
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        showNotif(
+          isIOS
+            ? "iOS blocked alerts. Open iOS Settings → Notifications → BryanTrade and turn Allow Notifications on."
+            : "Notifications denied — enable in browser settings",
+        );
+        return;
+      }
+      const sub = await registerSwAndSubscribe();
+      if (!sub) throw new Error("subscription failed");
+      await callSubscribe({
+        data: { ...sub, userAgent: navigator.userAgent.slice(0, 200) },
+      });
+      showNotif("🔔 Push notifications enabled");
     } catch (e) {
       showNotif(`Push setup failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
