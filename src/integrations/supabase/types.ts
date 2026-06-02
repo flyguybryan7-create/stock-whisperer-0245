@@ -89,6 +89,27 @@ export type Database = {
         }
         Relationships: []
       }
+      watchlists: {
+        Row: {
+          names: Json
+          symbols: string[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          names?: Json
+          symbols?: string[]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          names?: Json
+          symbols?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
