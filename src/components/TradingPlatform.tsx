@@ -241,7 +241,7 @@ export default function TradingPlatform() {
   const [search, setSearch] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [alerts, setAlerts] = useState<Record<string, Alert[]>>({});
-  const [phoneNumber, setPhoneNumber] = useState("");
+  // SMS/text alerts removed — push only
   const [showAlertModal, setShowAlertModal] = useState(false);
   const [alertPrice, setAlertPrice] = useState("");
   const [alertType, setAlertType] = useState<"above" | "below">("above");
@@ -542,11 +542,11 @@ export default function TradingPlatform() {
 
   const addAlert = () => {
     if (!alertPrice) return;
-    const newAlert: Alert = { price: parseFloat(alertPrice), type: alertType, phone: phoneNumber, active: true };
+    const newAlert: Alert = { price: parseFloat(alertPrice), type: alertType, active: true };
     setAlerts(prev => ({ ...prev, [selectedStock]: [...(prev[selectedStock] || []), newAlert] }));
     setShowAlertModal(false);
     setAlertPrice("");
-    showNotif(`Alert set for ${selectedStock} ${alertType} $${alertPrice}${phoneNumber ? ` → SMS to ${phoneNumber}` : ""}`);
+    showNotif(`Alert set for ${selectedStock} ${alertType} $${alertPrice} (push)`);
   };
 
   const signalColor = signal === "BUY" ? "#39d353" : signal === "SELL" ? "#f85149" : "#e3b341";
