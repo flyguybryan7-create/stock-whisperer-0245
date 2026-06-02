@@ -1017,6 +1017,15 @@ export default function TradingPlatform() {
                     {si?.risk && si.risk !== "UNKNOWN" && <span style={{ color: siColor, fontSize: 8, marginLeft: 3 }}>{si.risk}</span>}
                     <span style={{ color: "#484f58", fontSize: 8, marginLeft: 4 }}>FINRA</span>
                   </span>
+                  {liveSel?.fiftyTwoWeekHigh != null && (
+                    <span title="52-week high">52W H <span style={{ color: "#39d353", fontWeight: 700 }}>${liveSel.fiftyTwoWeekHigh.toFixed(2)}</span></span>
+                  )}
+                  {liveSel?.fiftyTwoWeekLow != null && (
+                    <span title="52-week low">52W L <span style={{ color: "#f85149", fontWeight: 700 }}>${liveSel.fiftyTwoWeekLow.toFixed(2)}</span></span>
+                  )}
+                  {si?.sharesOutstanding != null && (
+                    <span title="Total shares outstanding">SHARES OUT <span style={{ color: "#e6edf3", fontWeight: 700 }}>{fmtM(si.sharesOutstanding)}</span></span>
+                  )}
                   {liveSel?.preMarketPrice != null && (
                     <span>Pre <span style={{ color: (liveSel.preMarketChangePercent ?? 0) >= 0 ? "#39d353" : "#f85149" }}>${liveSel.preMarketPrice.toFixed(2)}</span></span>
                   )}
