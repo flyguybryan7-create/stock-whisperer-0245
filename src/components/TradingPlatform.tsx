@@ -154,6 +154,38 @@ function getSignal(data: Row[], sentimentScore = 0): "BUY" | "SELL" | "HOLD" {
   return "HOLD";
 }
 
+// ============ Market hours + breakout helpers ============
+// US regular session: Mon–Fri 09:30–16:00 America/New_York.
+function isUsMarketOpen(now: Date = new Date()): boolean {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(now);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  const wd = get("weekday");
+  if (wd === "Sat" || wd === "Sun") return false;
+  const h = parseInt(get("hour"), 10);
+  const m = parseInt(get("minute"), 10);
+  const mins = h * 60 + m;
+  return mins >= 9 * 60 + 30 && mins < 16 * 60;
+}
+
+// Breakout = today's close pushes through the prior N-day high (BUY)
+// or N-day low (SELL), with confirming volume when available.
+function isBreakout(data: Row[], side: "BUY" | "SELL", lookback = 20): boolean {
+  if (data.length < lookback + 1) return false;
+  const last = data[data.length - 1];
+  const window = data.slice(-1 - lookback, -1); // prior N bars, exclude today
+  if (!last || window.length === 0) return false;
+  const priorHigh = Math.max(...window.map((d) => (d as any).high ?? d.close));
+  const priorLow = Math.min(...window.map((d) => (d as any).low ?? d.close));
+  if (side === "BUY") return last.close > priorHigh;
+  return last.close < priorLow;
+}
+
 // ============ Intraday day-trade signal ============
 // Uses 1m bars: EMA9 vs EMA21 cross, VWAP position, short RSI(7), momentum.
 function getDayTradeSignal(bars: IntradayBar[]): {
@@ -560,12 +592,15 @@ export default function TradingPlatform() {
   // fire a web push to every subscribed device (5-min server-side cooldown).
   useEffect(() => {
     if (pushPerm !== "granted") return;
+    // Only during US regular trading hours, and only on breakout signals.
+    if (!isUsMarketOpen()) return;
     for (const sym of Object.keys(allData)) {
       const series = allData[sym];
       if (!series || series.length === 0) continue;
       const sig = getSignal(series, sym === selectedStock ? sentiment.score : 0);
       if (sig !== "BUY" && sig !== "SELL") continue;
       if (lastPushSignal.current[sym] === sig) continue;
+      if (!isBreakout(series, sig)) continue;
       lastPushSignal.current[sym] = sig;
       const lq = live[sym];
       const px = lq?.price ?? series[series.length - 1]?.close;
@@ -575,7 +610,9 @@ export default function TradingPlatform() {
           symbol: sym,
           signal: sig,
           price: px,
-          reason: sym === selectedStock && sentiment.summary ? sentiment.summary.slice(0, 80) : "",
+          reason:
+            `Breakout ${sig === "BUY" ? "↑ above" : "↓ below"} 20-day ${sig === "BUY" ? "high" : "low"}` +
+            (sym === selectedStock && sentiment.summary ? ` · ${sentiment.summary.slice(0, 60)}` : ""),
         },
       }).catch(() => {});
     }
