@@ -998,21 +998,27 @@ export default function TradingPlatform() {
                   <span>RSI <span style={{ color: (last.rsi ?? 50) < 30 ? "#39d353" : (last.rsi ?? 50) > 70 ? "#f85149" : "#e6edf3", fontWeight: 700 }}>{last.rsi?.toFixed(1) ?? "—"}</span></span>
                   <span>MACD <span style={{ color: (last.macdHist ?? 0) > 0 ? "#39d353" : "#f85149", fontWeight: 700 }}>{last.macdHist?.toFixed(3) ?? "—"}</span></span>
                   <span>SMA9 <span style={{ color: "#79c0ff", fontWeight: 700 }}>${last.sma9?.toFixed(2) ?? "—"}</span></span>
-                  <span
-                    title={si ? `Short interest from FINRA semi-monthly report\nFloat: ${fmtM(si.floatShares)}\nShares short: ${fmtM(si.sharesShort)}\nShort % of float: ${pct?.toFixed(2) ?? "—"}%\nDays to cover: ${si.shortRatio?.toFixed(1) ?? "—"}\nRisk: ${si.risk}\nSource: FINRA via Yahoo Finance` : "Short interest data sourced from FINRA semi-monthly report (unavailable)"}
-                    style={{ cursor: "help" }}>
-                    SHORT/FLOAT <span style={{ color: siColor, fontWeight: 800 }}>{pct != null ? `${pct.toFixed(1)}%` : "—"}</span>
-                    {si?.risk && si.risk !== "UNKNOWN" && <span style={{ color: siColor, fontSize: 8, marginLeft: 3 }}>{si.risk}</span>}
-                    <span style={{ color: "#484f58", fontSize: 8, marginLeft: 4 }}>FINRA</span>
+                  <span style={{ display: "flex", gap: 10, flexBasis: "100%" }}>
+                    <span
+                      title={si ? `Short interest from FINRA semi-monthly report\nFloat: ${fmtM(si.floatShares)}\nShares short: ${fmtM(si.sharesShort)}\nShort % of float: ${pct?.toFixed(2) ?? "—"}%\nDays to cover: ${si.shortRatio?.toFixed(1) ?? "—"}\nRisk: ${si.risk}\nSource: FINRA via Yahoo Finance` : "Short interest data sourced from FINRA semi-monthly report (unavailable)"}
+                      style={{ cursor: "help" }}>
+                      SHORT/FLOAT <span style={{ color: siColor, fontWeight: 800 }}>{pct != null ? `${pct.toFixed(1)}%` : "—"}</span>
+                      {si?.risk && si.risk !== "UNKNOWN" && <span style={{ color: siColor, fontSize: 8, marginLeft: 3 }}>{si.risk}</span>}
+                      <span style={{ color: "#484f58", fontSize: 8, marginLeft: 4 }}>FINRA</span>
+                    </span>
+                    {si?.sharesOutstanding != null && (
+                      <span title="Total shares outstanding">SHARES OUT <span style={{ color: "#e6edf3", fontWeight: 700 }}>{fmtM(si.sharesOutstanding)}</span></span>
+                    )}
                   </span>
-                  {liveSel?.fiftyTwoWeekHigh != null && (
-                    <span title="52-week high">52W H <span style={{ color: "#39d353", fontWeight: 700 }}>${liveSel.fiftyTwoWeekHigh.toFixed(2)}</span></span>
-                  )}
-                  {liveSel?.fiftyTwoWeekLow != null && (
-                    <span title="52-week low">52W L <span style={{ color: "#f85149", fontWeight: 700 }}>${liveSel.fiftyTwoWeekLow.toFixed(2)}</span></span>
-                  )}
-                  {si?.sharesOutstanding != null && (
-                    <span title="Total shares outstanding">SHARES OUT <span style={{ color: "#e6edf3", fontWeight: 700 }}>{fmtM(si.sharesOutstanding)}</span></span>
+                  {(liveSel?.fiftyTwoWeekHigh != null || liveSel?.fiftyTwoWeekLow != null) && (
+                    <span style={{ display: "flex", gap: 10, flexBasis: "100%" }}>
+                      {liveSel?.fiftyTwoWeekHigh != null && (
+                        <span title="52-week high">52W H <span style={{ color: "#39d353", fontWeight: 700 }}>${liveSel.fiftyTwoWeekHigh.toFixed(2)}</span></span>
+                      )}
+                      {liveSel?.fiftyTwoWeekLow != null && (
+                        <span title="52-week low">52W L <span style={{ color: "#f85149", fontWeight: 700 }}>${liveSel.fiftyTwoWeekLow.toFixed(2)}</span></span>
+                      )}
+                    </span>
                   )}
                   {liveSel?.preMarketPrice != null && (
                     <span>Pre <span style={{ color: (liveSel.preMarketChangePercent ?? 0) >= 0 ? "#39d353" : "#f85149" }}>${liveSel.preMarketPrice.toFixed(2)}</span></span>
