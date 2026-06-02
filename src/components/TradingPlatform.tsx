@@ -16,7 +16,6 @@ import {
   isPreviewIframe,
   type PushPermission,
 } from "@/lib/push-client";
-import { getSchwabAuthUrl } from "@/lib/schwab.functions";
 import { getShortInterest, type ShortInterest } from "@/lib/shortinterest.functions";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { useSubscription } from "@/hooks/useSubscription";
@@ -37,7 +36,6 @@ const DEFAULT_STOCKS = [
   "QUIK","PKE","INTT","IREN",
 ];
 const WATCHLIST_KEY = "bryantrade.watchlist.v1";
-const SCHWAB_TOKEN_KEY = "bryantrade.schwab.tokens.v1";
 
 const STOCK_NAMES: Record<string, string> = {
   NVDA:"NVIDIA Corp",MRVL:"Marvell Technology",SMTC:"Semtech Corp",TSEM:"Tower Semiconductor",
@@ -509,7 +507,7 @@ export default function TradingPlatform() {
     refetchInterval: 5 * 60_000,
     enabled: !!selectedStock,
   });
-  const newsItems: NewsItem[] = newsData?.items ?? [];
+  const newsItems: NewsItem[] = (newsData?.items ?? []).filter((n) => n.scope === "company");
   const sector = newsData?.sector ?? null;
 
   // Intraday 1m bars for day-trade signal — refresh every 15s
@@ -521,17 +519,6 @@ export default function TradingPlatform() {
   });
   const intradayBars: IntradayBar[] = intradayData ?? [];
   const dayTrade = useMemo(() => getDayTradeSignal(intradayBars), [intradayBars]);
-
-  // Market & world news (always-on, stock-agnostic) — refresh every 10 min
-  const { data: marketNewsData } = useQuery({
-    queryKey: ["marketNews"],
-    queryFn: () => fetchNews({ data: { symbol: "SPY", companyName: "S&P 500" } }),
-    staleTime: 10 * 60_000,
-    refetchInterval: 10 * 60_000,
-  });
-  const marketWorldNews: NewsItem[] = (marketNewsData?.items ?? []).filter(
-    (n) => n.scope === "market" || n.scope === "global",
-  );
 
   // AI sentiment based on headlines
   const { data: sentimentData } = useQuery({
@@ -1005,7 +992,6 @@ export default function TradingPlatform() {
                   {pushPerm === "granted" && (
                     <button onClick={sendTest} title="Send test push" style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 4, padding: "3px 6px", fontSize: 11, cursor: "pointer", color: "#8b949e", lineHeight: 1 }}>📨</button>
                   )}
-                  <SchwabConnectButton />
                 </div>
                 {/* Mini stat strip */}
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 6, fontSize: 10, color: "#8b949e", lineHeight: 1.2 }}>
@@ -1019,6 +1005,15 @@ export default function TradingPlatform() {
                     {si?.risk && si.risk !== "UNKNOWN" && <span style={{ color: siColor, fontSize: 8, marginLeft: 3 }}>{si.risk}</span>}
                     <span style={{ color: "#484f58", fontSize: 8, marginLeft: 4 }}>FINRA</span>
                   </span>
+                  {liveSel?.fiftyTwoWeekHigh != null && (
+                    <span title="52-week high">52W H <span style={{ color: "#39d353", fontWeight: 700 }}>${liveSel.fiftyTwoWeekHigh.toFixed(2)}</span></span>
+                  )}
+                  {liveSel?.fiftyTwoWeekLow != null && (
+                    <span title="52-week low">52W L <span style={{ color: "#f85149", fontWeight: 700 }}>${liveSel.fiftyTwoWeekLow.toFixed(2)}</span></span>
+                  )}
+                  {si?.sharesOutstanding != null && (
+                    <span title="Total shares outstanding">SHARES OUT <span style={{ color: "#e6edf3", fontWeight: 700 }}>{fmtM(si.sharesOutstanding)}</span></span>
+                  )}
                   {liveSel?.preMarketPrice != null && (
                     <span>Pre <span style={{ color: (liveSel.preMarketChangePercent ?? 0) >= 0 ? "#39d353" : "#f85149" }}>${liveSel.preMarketPrice.toFixed(2)}</span></span>
                   )}
@@ -1042,30 +1037,6 @@ export default function TradingPlatform() {
               </button>
             ))}
           </div>
-
-          {/* Market & World news strip — always visible, affects every ticker */}
-          <details style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: "6px 8px", marginBottom: 8 }}>
-            <summary style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", listStyle: "none" }}>
-              <span style={{ fontSize: 10, color: "#ffa657", letterSpacing: 1.5, fontWeight: 700 }}>🌍 MARKET &amp; WORLD</span>
-              <span style={{ fontSize: 9, color: "#8b949e" }}>{marketWorldNews.length} headlines · tap to expand</span>
-            </summary>
-            <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingTop: 8, paddingBottom: 4 }}>
-              {marketWorldNews.length === 0 && (
-                <div style={{ fontSize: 10, color: "#8b949e" }}>Loading market &amp; world news…</div>
-              )}
-              {marketWorldNews.slice(0, 10).map((n, i) => {
-                const color = n.scope === "global" ? "#d2a8ff" : "#ffa657";
-                return (
-                  <a key={i} href={n.link} target="_blank" rel="noreferrer"
-                    style={{ flex: "0 0 240px", padding: "8px 10px", background: "#010409", border: `1px solid ${color}33`, borderRadius: 6, textDecoration: "none", color: "#e6edf3", fontSize: 11, lineHeight: 1.35 }}>
-                    <div style={{ fontSize: 8, fontWeight: 700, color, letterSpacing: 1, marginBottom: 4 }}>{n.scope.toUpperCase()}</div>
-                    <div style={{ display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{n.title}</div>
-                    <div style={{ fontSize: 9, color: "#8b949e", marginTop: 4 }}>{n.publisher}</div>
-                  </a>
-                );
-              })}
-            </div>
-          </details>
 
           {/* Price chart */}
           <ChartCard title="PRICE · MOVING AVERAGES · BOLLINGER BANDS"
@@ -1287,51 +1258,3 @@ function ChartCard({ title, legend, children }: { title: string; legend?: { labe
   );
 }
 
-function SchwabConnectButton() {
-  const startAuth = useServerFn(getSchwabAuthUrl);
-  const [connected, setConnected] = useState(false);
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(SCHWAB_TOKEN_KEY);
-      setConnected(!!raw);
-    } catch {}
-  }, []);
-
-  const handleClick = async () => {
-    if (connected) {
-      if (confirm("Disconnect Schwab account?")) {
-        localStorage.removeItem(SCHWAB_TOKEN_KEY);
-        setConnected(false);
-      }
-      return;
-    }
-    setBusy(true);
-    try {
-      const redirectUri = `${window.location.origin}/auth/schwab/callback`;
-      const { url } = await startAuth({ data: { redirectUri } });
-      window.location.href = url;
-    } catch (e) {
-      alert(`Schwab connect failed: ${e instanceof Error ? e.message : String(e)}`);
-      setBusy(false);
-    }
-  };
-
-  return (
-    <button
-      onClick={handleClick}
-      disabled={busy}
-      title={connected ? "Schwab connected — click to disconnect" : "Connect your Schwab / thinkorswim account for live 24/7 quotes"}
-      style={{
-        background: connected ? "#0d2a4d" : "#0d1117",
-        border: `1px solid ${connected ? "#1f6feb" : "#21262d"}`,
-        borderRadius: 6, padding: "6px 10px", minWidth: 110, cursor: busy ? "wait" : "pointer",
-        color: connected ? "#79c0ff" : "#e6edf3", fontFamily: "inherit",
-      }}
-    >
-      <div style={{ fontSize: 9, letterSpacing: 1 }}>SCHWAB</div>
-      <div style={{ fontSize: 13, fontWeight: 800 }}>{busy ? "…" : connected ? "✓ CONNECTED" : "🔐 CONNECT"}</div>
-    </button>
-  );
-}
