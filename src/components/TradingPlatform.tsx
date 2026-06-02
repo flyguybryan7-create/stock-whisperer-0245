@@ -863,22 +863,22 @@ export default function TradingPlatform() {
           </div>
 
           {/* Range */}
-          <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+          <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
             {[14, 30, 60, 90, 120].map(r => (
               <button key={r} onClick={() => setChartRange(r)}
-                style={{ background: chartRange === r ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "4px 10px", fontSize: 10, color: chartRange === r ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
+                style={{ background: chartRange === r ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "2px 8px", fontSize: 10, color: chartRange === r ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
                 {r}D
               </button>
             ))}
           </div>
 
           {/* Market & World news strip — always visible, affects every ticker */}
-          <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 10, marginBottom: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+          <details style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: "6px 8px", marginBottom: 8 }}>
+            <summary style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", listStyle: "none" }}>
               <span style={{ fontSize: 10, color: "#ffa657", letterSpacing: 1.5, fontWeight: 700 }}>🌍 MARKET &amp; WORLD</span>
-              <span style={{ fontSize: 9, color: "#8b949e" }}>headlines that can move every stock in your watchlist</span>
-            </div>
-            <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+              <span style={{ fontSize: 9, color: "#8b949e" }}>{marketWorldNews.length} headlines · tap to expand</span>
+            </summary>
+            <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingTop: 8, paddingBottom: 4 }}>
               {marketWorldNews.length === 0 && (
                 <div style={{ fontSize: 10, color: "#8b949e" }}>Loading market &amp; world news…</div>
               )}
@@ -894,7 +894,7 @@ export default function TradingPlatform() {
                 );
               })}
             </div>
-          </div>
+          </details>
 
           {/* Price chart */}
           <ChartCard title="PRICE · MOVING AVERAGES · BOLLINGER BANDS"
