@@ -783,6 +783,10 @@ export default function TradingPlatform() {
                     touchAction: draggingSym === sym ? "none" : "pan-y",
                     opacity: draggingSym && draggingSym !== sym ? 0.7 : 1,
                     transition: "background 120ms",
+                    userSelect: "none",
+                    WebkitUserSelect: "none",
+                    WebkitTouchCallout: "none",
+                    WebkitTapHighlightColor: "transparent",
                   }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div style={{ fontWeight: 600, fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
@@ -813,8 +817,10 @@ export default function TradingPlatform() {
                         onClick={(e) => e.stopPropagation()}
                         style={{
                           background: "#161b22", border: "1px solid #30363d", color: "#8b949e",
-                          cursor: "grab", padding: "2px 5px", fontSize: 11, lineHeight: 1,
-                          borderRadius: 3, userSelect: "none", touchAction: "none",
+                          cursor: "grab", padding: "6px 10px", fontSize: 14, lineHeight: 1,
+                          borderRadius: 4, userSelect: "none", WebkitUserSelect: "none",
+                          WebkitTouchCallout: "none", WebkitTapHighlightColor: "transparent",
+                          touchAction: "none",
                         }}
                       >⋮⋮</span>
                     </div>
