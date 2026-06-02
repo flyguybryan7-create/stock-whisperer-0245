@@ -709,7 +709,7 @@ export default function TradingPlatform() {
         </div>
 
         {/* Main */}
-        <div style={{ padding: "8px 12px", overflowY: "auto", maxHeight: "calc(100vh - 49px)" }}>
+        <div style={{ padding: "6px 10px", overflowY: "auto", maxHeight: "calc(100vh - 49px)" }}>
           {/* Stock header — ultra-tight single row */}
           {(() => {
             const headPrice = liveSel?.price ?? last.close;
@@ -783,7 +783,7 @@ export default function TradingPlatform() {
           })()}
 
           {/* Range */}
-          <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
+          <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
             {[14, 30, 60, 90, 120].map(r => (
               <button key={r} onClick={() => setChartRange(r)}
                 style={{ background: chartRange === r ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "2px 8px", fontSize: 10, color: chartRange === r ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
@@ -819,7 +819,7 @@ export default function TradingPlatform() {
           {/* Price chart */}
           <ChartCard title="PRICE · MOVING AVERAGES · BOLLINGER BANDS"
             legend={[{ label: "SMA9", color: "#79c0ff" }, { label: "SMA15", color: "#d2a8ff" }, { label: "SMA50", color: "#ffa657" }, { label: "BB Upper/Lower", color: "#30363d" }]}>
-            <ResponsiveContainer width="100%" height={280}>
+            <ResponsiveContainer width="100%" height={340}>
               <ComposedChart data={displayData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                 <XAxis dataKey="date" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} />
