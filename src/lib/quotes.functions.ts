@@ -472,6 +472,8 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
             overnightChange: overnightLast != null ? overnightLast - prevClose : undefined,
             overnightChangePercent: overnightLast != null ? ((overnightLast - prevClose) / prevClose) * 100 : undefined,
             lastTickTime: lastTs,
+            fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh,
+            fiftyTwoWeekLow: meta.fiftyTwoWeekLow,
           };
         } catch {
           /* skip */
