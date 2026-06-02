@@ -1004,7 +1004,6 @@ export default function TradingPlatform() {
                   {pushPerm === "granted" && (
                     <button onClick={sendTest} title="Send test push" style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 4, padding: "3px 6px", fontSize: 11, cursor: "pointer", color: "#8b949e", lineHeight: 1 }}>📨</button>
                   )}
-                  <SchwabConnectButton />
                 </div>
                 {/* Mini stat strip */}
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 6, fontSize: 10, color: "#8b949e", lineHeight: 1.2 }}>
