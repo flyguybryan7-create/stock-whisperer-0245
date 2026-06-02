@@ -59,20 +59,27 @@ type YahooQuoteV7 = {
 async function fetchYahooV7Quotes(symbols: string[]): Promise<Record<string, LiveQuote>> {
   const auth = await getYahooAuth();
   if (!auth) return {};
-  const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(
-    symbols.join(","),
-  )}&crumb=${encodeURIComponent(auth.crumb)}`;
-  const res = await fetch(url, {
-    headers: { "User-Agent": YAHOO_UA, Cookie: auth.cookie },
-  });
-  if (!res.ok) {
-    // Crumb may have expired — invalidate and let caller retry/fallback
-    if (res.status === 401 || res.status === 403) yahooAuth = undefined;
-    return {};
-  }
-  const json = (await res.json()) as { quoteResponse?: { result?: YahooQuoteV7[] } };
   const out: Record<string, LiveQuote> = {};
-  for (const q of json.quoteResponse?.result ?? []) {
+  // Yahoo v7 caps ~50 symbols per request — batch in chunks of 40.
+  const chunks: string[][] = [];
+  for (let i = 0; i < symbols.length; i += 40) chunks.push(symbols.slice(i, i + 40));
+  const results = await Promise.all(
+    chunks.map(async (chunk) => {
+      const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(
+        chunk.join(","),
+      )}&crumb=${encodeURIComponent(auth.crumb)}`;
+      const res = await fetch(url, {
+        headers: { "User-Agent": YAHOO_UA, Cookie: auth.cookie },
+      });
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) yahooAuth = undefined;
+        return [] as YahooQuoteV7[];
+      }
+      const json = (await res.json()) as { quoteResponse?: { result?: YahooQuoteV7[] } };
+      return json.quoteResponse?.result ?? [];
+    }),
+  );
+  for (const q of results.flat()) {
     const reg = q.regularMarketPrice;
     const prev = q.regularMarketPreviousClose ?? reg ?? 0;
     if (reg == null || !prev) continue;
@@ -184,7 +191,7 @@ export const getQuotes = createServerFn({ method: "POST" })
     if (!input || !Array.isArray(input.symbols)) throw new Error("symbols required");
     const symbols = input.symbols
       .filter((s) => typeof s === "string" && /^[A-Z.\-]{1,10}$/i.test(s))
-      .slice(0, 50);
+      .slice(0, 200);
     return { symbols };
   })
   .handler(async ({ data }) => {
@@ -319,7 +326,7 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
     if (!input || !Array.isArray(input.symbols)) throw new Error("symbols required");
     const symbols = input.symbols
       .filter((s) => typeof s === "string" && /^[A-Z.\-]{1,10}$/i.test(s))
-      .slice(0, 50);
+      .slice(0, 200);
     return { symbols };
   })
   .handler(async ({ data }): Promise<Record<string, LiveQuote>> => {
