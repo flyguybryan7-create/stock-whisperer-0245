@@ -711,25 +711,22 @@ export default function TradingPlatform() {
         </div>
 
         {/* Main */}
-        <div style={{ padding: 16, overflowY: "auto", maxHeight: "calc(100vh - 49px)" }}>
+        <div style={{ padding: "8px 12px", overflowY: "auto", maxHeight: "calc(100vh - 49px)" }}>
           {/* Stock header */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16, marginBottom: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
             <div>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-                <span style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 22, color: "#e6edf3" }}>{selectedStock}</span>
-                <span style={{ fontSize: 11, color: "#8b949e" }}>{stockNames[selectedStock] || ""}</span>
-              </div>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 4 }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 18, color: "#e6edf3" }}>{selectedStock}</span>
                 {(() => {
                   const headPrice = liveSel?.price ?? last.close;
                   if (headPrice == null) {
-                    return <span style={{ fontSize: 22, fontWeight: 600, color: "#8b949e" }}>Loading…</span>;
+                    return <span style={{ fontSize: 16, fontWeight: 600, color: "#8b949e" }}>Loading…</span>;
                   }
                   return (
                     <>
-                      <span style={{ fontSize: 28, fontWeight: 700, color: "#e6edf3" }}>${headPrice.toFixed(2)}</span>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: change >= 0 ? "#39d353" : "#f85149" }}>
-                        {change >= 0 ? "▲" : "▼"} ${Math.abs(change).toFixed(2)} ({changePct >= 0 ? "+" : ""}{changePct.toFixed(2)}%)
+                      <span style={{ fontSize: 20, fontWeight: 700, color: "#e6edf3" }}>${headPrice.toFixed(2)}</span>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: change >= 0 ? "#39d353" : "#f85149" }}>
+                        {change >= 0 ? "▲" : "▼"} {changePct >= 0 ? "+" : ""}{changePct.toFixed(2)}%
                       </span>
                     </>
                   );
