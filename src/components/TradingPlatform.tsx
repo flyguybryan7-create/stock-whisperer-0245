@@ -305,6 +305,9 @@ export default function TradingPlatform() {
   const [pushPerm, setPushPerm] = useState<PushPermission>("default");
   const [pushBusy, setPushBusy] = useState(false);
   const lastPushSignal = useRef<Record<string, "BUY" | "SELL">>({});
+  // Tracks the last big-move direction we alerted for, so we don't spam
+  // notifications for the same symbol while it stays above the ±5% threshold.
+  const lastBigMove = useRef<Record<string, "UP" | "DOWN" | null>>({});
 
   // Load persisted watchlist from localStorage on first mount (fast path / signed-out users)
   const hydratedFromCloud = useRef(false);
@@ -618,6 +621,35 @@ export default function TradingPlatform() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveQuotes, rawQuotes, pushPerm, sentiment.score]);
+
+  // Separate alert: any watchlist stock that moves more than ±5% intraday
+  // during US regular trading hours. Fires once per direction per symbol;
+  // resets when the move falls back inside ±5%.
+  useEffect(() => {
+    if (pushPerm !== "granted") return;
+    if (!isUsMarketOpen()) return;
+    for (const sym of watchlist) {
+      const lq = live[sym];
+      if (!lq || typeof lq.changePercent !== "number") continue;
+      const pct = lq.changePercent;
+      const dir: "UP" | "DOWN" | null = pct >= 5 ? "UP" : pct <= -5 ? "DOWN" : null;
+      if (!dir) {
+        lastBigMove.current[sym] = null;
+        continue;
+      }
+      if (lastBigMove.current[sym] === dir) continue;
+      lastBigMove.current[sym] = dir;
+      firePush({
+        data: {
+          symbol: sym,
+          signal: dir === "UP" ? "BUY" : "SELL",
+          price: lq.price,
+          reason: `Intraday ${dir === "UP" ? "↑" : "↓"} ${pct.toFixed(2)}% (>5% move)`,
+        },
+      }).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveQuotes, pushPerm, watchlist]);
 
   const filteredStocks = useMemo(() => {
     const q = search.toLowerCase();
