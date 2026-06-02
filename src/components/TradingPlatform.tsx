@@ -239,6 +239,9 @@ type Alert = { price: number; type: "above" | "below"; active: boolean };
 
 export default function TradingPlatform() {
   const [watchlist, setWatchlist] = useState<string[]>(DEFAULT_STOCKS);
+  const { user } = useAuthUser();
+  const { tier } = useSubscription(user?.id);
+  const isPro = tier === "pro";
   const [stockNames, setStockNames] = useState<Record<string, string>>(STOCK_NAMES);
   const [selectedStock, setSelectedStock] = useState("MRVL");
   const [search, setSearch] = useState("");
