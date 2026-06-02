@@ -655,23 +655,21 @@ export default function TradingPlatform() {
                   style={{ padding: "8px 12px", borderBottom: "1px solid #161b22", background: selectedStock === sym ? "#161b22" : "transparent", borderLeft: selectedStock === sym ? "2px solid #58a6ff" : "2px solid transparent" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div style={{ fontWeight: 600, fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
-                      <span style={{ display: "inline-flex", flexDirection: "column", marginRight: 2 }}>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); moveSym(sym, -1); }}
-                          title="Move up"
-                          style={{ background: "transparent", border: "none", color: "#8b949e", cursor: "pointer", padding: 0, fontSize: 10, lineHeight: 1 }}
-                        >▲</button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); moveSym(sym, 1); }}
-                          title="Move down"
-                          style={{ background: "transparent", border: "none", color: "#8b949e", cursor: "pointer", padding: 0, fontSize: 10, lineHeight: 1 }}
-                        >▼</button>
-                      </span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); moveSym(sym, -1); }}
+                        title="Move up"
+                        style={{ background: "#161b22", border: "1px solid #30363d", color: "#8b949e", cursor: "pointer", padding: "2px 6px", fontSize: 11, lineHeight: 1, borderRadius: 3, marginRight: 6 }}
+                      >▲</button>
                       {sym}
                       {hasAlert && <span style={{ fontSize: 9 }}>🔔</span>}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <span style={{ fontSize: 9, color: sigC, fontWeight: 700 }}>{sig}</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); moveSym(sym, 1); }}
+                        title="Move down"
+                        style={{ background: "#161b22", border: "1px solid #30363d", color: "#8b949e", cursor: "pointer", padding: "2px 6px", fontSize: 11, lineHeight: 1, borderRadius: 3 }}
+                      >▼</button>
                       <button
                         onClick={(e) => { e.stopPropagation(); removeStock(sym); }}
                         title="Remove from watchlist"
