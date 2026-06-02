@@ -18,6 +18,9 @@ import {
 } from "@/lib/push-client";
 import { getSchwabAuthUrl } from "@/lib/schwab.functions";
 import { getShortInterest, type ShortInterest } from "@/lib/shortinterest.functions";
+import { useAuthUser } from "@/hooks/useAuthUser";
+import { useSubscription } from "@/hooks/useSubscription";
+import { Link } from "@tanstack/react-router";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ReferenceLine, AreaChart, Area, ComposedChart, Bar, BarChart, Cell,
