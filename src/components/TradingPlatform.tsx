@@ -575,19 +575,7 @@ export default function TradingPlatform() {
     });
   };
 
-  // Pointer-based drag reorder (works on iOS / touch). Long-press anywhere
-  // on a row, or press-and-drag the ☰ handle, to pick up a stock and drag it.
-  const [draggingSym, setDraggingSym] = useState<string | null>(null);
-  const longPressTimer = useRef<number | null>(null);
-  const pointerStartY = useRef<number>(0);
-  const activePointerId = useRef<number | null>(null);
-
-  const findSymAtY = (y: number): string | null => {
-    const el = document.elementFromPoint(window.innerWidth / 2 < 200 ? window.innerWidth / 2 : 80, y);
-    if (!el) return null;
-    const row = (el as HTMLElement).closest("[data-stock-row]") as HTMLElement | null;
-    return row?.dataset.stockRow ?? null;
-  };
+  const [reorderModeSym, setReorderModeSym] = useState<string | null>(null);
 
   const reorderTo = (src: string, target: string) => {
     if (!target || src === target) return;
@@ -602,55 +590,26 @@ export default function TradingPlatform() {
     });
   };
 
-  const beginDrag = (sym: string, pointerId: number, el: HTMLElement) => {
-    setDraggingSym(sym);
-    activePointerId.current = pointerId;
-    try { el.setPointerCapture(pointerId); } catch {}
+  const nudgeSym = (sym: string, dir: -1 | 1) => {
+    setWatchlist((prev) => {
+      const idx = prev.indexOf(sym);
+      if (idx < 0) return prev;
+      const targetIdx = idx + dir;
+      if (targetIdx < 0 || targetIdx >= prev.length) return prev;
+      const target = prev[targetIdx];
+      if (!target) return prev;
+      const next = prev.slice();
+      next.splice(idx, 1);
+      next.splice(targetIdx, 0, sym);
+      return next;
+    });
+  };
+
+  const toggleReorderMode = (sym: string) => {
+    setReorderModeSym((prev) => prev === sym ? null : sym);
     if (typeof navigator !== "undefined" && "vibrate" in navigator) {
       try { navigator.vibrate?.(15); } catch {}
     }
-  };
-
-  const clearLongPress = () => {
-    if (longPressTimer.current != null) {
-      window.clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
-    }
-  };
-
-  const onRowPointerDown = (e: React.PointerEvent<HTMLDivElement>, sym: string) => {
-    if ((e.target as HTMLElement).closest("button")) return; // let buttons work
-    pointerStartY.current = e.clientY;
-    const el = e.currentTarget;
-    const pid = e.pointerId;
-    clearLongPress();
-    longPressTimer.current = window.setTimeout(() => {
-      beginDrag(sym, pid, el);
-    }, 350);
-  };
-
-  const onHandlePointerDown = (e: React.PointerEvent<HTMLElement>, sym: string) => {
-    e.stopPropagation();
-    e.preventDefault();
-    pointerStartY.current = e.clientY;
-    beginDrag(sym, e.pointerId, e.currentTarget);
-  };
-
-  const onRowPointerMove = (e: React.PointerEvent<HTMLDivElement>, sym: string) => {
-    if (draggingSym !== sym) {
-      // if user moves significantly before long-press fires, cancel drag intent
-      if (Math.abs(e.clientY - pointerStartY.current) > 8) clearLongPress();
-      return;
-    }
-    e.preventDefault();
-    const target = findSymAtY(e.clientY);
-    if (target) reorderTo(sym, target);
-  };
-
-  const onRowPointerEnd = (_e: React.PointerEvent<HTMLDivElement>, _sym: string) => {
-    clearLongPress();
-    if (draggingSym) setDraggingSym(null);
-    activePointerId.current = null;
   };
 
   const showNotif = (msg: string) => {
