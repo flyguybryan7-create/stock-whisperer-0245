@@ -369,6 +369,8 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
                   regularMarketPrice?: number;
                   previousClose?: number;
                   chartPreviousClose?: number;
+                  fiftyTwoWeekHigh?: number;
+                  fiftyTwoWeekLow?: number;
                   currentTradingPeriod?: {
                     pre?: { start: number; end: number };
                     regular?: { start: number; end: number };
