@@ -16,7 +16,6 @@ import {
   isPreviewIframe,
   type PushPermission,
 } from "@/lib/push-client";
-import { getSchwabAuthUrl } from "@/lib/schwab.functions";
 import { getShortInterest, type ShortInterest } from "@/lib/shortinterest.functions";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { useSubscription } from "@/hooks/useSubscription";
