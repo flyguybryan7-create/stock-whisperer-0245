@@ -287,12 +287,15 @@ export type IntradayBar = {
 };
 
 export const getIntraday = createServerFn({ method: "POST" })
-  .inputValidator((input: { symbol: string; interval?: "1m" | "2m" | "5m" }) => ({
+  .inputValidator((input: { symbol: string; interval?: "1m" | "2m" | "5m" | "15m" | "30m" | "60m"; range?: "1d" | "2d" | "5d" }) => ({
     symbol: String(input.symbol).toUpperCase().slice(0, 10),
-    interval: input.interval === "2m" || input.interval === "5m" ? input.interval : "1m",
+    interval: ["1m","2m","5m","15m","30m","60m"].includes(input.interval ?? "")
+      ? (input.interval as "1m"|"2m"|"5m"|"15m"|"30m"|"60m")
+      : "1m",
+    range: input.range === "5d" || input.range === "1d" ? input.range : "2d",
   }))
   .handler(async ({ data }): Promise<IntradayBar[]> => {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(data.symbol)}?interval=${data.interval}&range=2d&includePrePost=true`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(data.symbol)}?interval=${data.interval}&range=${data.range}&includePrePost=true`;
     try {
       const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; BryanTrade/1.0)" } });
       if (!res.ok) return [];
