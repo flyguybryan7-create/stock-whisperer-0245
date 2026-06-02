@@ -155,33 +155,6 @@ export const getIntraday = createServerFn({ method: "POST" })
     interval: input.interval === "2m" || input.interval === "5m" ? input.interval : "1m",
   }))
   .handler(async ({ data }): Promise<IntradayBar[]> => {
-    // Prefer Polygon for true 24h coverage (incl. Blue Ocean overnight) when configured.
-    const polyKey = process.env.POLYGON_API_KEY;
-    if (polyKey) {
-      try {
-        const mult = data.interval === "5m" ? 5 : data.interval === "2m" ? 2 : 1;
-        const to = Date.now();
-        const from = to - 2 * 24 * 60 * 60 * 1000;
-        const url = `https://api.polygon.io/v2/aggs/ticker/${encodeURIComponent(data.symbol)}/range/${mult}/minute/${from}/${to}?adjusted=true&sort=asc&limit=5000&apiKey=${polyKey}`;
-        const res = await fetch(url);
-        if (res.ok) {
-          const json = (await res.json()) as {
-            results?: Array<{ t: number; o: number; h: number; l: number; c: number; v: number }>;
-          };
-          const bars = (json.results ?? []).map((b) => ({
-            t: Math.floor(b.t / 1000),
-            open: b.o,
-            high: b.h,
-            low: b.l,
-            close: b.c,
-            volume: b.v,
-          }));
-          if (bars.length > 0) return bars;
-        }
-      } catch {
-        // fall through to Yahoo
-      }
-    }
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(data.symbol)}?interval=${data.interval}&range=2d&includePrePost=true`;
     try {
       const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; BryanTrade/1.0)" } });
@@ -227,17 +200,6 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
   })
   .handler(async ({ data }): Promise<Record<string, LiveQuote>> => {
     if (data.symbols.length === 0) return {};
-    // Prefer Polygon.io when configured — covers PRE/REGULAR/POST and
-    // OVERNIGHT (Blue Ocean ATS) in a single batch snapshot call.
-    const polyKey = process.env.POLYGON_API_KEY;
-    if (polyKey) {
-      try {
-        const polyOut = await fetchPolygonLive(data.symbols, polyKey);
-        if (Object.keys(polyOut).length > 0) return polyOut;
-      } catch {
-        // fall through to Yahoo
-      }
-    }
     // Use v8 chart endpoint per-symbol with includePrePost=true.
     // This returns the latest tick across PRE, REGULAR, and POST sessions
     // (v7 quote often returns stale postMarketPrice or requires a crumb).
