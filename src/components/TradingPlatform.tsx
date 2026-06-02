@@ -521,6 +521,20 @@ export default function TradingPlatform() {
     });
   };
 
+  // Touch-friendly reorder (mobile): tap ↑ / ↓ to move a symbol up or down.
+  // HTML5 drag events don't fire on iOS Safari, so buttons are the reliable path.
+  const moveSym = (sym: string, dir: -1 | 1) => {
+    setWatchlist((prev) => {
+      const idx = prev.indexOf(sym);
+      if (idx < 0) return prev;
+      const target = idx + dir;
+      if (target < 0 || target >= prev.length) return prev;
+      const next = prev.slice();
+      [next[idx], next[target]] = [next[target], next[idx]];
+      return next;
+    });
+  };
+
   const showNotif = (msg: string) => {
     setNotification({ msg });
     setTimeout(() => setNotification(null), 3000);
@@ -641,7 +655,18 @@ export default function TradingPlatform() {
                   style={{ padding: "8px 12px", borderBottom: "1px solid #161b22", background: selectedStock === sym ? "#161b22" : "transparent", borderLeft: selectedStock === sym ? "2px solid #58a6ff" : "2px solid transparent" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div style={{ fontWeight: 600, fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
-                      <span style={{ color: "#484f58", cursor: "grab", marginRight: 2 }}>⋮⋮</span>
+                      <span style={{ display: "inline-flex", flexDirection: "column", marginRight: 2 }}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); moveSym(sym, -1); }}
+                          title="Move up"
+                          style={{ background: "transparent", border: "none", color: "#8b949e", cursor: "pointer", padding: 0, fontSize: 10, lineHeight: 1 }}
+                        >▲</button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); moveSym(sym, 1); }}
+                          title="Move down"
+                          style={{ background: "transparent", border: "none", color: "#8b949e", cursor: "pointer", padding: 0, fontSize: 10, lineHeight: 1 }}
+                        >▼</button>
+                      </span>
                       {sym}
                       {hasAlert && <span style={{ fontSize: 9 }}>🔔</span>}
                     </div>
@@ -686,25 +711,22 @@ export default function TradingPlatform() {
         </div>
 
         {/* Main */}
-        <div style={{ padding: 16, overflowY: "auto", maxHeight: "calc(100vh - 49px)" }}>
+        <div style={{ padding: "8px 12px", overflowY: "auto", maxHeight: "calc(100vh - 49px)" }}>
           {/* Stock header */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16, marginBottom: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
             <div>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-                <span style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 22, color: "#e6edf3" }}>{selectedStock}</span>
-                <span style={{ fontSize: 11, color: "#8b949e" }}>{stockNames[selectedStock] || ""}</span>
-              </div>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 4 }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 18, color: "#e6edf3" }}>{selectedStock}</span>
                 {(() => {
                   const headPrice = liveSel?.price ?? last.close;
                   if (headPrice == null) {
-                    return <span style={{ fontSize: 22, fontWeight: 600, color: "#8b949e" }}>Loading…</span>;
+                    return <span style={{ fontSize: 16, fontWeight: 600, color: "#8b949e" }}>Loading…</span>;
                   }
                   return (
                     <>
-                      <span style={{ fontSize: 28, fontWeight: 700, color: "#e6edf3" }}>${headPrice.toFixed(2)}</span>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: change >= 0 ? "#39d353" : "#f85149" }}>
-                        {change >= 0 ? "▲" : "▼"} ${Math.abs(change).toFixed(2)} ({changePct >= 0 ? "+" : ""}{changePct.toFixed(2)}%)
+                      <span style={{ fontSize: 20, fontWeight: 700, color: "#e6edf3" }}>${headPrice.toFixed(2)}</span>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: change >= 0 ? "#39d353" : "#f85149" }}>
+                        {change >= 0 ? "▲" : "▼"} {changePct >= 0 ? "+" : ""}{changePct.toFixed(2)}%
                       </span>
                     </>
                   );
@@ -841,22 +863,22 @@ export default function TradingPlatform() {
           </div>
 
           {/* Range */}
-          <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+          <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
             {[14, 30, 60, 90, 120].map(r => (
               <button key={r} onClick={() => setChartRange(r)}
-                style={{ background: chartRange === r ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "4px 10px", fontSize: 10, color: chartRange === r ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
+                style={{ background: chartRange === r ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "2px 8px", fontSize: 10, color: chartRange === r ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
                 {r}D
               </button>
             ))}
           </div>
 
           {/* Market & World news strip — always visible, affects every ticker */}
-          <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 10, marginBottom: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+          <details style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: "6px 8px", marginBottom: 8 }}>
+            <summary style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", listStyle: "none" }}>
               <span style={{ fontSize: 10, color: "#ffa657", letterSpacing: 1.5, fontWeight: 700 }}>🌍 MARKET &amp; WORLD</span>
-              <span style={{ fontSize: 9, color: "#8b949e" }}>headlines that can move every stock in your watchlist</span>
-            </div>
-            <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+              <span style={{ fontSize: 9, color: "#8b949e" }}>{marketWorldNews.length} headlines · tap to expand</span>
+            </summary>
+            <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingTop: 8, paddingBottom: 4 }}>
               {marketWorldNews.length === 0 && (
                 <div style={{ fontSize: 10, color: "#8b949e" }}>Loading market &amp; world news…</div>
               )}
@@ -872,7 +894,7 @@ export default function TradingPlatform() {
                 );
               })}
             </div>
-          </div>
+          </details>
 
           {/* Price chart */}
           <ChartCard title="PRICE · MOVING AVERAGES · BOLLINGER BANDS"
