@@ -561,33 +561,9 @@ export default function TradingPlatform() {
     });
   };
 
-  // Touch-friendly reorder (mobile): tap ↑ / ↓ to move a symbol up or down.
-  // HTML5 drag events don't fire on iOS Safari, so buttons are the reliable path.
-  const moveSym = (sym: string, dir: -1 | 1) => {
-    setWatchlist((prev) => {
-      const idx = prev.indexOf(sym);
-      if (idx < 0) return prev;
-      const target = idx + dir;
-      if (target < 0 || target >= prev.length) return prev;
-      const next = prev.slice();
-      [next[idx], next[target]] = [next[target], next[idx]];
-      return next;
-    });
-  };
-
-  // Pointer-based drag reorder (works on iOS / touch). Long-press anywhere
-  // on a row, or press-and-drag the ☰ handle, to pick up a stock and drag it.
-  const [draggingSym, setDraggingSym] = useState<string | null>(null);
-  const longPressTimer = useRef<number | null>(null);
-  const pointerStartY = useRef<number>(0);
-  const activePointerId = useRef<number | null>(null);
-
-  const findSymAtY = (y: number): string | null => {
-    const el = document.elementFromPoint(window.innerWidth / 2 < 200 ? window.innerWidth / 2 : 80, y);
-    if (!el) return null;
-    const row = (el as HTMLElement).closest("[data-stock-row]") as HTMLElement | null;
-    return row?.dataset.stockRow ?? null;
-  };
+  // iPhone-safe watchlist reorder: tap the handle once, then tap the row
+  // where that stock should move. This avoids Safari long-press selection.
+  const [reorderModeSym, setReorderModeSym] = useState<string | null>(null);
 
   const reorderTo = (src: string, target: string) => {
     if (!target || src === target) return;
@@ -602,55 +578,21 @@ export default function TradingPlatform() {
     });
   };
 
-  const beginDrag = (sym: string, pointerId: number, el: HTMLElement) => {
-    setDraggingSym(sym);
-    activePointerId.current = pointerId;
-    try { el.setPointerCapture(pointerId); } catch {}
+  const toggleReorderMode = (sym: string) => {
+    setReorderModeSym((prev) => prev === sym ? null : sym);
     if (typeof navigator !== "undefined" && "vibrate" in navigator) {
       try { navigator.vibrate?.(15); } catch {}
     }
   };
 
-  const clearLongPress = () => {
-    if (longPressTimer.current != null) {
-      window.clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
-    }
-  };
-
-  const onRowPointerDown = (e: React.PointerEvent<HTMLDivElement>, sym: string) => {
-    if ((e.target as HTMLElement).closest("button")) return; // let buttons work
-    pointerStartY.current = e.clientY;
-    const el = e.currentTarget;
-    const pid = e.pointerId;
-    clearLongPress();
-    longPressTimer.current = window.setTimeout(() => {
-      beginDrag(sym, pid, el);
-    }, 350);
-  };
-
-  const onHandlePointerDown = (e: React.PointerEvent<HTMLElement>, sym: string) => {
-    e.stopPropagation();
-    e.preventDefault();
-    pointerStartY.current = e.clientY;
-    beginDrag(sym, e.pointerId, e.currentTarget);
-  };
-
-  const onRowPointerMove = (e: React.PointerEvent<HTMLDivElement>, sym: string) => {
-    if (draggingSym !== sym) {
-      // if user moves significantly before long-press fires, cancel drag intent
-      if (Math.abs(e.clientY - pointerStartY.current) > 8) clearLongPress();
+  const onWatchlistRowClick = (sym: string) => {
+    if (reorderModeSym && reorderModeSym !== sym) {
+      reorderTo(reorderModeSym, sym);
+      setReorderModeSym(null);
       return;
     }
-    e.preventDefault();
-    const target = findSymAtY(e.clientY);
-    if (target) reorderTo(sym, target);
-  };
-
-  const onRowPointerEnd = (_e: React.PointerEvent<HTMLDivElement>, _sym: string) => {
-    clearLongPress();
-    if (draggingSym) setDraggingSym(null);
-    activePointerId.current = null;
+    if (reorderModeSym === sym) return;
+    setSelectedStock(sym);
   };
 
   const showNotif = (msg: string) => {
@@ -768,20 +710,27 @@ export default function TradingPlatform() {
                 : si?.risk === "LOW" ? "#39d353"
                 : "#484f58";
               return (
-                <div key={sym} className="stock-row" onClick={() => setSelectedStock(sym)}
+                <div key={sym} className="stock-row" onClick={() => onWatchlistRowClick(sym)}
                   data-stock-row={sym}
-                  onPointerDown={(e) => onRowPointerDown(e, sym)}
-                  onPointerMove={(e) => onRowPointerMove(e, sym)}
-                  onPointerUp={(e) => onRowPointerEnd(e, sym)}
-                  onPointerCancel={(e) => onRowPointerEnd(e, sym)}
-                  title="Hold to drag, or use the ⋮⋮ handle"
+                  title={reorderModeSym && reorderModeSym !== sym ? `Move ${reorderModeSym} here` : "Select stock"}
                   style={{
                     padding: "4px 5px",
                     borderBottom: "1px solid #161b22",
-                    background: draggingSym === sym ? "#1f6feb33" : selectedStock === sym ? "#161b22" : "transparent",
-                    borderLeft: selectedStock === sym ? "2px solid #58a6ff" : "2px solid transparent",
-                    touchAction: draggingSym === sym ? "none" : "pan-y",
-                    opacity: draggingSym && draggingSym !== sym ? 0.7 : 1,
+                    background:
+                      reorderModeSym === sym
+                        ? "#1f6feb33"
+                        : reorderModeSym
+                          ? "#0f1722"
+                          : selectedStock === sym
+                            ? "#161b22"
+                            : "transparent",
+                    borderLeft:
+                      reorderModeSym === sym
+                        ? "2px solid #d2a8ff"
+                        : selectedStock === sym
+                          ? "2px solid #58a6ff"
+                          : "2px solid transparent",
+                    opacity: reorderModeSym && reorderModeSym !== sym ? 0.96 : 1,
                     transition: "background 120ms",
                     userSelect: "none",
                     WebkitUserSelect: "none",
@@ -800,29 +749,37 @@ export default function TradingPlatform() {
                       {hasAlert && <span style={{ fontSize: 8 }}>🔔</span>}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                      <span
-                        role="button"
-                        aria-label="Drag to reorder"
-                        title="Drag to reorder"
-                        onPointerDown={(e) => onHandlePointerDown(e, sym)}
-                        onPointerMove={(e) => {
-                          if (draggingSym === sym) {
-                            e.preventDefault();
-                            const t = findSymAtY(e.clientY);
-                            if (t) reorderTo(sym, t);
-                          }
+                      {reorderModeSym && reorderModeSym !== sym ? (
+                        <span
+                          aria-hidden="true"
+                          style={{
+                            minWidth: 28,
+                            textAlign: "center",
+                            color: "#58a6ff",
+                            fontSize: 14,
+                            fontWeight: 700,
+                          }}
+                        >
+                          ⊕
+                        </span>
+                      ) : null}
+                      <button
+                        type="button"
+                        aria-label={reorderModeSym === sym ? "Cancel reorder" : "Reorder stock"}
+                        title={reorderModeSym === sym ? "Cancel reorder" : "Tap, then tap destination row"}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleReorderMode(sym);
                         }}
-                        onPointerUp={() => { if (draggingSym) setDraggingSym(null); }}
-                        onPointerCancel={() => { if (draggingSym) setDraggingSym(null); }}
-                        onClick={(e) => e.stopPropagation()}
                         style={{
                           background: "#161b22", border: "1px solid #30363d", color: "#8b949e",
-                          cursor: "grab", padding: "6px 10px", fontSize: 14, lineHeight: 1,
+                          cursor: "pointer", padding: "6px 10px", fontSize: 14, lineHeight: 1,
                           borderRadius: 4, userSelect: "none", WebkitUserSelect: "none",
                           WebkitTouchCallout: "none", WebkitTapHighlightColor: "transparent",
-                          touchAction: "none",
+                          touchAction: "manipulation",
                         }}
-                      >⋮⋮</span>
+                      >{reorderModeSym === sym ? "✕" : "⋮⋮"}</button>
                     </div>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginTop: 1, fontSize: 9 }}>
