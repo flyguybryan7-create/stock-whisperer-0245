@@ -508,7 +508,7 @@ export default function TradingPlatform() {
     refetchInterval: 5 * 60_000,
     enabled: !!selectedStock,
   });
-  const newsItems: NewsItem[] = newsData?.items ?? [];
+  const newsItems: NewsItem[] = (newsData?.items ?? []).filter((n) => n.scope === "company");
   const sector = newsData?.sector ?? null;
 
   // Intraday 1m bars for day-trade signal — refresh every 15s
