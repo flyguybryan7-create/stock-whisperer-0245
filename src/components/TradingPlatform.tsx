@@ -1024,7 +1024,7 @@ export default function TradingPlatform() {
                   <span>
                     <span style={{ color: a.type === "above" ? "#39d353" : "#f85149" }}>{a.type === "above" ? "▲" : "▼"}</span>
                     {" "}{selectedStock} {a.type} <span style={{ fontWeight: 600 }}>${a.price}</span>
-                    {a.phone && <span style={{ color: "#8b949e" }}> → 📱 {a.phone}</span>}
+                    <span style={{ color: "#8b949e" }}> → 🔔 push</span>
                   </span>
                   <button onClick={() => setAlerts(prev => ({ ...prev, [selectedStock]: prev[selectedStock].filter((_, j) => j !== i) }))}
                     style={{ background: "transparent", border: "none", color: "#f85149", cursor: "pointer", fontSize: 14 }}>✕</button>
@@ -1071,10 +1071,8 @@ export default function TradingPlatform() {
                 style={{ width: "100%", background: "#010409", border: "1px solid #21262d", borderRadius: 6, padding: "8px 10px", color: "#e6edf3", fontSize: 12, outline: "none", fontFamily: mono }} />
             </div>
 
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1, marginBottom: 6 }}>PHONE NUMBER (for SMS)</div>
-              <input value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} placeholder="+1 (555) 000-0000"
-                style={{ width: "100%", background: "#010409", border: "1px solid #21262d", borderRadius: 6, padding: "8px 10px", color: "#e6edf3", fontSize: 12, outline: "none", fontFamily: mono }} />
+            <div style={{ marginBottom: 16, fontSize: 10, color: "#8b949e" }}>
+              Alerts deliver via 🔔 push notifications on subscribed devices. SMS/text alerts have been removed.
             </div>
 
             <div style={{ display: "flex", gap: 8 }}>
