@@ -710,155 +710,77 @@ export default function TradingPlatform() {
 
         {/* Main */}
         <div style={{ padding: "8px 12px", overflowY: "auto", maxHeight: "calc(100vh - 49px)" }}>
-          {/* Stock header */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
-            <div>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-                <span style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 18, color: "#e6edf3" }}>{selectedStock}</span>
-                {(() => {
-                  const headPrice = liveSel?.price ?? last.close;
-                  if (headPrice == null) {
-                    return <span style={{ fontSize: 16, fontWeight: 600, color: "#8b949e" }}>Loading…</span>;
-                  }
-                  return (
+          {/* Stock header — ultra-tight single row */}
+          {(() => {
+            const headPrice = liveSel?.price ?? last.close;
+            const pink = "#ff4fa3";
+            const dt = dayTrade.signal;
+            const dtBg = dt === "BUY" ? "rgba(255,79,163,0.18)" : dt === "SELL" ? "rgba(255,79,163,0.10)" : "rgba(255,79,163,0.05)";
+            const sess = liveSel?.session;
+            const sessLabel = sess === "PRE" ? "PRE" : sess === "POST" ? "AH" : sess === "REGULAR" ? "LIVE" : sess ? "CLSD" : null;
+            const sessColor = sess === "REGULAR" ? "#39d353" : sess === "PRE" ? "#58a6ff" : sess === "POST" ? "#d2a8ff" : "#8b949e";
+            const si = shorts[selectedStock];
+            const pct = si?.shortPercentOfFloat;
+            const siColor = si?.risk === "EXTREME" ? "#f85149" : si?.risk === "HIGH" ? "#ff7b29" : si?.risk === "MODERATE" ? "#e3b341" : si?.risk === "LOW" ? "#39d353" : "#8b949e";
+            const fmtM = (n: number | null | undefined) => n == null ? "—" : n >= 1e9 ? (n / 1e9).toFixed(2) + "B" : n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n.toLocaleString();
+            return (
+              <>
+                <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, marginBottom: 4 }}>
+                  <span style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 18, color: "#e6edf3", lineHeight: 1 }}>{selectedStock}</span>
+                  {headPrice != null ? (
                     <>
-                      <span style={{ fontSize: 20, fontWeight: 700, color: "#e6edf3" }}>${headPrice.toFixed(2)}</span>
-                      <span style={{ fontSize: 11, fontWeight: 600, color: change >= 0 ? "#39d353" : "#f85149" }}>
-                        {change >= 0 ? "▲" : "▼"} {changePct >= 0 ? "+" : ""}{changePct.toFixed(2)}%
+                      <span style={{ fontSize: 18, fontWeight: 700, color: "#e6edf3", lineHeight: 1 }}>${headPrice.toFixed(2)}</span>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: change >= 0 ? "#39d353" : "#f85149", lineHeight: 1 }}>
+                        {change >= 0 ? "▲" : "▼"}{changePct >= 0 ? "+" : ""}{changePct.toFixed(2)}%
                       </span>
                     </>
-                  );
-                })()}
-                {liveSel && (() => {
-                  const s = liveSel.session;
-                  const label = s === "PRE" ? "PRE-MARKET" : s === "POST" ? "AFTER-HOURS" : s === "REGULAR" ? "LIVE" : "CLOSED";
-                  const color = s === "REGULAR" ? "#39d353" : s === "PRE" ? "#58a6ff" : s === "POST" ? "#d2a8ff" : "#8b949e";
-                  return (
-                    <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px" }}>
-                      ● {label}
-                    </span>
-                  );
-                })()}
-              </div>
-              {liveSel && (liveSel.preMarketPrice || liveSel.postMarketPrice) && (
-                <div style={{ display: "flex", gap: 12, marginTop: 6, fontSize: 10, color: "#8b949e" }}>
-                  {typeof liveSel.regularPrice === "number" && (
-                    <span>Reg <span style={{ color: "#e6edf3" }}>${liveSel.regularPrice.toFixed(2)}</span></span>
+                  ) : <span style={{ fontSize: 13, color: "#8b949e" }}>…</span>}
+                  {sessLabel && (
+                    <span style={{ fontSize: 8, fontWeight: 700, color: sessColor, border: `1px solid ${sessColor}`, borderRadius: 3, padding: "1px 4px", lineHeight: 1 }}>● {sessLabel}</span>
                   )}
-                  {typeof liveSel.preMarketPrice === "number" && (
-                    <span>Pre <span style={{ color: (liveSel.preMarketChangePercent ?? 0) >= 0 ? "#39d353" : "#f85149" }}>${liveSel.preMarketPrice.toFixed(2)} ({(liveSel.preMarketChangePercent ?? 0) >= 0 ? "+" : ""}{(liveSel.preMarketChangePercent ?? 0).toFixed(2)}%)</span></span>
+                  <span style={{ flex: 1 }} />
+                  <span style={{ background: signalBg, border: `1px solid ${signalColor}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 800, color: signalColor, lineHeight: 1 }} title="AI signal (daily charts)">
+                    AI {signal}
+                  </span>
+                  <span
+                    title={`Day-trade signal (1-min): ${dayTrade.reason}\nRSI7 ${dayTrade.rsi ?? "—"} · VWAP ${dayTrade.vwap ?? "—"} · EMA9/21 ${dayTrade.emaFast ?? "—"}/${dayTrade.emaSlow ?? "—"}`}
+                    style={{ background: dtBg, border: `1.5px solid ${pink}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 900, color: pink, lineHeight: 1, boxShadow: dt !== "HOLD" ? `0 0 8px ${pink}55` : "none" }}>
+                    ⚡ {dt}
+                  </span>
+                  <button
+                    onClick={togglePush}
+                    disabled={pushBusy || pushPerm === "unsupported"}
+                    title={pushPerm === "unsupported" ? "Push not supported here. Publish + add to home screen on iPhone." : pushPerm === "granted" ? "Tap to disable push" : "Tap to enable push"}
+                    style={{ background: pushPerm === "granted" ? "#1f3d2a" : "#0d1117", border: `1px solid ${pushPerm === "granted" ? "#39d353" : "#21262d"}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, cursor: pushBusy || pushPerm === "unsupported" ? "not-allowed" : "pointer", color: pushPerm === "granted" ? "#39d353" : "#8b949e", fontFamily: "inherit", lineHeight: 1, opacity: pushBusy ? 0.6 : 1 }}>
+                    {pushPerm === "granted" ? "🔔 ON" : pushPerm === "denied" ? "🔕 BLK" : pushPerm === "unsupported" ? "🔕 N/A" : "🔕 OFF"}
+                  </button>
+                  {pushPerm === "granted" && (
+                    <button onClick={sendTest} title="Send test push" style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 4, padding: "3px 6px", fontSize: 11, cursor: "pointer", color: "#8b949e", lineHeight: 1 }}>📨</button>
                   )}
-                  {typeof liveSel.postMarketPrice === "number" && (
-                    <span>After <span style={{ color: (liveSel.postMarketChangePercent ?? 0) >= 0 ? "#39d353" : "#f85149" }}>${liveSel.postMarketPrice.toFixed(2)} ({(liveSel.postMarketChangePercent ?? 0) >= 0 ? "+" : ""}{(liveSel.postMarketChangePercent ?? 0).toFixed(2)}%)</span></span>
+                  <SchwabConnectButton />
+                </div>
+                {/* Mini stat strip */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 6, fontSize: 10, color: "#8b949e", lineHeight: 1.2 }}>
+                  <span>RSI <span style={{ color: (last.rsi ?? 50) < 30 ? "#39d353" : (last.rsi ?? 50) > 70 ? "#f85149" : "#e6edf3", fontWeight: 700 }}>{last.rsi?.toFixed(1) ?? "—"}</span></span>
+                  <span>MACD <span style={{ color: (last.macdHist ?? 0) > 0 ? "#39d353" : "#f85149", fontWeight: 700 }}>{last.macdHist?.toFixed(3) ?? "—"}</span></span>
+                  <span>SMA9 <span style={{ color: "#79c0ff", fontWeight: 700 }}>${last.sma9?.toFixed(2) ?? "—"}</span></span>
+                  <span
+                    title={si ? `Short interest from FINRA semi-monthly report\nFloat: ${fmtM(si.floatShares)}\nShares short: ${fmtM(si.sharesShort)}\nShort % of float: ${pct?.toFixed(2) ?? "—"}%\nDays to cover: ${si.shortRatio?.toFixed(1) ?? "—"}\nRisk: ${si.risk}\nSource: FINRA via Yahoo Finance` : "Short interest data sourced from FINRA semi-monthly report (unavailable)"}
+                    style={{ cursor: "help" }}>
+                    SHORT/FLOAT <span style={{ color: siColor, fontWeight: 800 }}>{pct != null ? `${pct.toFixed(1)}%` : "—"}</span>
+                    {si?.risk && si.risk !== "UNKNOWN" && <span style={{ color: siColor, fontSize: 8, marginLeft: 3 }}>{si.risk}</span>}
+                    <span style={{ color: "#484f58", fontSize: 8, marginLeft: 4 }}>FINRA</span>
+                  </span>
+                  {liveSel?.preMarketPrice != null && (
+                    <span>Pre <span style={{ color: (liveSel.preMarketChangePercent ?? 0) >= 0 ? "#39d353" : "#f85149" }}>${liveSel.preMarketPrice.toFixed(2)}</span></span>
+                  )}
+                  {liveSel?.postMarketPrice != null && (
+                    <span>AH <span style={{ color: (liveSel.postMarketChangePercent ?? 0) >= 0 ? "#39d353" : "#f85149" }}>${liveSel.postMarketPrice.toFixed(2)}</span></span>
                   )}
                 </div>
-              )}
-            </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <SchwabConnectButton />
-              <button
-                onClick={togglePush}
-                disabled={pushBusy || pushPerm === "unsupported"}
-                title={
-                  pushPerm === "unsupported"
-                    ? "Push not supported on this browser"
-                    : pushPerm === "granted"
-                      ? "Tap to disable BUY/SELL push notifications on this device"
-                      : "Tap to enable BUY/SELL push notifications"
-                }
-                style={{
-                  background: pushPerm === "granted" ? "#1f3d2a" : "#0d1117",
-                  border: `1px solid ${pushPerm === "granted" ? "#39d353" : "#21262d"}`,
-                  borderRadius: 6,
-                  padding: "6px 10px",
-                  minWidth: 90,
-                  cursor: pushBusy || pushPerm === "unsupported" ? "not-allowed" : "pointer",
-                  color: pushPerm === "granted" ? "#39d353" : "#8b949e",
-                  fontFamily: "inherit",
-                  opacity: pushBusy ? 0.6 : 1,
-                }}
-              >
-                <div style={{ fontSize: 9, letterSpacing: 1 }}>PUSH ALERTS</div>
-                <div style={{ fontSize: 13, fontWeight: 800 }}>
-                  {pushPerm === "granted" ? "🔔 ON" : pushPerm === "denied" ? "BLOCKED" : pushPerm === "unsupported" ? "N/A" : "OFF"}
-                </div>
-              </button>
-              {pushPerm === "granted" && (
-                <button
-                  onClick={sendTest}
-                  title="Send a test notification to all subscribed devices"
-                  style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 6, padding: "6px 10px", cursor: "pointer", color: "#8b949e", fontFamily: "inherit" }}
-                >
-                  <div style={{ fontSize: 9, letterSpacing: 1 }}>TEST</div>
-                  <div style={{ fontSize: 13, fontWeight: 800 }}>📨</div>
-                </button>
-              )}
-              <div style={{ background: signalBg, border: `1px solid ${signalColor}`, borderRadius: 6, padding: "6px 12px", minWidth: 80 }}>
-                <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1 }}>AI SIGNAL</div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: signalColor }}>{signal}</div>
-              </div>
-              {(() => {
-                const pink = "#ff4fa3";
-                const dt = dayTrade.signal;
-                const bg = dt === "BUY" ? "rgba(255,79,163,0.18)" : dt === "SELL" ? "rgba(255,79,163,0.10)" : "rgba(255,79,163,0.05)";
-                return (
-                  <div
-                    title={`${dayTrade.reason}\nRSI7: ${dayTrade.rsi ?? "—"} · VWAP: ${dayTrade.vwap ?? "—"} · EMA9/21: ${dayTrade.emaFast ?? "—"}/${dayTrade.emaSlow ?? "—"}`}
-                    style={{ background: bg, border: `1.5px solid ${pink}`, borderRadius: 6, padding: "6px 12px", minWidth: 110, boxShadow: dt !== "HOLD" ? `0 0 12px ${pink}55` : "none" }}
-                  >
-                    <div style={{ fontSize: 9, color: pink, letterSpacing: 1, fontWeight: 700 }}>⚡ DAY TRADE</div>
-                    <div style={{ fontSize: 16, fontWeight: 900, color: pink }}>{dt}</div>
-                    <div style={{ fontSize: 8, color: "#d8a5c2", marginTop: 1, lineHeight: 1.2, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {dayTrade.reason}
-                    </div>
-                  </div>
-                );
-              })()}
-              <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 6, padding: "6px 12px", minWidth: 70 }}>
-                <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1 }}>RSI</div>
-                <div style={{ fontSize: 16, color: (last.rsi ?? 50) < 30 ? "#39d353" : (last.rsi ?? 50) > 70 ? "#f85149" : "#e6edf3", fontWeight: 600 }}>{last.rsi?.toFixed(1)}</div>
-              </div>
-              {(() => {
-                const si = shorts[selectedStock];
-                const pct = si?.shortPercentOfFloat;
-                const color =
-                  si?.risk === "EXTREME" ? "#f85149"
-                  : si?.risk === "HIGH" ? "#ff7b29"
-                  : si?.risk === "MODERATE" ? "#e3b341"
-                  : si?.risk === "LOW" ? "#39d353"
-                  : "#8b949e";
-                const fmtM = (n: number | null | undefined) =>
-                  n == null ? "—" : n >= 1e9 ? (n / 1e9).toFixed(2) + "B" : n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n.toLocaleString();
-                return (
-                  <div
-                    title={
-                      si
-                        ? `Float: ${fmtM(si.floatShares)}\nShares short: ${fmtM(si.sharesShort)}\nShort % of float: ${pct?.toFixed(2) ?? "—"}%\nDays to cover: ${si.shortRatio?.toFixed(1) ?? "—"}\nRisk: ${si.risk}`
-                        : "Short interest unavailable"
-                    }
-                    style={{ background: "#0d1117", border: `1px solid ${color}`, borderRadius: 6, padding: "6px 12px", minWidth: 96 }}
-                  >
-                    <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1 }}>SHORT / FLOAT</div>
-                    <div style={{ fontSize: 14, fontWeight: 800, color }}>
-                      {pct != null ? `${pct.toFixed(1)}%` : "—"}
-                      <span style={{ fontSize: 8, marginLeft: 6, letterSpacing: 1 }}>{si?.risk ?? ""}</span>
-                    </div>
-                    <div style={{ fontSize: 8, color: "#8b949e", marginTop: 1 }}>
-                      Float {fmtM(si?.floatShares)}{si?.shortRatio ? ` · ${si.shortRatio.toFixed(1)}d cover` : ""}
-                    </div>
-                  </div>
-                );
-              })()}
-              <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 6, padding: "6px 12px", minWidth: 80 }}>
-                <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1 }}>MACD</div>
-                <div style={{ fontSize: 16, color: (last.macdHist ?? 0) > 0 ? "#39d353" : "#f85149", fontWeight: 600 }}>{last.macdHist?.toFixed(3)}</div>
-              </div>
-              <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 6, padding: "6px 12px", minWidth: 80 }}>
-                <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1 }}>SMA9</div>
-                <div style={{ fontSize: 16, color: "#79c0ff", fontWeight: 600 }}>${last.sma9?.toFixed(2)}</div>
-              </div>
-            </div>
-          </div>
+              </>
+            );
+          })()}
 
           {/* Range */}
           <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
