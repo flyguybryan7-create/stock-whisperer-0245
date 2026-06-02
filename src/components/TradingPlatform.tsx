@@ -521,6 +521,20 @@ export default function TradingPlatform() {
     });
   };
 
+  // Touch-friendly reorder (mobile): tap ↑ / ↓ to move a symbol up or down.
+  // HTML5 drag events don't fire on iOS Safari, so buttons are the reliable path.
+  const moveSym = (sym: string, dir: -1 | 1) => {
+    setWatchlist((prev) => {
+      const idx = prev.indexOf(sym);
+      if (idx < 0) return prev;
+      const target = idx + dir;
+      if (target < 0 || target >= prev.length) return prev;
+      const next = prev.slice();
+      [next[idx], next[target]] = [next[target], next[idx]];
+      return next;
+    });
+  };
+
   const showNotif = (msg: string) => {
     setNotification({ msg });
     setTimeout(() => setNotification(null), 3000);
