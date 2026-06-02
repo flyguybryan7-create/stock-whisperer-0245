@@ -727,8 +727,8 @@ export default function TradingPlatform() {
             const dt = dayTrade.signal;
             const dtBg = dt === "BUY" ? "rgba(255,79,163,0.18)" : dt === "SELL" ? "rgba(255,79,163,0.10)" : "rgba(255,79,163,0.05)";
             const sess = liveSel?.session;
-            const sessLabel = sess === "PRE" ? "PRE" : sess === "POST" ? "AH" : sess === "REGULAR" ? "LIVE" : sess ? "CLSD" : null;
-            const sessColor = sess === "REGULAR" ? "#39d353" : sess === "PRE" ? "#58a6ff" : sess === "POST" ? "#d2a8ff" : "#8b949e";
+            const sessLabel = sess === "PRE" ? "PRE" : sess === "POST" ? "AH" : sess === "REGULAR" ? "LIVE" : sess === "OVERNIGHT" ? "24H" : sess ? "CLSD" : null;
+            const sessColor = sess === "REGULAR" ? "#39d353" : sess === "PRE" ? "#58a6ff" : sess === "POST" ? "#d2a8ff" : sess === "OVERNIGHT" ? "#ff9b3d" : "#8b949e";
             const si = shorts[selectedStock];
             const pct = si?.shortPercentOfFloat;
             const siColor = si?.risk === "EXTREME" ? "#f85149" : si?.risk === "HIGH" ? "#ff7b29" : si?.risk === "MODERATE" ? "#e3b341" : si?.risk === "LOW" ? "#39d353" : "#8b949e";
@@ -793,6 +793,9 @@ export default function TradingPlatform() {
                   )}
                   {liveSel?.postMarketPrice != null && (
                     <span>AH <span style={{ color: (liveSel.postMarketChangePercent ?? 0) >= 0 ? "#39d353" : "#f85149" }}>${liveSel.postMarketPrice.toFixed(2)}</span></span>
+                  )}
+                  {liveSel?.overnightPrice != null && (
+                    <span>24H <span style={{ color: (liveSel.overnightChangePercent ?? 0) >= 0 ? "#39d353" : "#f85149" }}>${liveSel.overnightPrice.toFixed(2)}</span></span>
                   )}
                 </div>
               </>

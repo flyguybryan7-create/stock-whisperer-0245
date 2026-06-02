@@ -125,7 +125,7 @@ export type LiveQuote = {
   changePercent: number;
   previousClose: number;
   marketState?: string;
-  session: "PRE" | "REGULAR" | "POST" | "CLOSED";
+  session: "PRE" | "REGULAR" | "POST" | "OVERNIGHT" | "CLOSED";
   regularPrice?: number;
   preMarketPrice?: number;
   preMarketChange?: number;
@@ -133,6 +133,10 @@ export type LiveQuote = {
   postMarketPrice?: number;
   postMarketChange?: number;
   postMarketChangePercent?: number;
+  overnightPrice?: number;
+  overnightChange?: number;
+  overnightChangePercent?: number;
+  lastTickTime?: number;
 };
 
 // ============ Intraday 1-minute candles for day-trade signals ============
@@ -151,7 +155,7 @@ export const getIntraday = createServerFn({ method: "POST" })
     interval: input.interval === "2m" || input.interval === "5m" ? input.interval : "1m",
   }))
   .handler(async ({ data }): Promise<IntradayBar[]> => {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(data.symbol)}?interval=${data.interval}&range=1d&includePrePost=true`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(data.symbol)}?interval=${data.interval}&range=2d&includePrePost=true`;
     try {
       const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; BryanTrade/1.0)" } });
       if (!res.ok) return [];
@@ -203,7 +207,8 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
     await Promise.all(
       data.symbols.map(async (sym) => {
         try {
-          const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1m&range=1d&includePrePost=true`;
+          // Use range=2d so the response spans overnight (post-close 8pm ET through next-day pre-market 4am ET).
+          const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1m&range=2d&includePrePost=true`;
           const res = await fetch(url, {
             headers: { "User-Agent": "Mozilla/5.0 (compatible; BryanTrade/1.0)" },
           });
@@ -258,7 +263,9 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
           const lastPrice = closes[lastIdx]!;
           const lastTs = ts[lastIdx];
           const periods = meta.currentTradingPeriod ?? {};
-          // Determine session from timestamp vs period windows
+          // Determine session from timestamp vs period windows.
+          // Yahoo period windows: pre 4:00-9:30 ET, regular 9:30-16:00 ET, post 16:00-20:00 ET.
+          // 20:00 ET -> next-day 04:00 ET is the OVERNIGHT (24H) window.
           let session: LiveQuote["session"] = "CLOSED";
           let marketState = "CLOSED";
           if (periods.regular && lastTs >= periods.regular.start && lastTs < periods.regular.end) {
@@ -268,8 +275,11 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
           } else if (periods.post && lastTs >= periods.post.start && lastTs < periods.post.end) {
             session = "POST"; marketState = "POST";
           } else if (periods.post && lastTs >= periods.post.end) {
-            // After 8pm ET extended close — show most recent print as after-hours close
-            session = "POST"; marketState = "POSTPOST";
+            // After 8pm ET — overnight 24-hour trading window
+            session = "OVERNIGHT"; marketState = "OVERNIGHT";
+          } else if (periods.pre && lastTs < periods.pre.start) {
+            // Before next-day 4am ET (carry-over overnight session)
+            session = "OVERNIGHT"; marketState = "OVERNIGHT";
           }
           // Build pre/post derived prices: take the last tick within each window
           const pickLastInWindow = (start?: number, end?: number) => {
@@ -282,6 +292,16 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
           const preLast = pickLastInWindow(periods.pre?.start, periods.pre?.end);
           const postLast = pickLastInWindow(periods.post?.start, periods.post?.end);
           const reg = regularPrice ?? pickLastInWindow(periods.regular?.start, periods.regular?.end);
+          // Overnight: any tick strictly after post.end OR strictly before pre.start (carry-over)
+          let overnightLast: number | undefined;
+          if (periods.post?.end) {
+            for (let i = closes.length - 1; i >= 0; i--) {
+              if (closes[i] != null && ts[i] >= periods.post.end && (!periods.pre || ts[i] < periods.pre.start)) {
+                overnightLast = closes[i]!;
+                break;
+              }
+            }
+          }
           const change = lastPrice - prevClose;
           out[sym] = {
             symbol: sym,
@@ -298,6 +318,10 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
             postMarketPrice: postLast,
             postMarketChange: postLast != null && reg != null ? postLast - reg : undefined,
             postMarketChangePercent: postLast != null && reg != null ? ((postLast - reg) / reg) * 100 : undefined,
+            overnightPrice: overnightLast,
+            overnightChange: overnightLast != null ? overnightLast - prevClose : undefined,
+            overnightChangePercent: overnightLast != null ? ((overnightLast - prevClose) / prevClose) * 100 : undefined,
+            lastTickTime: lastTs,
           };
         } catch {
           /* skip */
