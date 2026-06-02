@@ -590,21 +590,6 @@ export default function TradingPlatform() {
     });
   };
 
-  const nudgeSym = (sym: string, dir: -1 | 1) => {
-    setWatchlist((prev) => {
-      const idx = prev.indexOf(sym);
-      if (idx < 0) return prev;
-      const targetIdx = idx + dir;
-      if (targetIdx < 0 || targetIdx >= prev.length) return prev;
-      const target = prev[targetIdx];
-      if (!target) return prev;
-      const next = prev.slice();
-      next.splice(idx, 1);
-      next.splice(targetIdx, 0, sym);
-      return next;
-    });
-  };
-
   const toggleReorderMode = (sym: string) => {
     setReorderModeSym((prev) => prev === sym ? null : sym);
     if (typeof navigator !== "undefined" && "vibrate" in navigator) {
