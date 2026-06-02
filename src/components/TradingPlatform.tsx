@@ -18,6 +18,9 @@ import {
 } from "@/lib/push-client";
 import { getSchwabAuthUrl } from "@/lib/schwab.functions";
 import { getShortInterest, type ShortInterest } from "@/lib/shortinterest.functions";
+import { useAuthUser } from "@/hooks/useAuthUser";
+import { useSubscription } from "@/hooks/useSubscription";
+import { Link } from "@tanstack/react-router";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ReferenceLine, AreaChart, Area, ComposedChart, Bar, BarChart, Cell,
@@ -236,6 +239,9 @@ type Alert = { price: number; type: "above" | "below"; active: boolean };
 
 export default function TradingPlatform() {
   const [watchlist, setWatchlist] = useState<string[]>(DEFAULT_STOCKS);
+  const { user } = useAuthUser();
+  const { tier } = useSubscription(user?.id);
+  const isPro = tier === "pro";
   const [stockNames, setStockNames] = useState<Record<string, string>>(STOCK_NAMES);
   const [selectedStock, setSelectedStock] = useState("MRVL");
   const [search, setSearch] = useState("");
@@ -583,6 +589,10 @@ export default function TradingPlatform() {
             style={{ background: "#21262d", border: "1px solid #30363d", color: "#e6edf3", padding: "6px 12px", borderRadius: 6, fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
             🔔 Set Alert
           </button>
+          <Link to="/pricing"
+            style={{ background: isPro ? "#1f3d2a" : "#21262d", border: `1px solid ${isPro ? "#39d353" : "#30363d"}`, color: isPro ? "#39d353" : "#e6edf3", padding: "6px 12px", borderRadius: 6, fontSize: 11, textDecoration: "none", display: "flex", alignItems: "center", gap: 6 }}>
+            {tier === "pro" ? "✓ PRO" : tier === "basic" ? "✓ BASIC" : "💳 Upgrade"}
+          </Link>
         </div>
       </div>
 
@@ -742,11 +752,18 @@ export default function TradingPlatform() {
                   <span style={{ background: signalBg, border: `1px solid ${signalColor}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 800, color: signalColor, lineHeight: 1 }} title="AI signal (daily charts)">
                     AI {signal}
                   </span>
-                  <span
-                    title={`Day-trade signal (1-min): ${dayTrade.reason}\nRSI7 ${dayTrade.rsi ?? "—"} · VWAP ${dayTrade.vwap ?? "—"} · EMA9/21 ${dayTrade.emaFast ?? "—"}/${dayTrade.emaSlow ?? "—"}`}
-                    style={{ background: dtBg, border: `1.5px solid ${pink}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 900, color: pink, lineHeight: 1, boxShadow: dt !== "HOLD" ? `0 0 8px ${pink}55` : "none" }}>
-                    ⚡ {dt}
-                  </span>
+                  {isPro ? (
+                    <span
+                      title={`Day-trade signal (1-min): ${dayTrade.reason}\nRSI7 ${dayTrade.rsi ?? "—"} · VWAP ${dayTrade.vwap ?? "—"} · EMA9/21 ${dayTrade.emaFast ?? "—"}/${dayTrade.emaSlow ?? "—"}`}
+                      style={{ background: dtBg, border: `1.5px solid ${pink}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 900, color: pink, lineHeight: 1, boxShadow: dt !== "HOLD" ? `0 0 8px ${pink}55` : "none" }}>
+                      ⚡ {dt}
+                    </span>
+                  ) : (
+                    <Link to="/pricing" title="Day-trade signals are a Pro feature"
+                      style={{ background: "rgba(255,79,163,0.05)", border: `1.5px dashed ${pink}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 900, color: pink, lineHeight: 1, textDecoration: "none" }}>
+                      ⚡ PRO
+                    </Link>
+                  )}
                   <button
                     onClick={togglePush}
                     disabled={pushBusy || pushPerm === "unsupported"}
