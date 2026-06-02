@@ -769,12 +769,21 @@ export default function TradingPlatform() {
                 : "#484f58";
               return (
                 <div key={sym} className="stock-row" onClick={() => setSelectedStock(sym)}
-                  draggable
-                  onDragStart={() => onDragStart(sym)}
-                  onDragOver={onDragOver}
-                  onDrop={() => onDrop(sym)}
-                  title="Drag to reorder"
-                  style={{ padding: "4px 5px", borderBottom: "1px solid #161b22", background: selectedStock === sym ? "#161b22" : "transparent", borderLeft: selectedStock === sym ? "2px solid #58a6ff" : "2px solid transparent" }}>
+                  data-stock-row={sym}
+                  onPointerDown={(e) => onRowPointerDown(e, sym)}
+                  onPointerMove={(e) => onRowPointerMove(e, sym)}
+                  onPointerUp={(e) => onRowPointerEnd(e, sym)}
+                  onPointerCancel={(e) => onRowPointerEnd(e, sym)}
+                  title="Hold to drag, or use the ⋮⋮ handle"
+                  style={{
+                    padding: "4px 5px",
+                    borderBottom: "1px solid #161b22",
+                    background: draggingSym === sym ? "#1f6feb33" : selectedStock === sym ? "#161b22" : "transparent",
+                    borderLeft: selectedStock === sym ? "2px solid #58a6ff" : "2px solid transparent",
+                    touchAction: draggingSym === sym ? "none" : "pan-y",
+                    opacity: draggingSym && draggingSym !== sym ? 0.7 : 1,
+                    transition: "background 120ms",
+                  }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div style={{ fontWeight: 600, fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
                       <button
@@ -782,21 +791,32 @@ export default function TradingPlatform() {
                         title="Remove"
                         style={{ background: "transparent", border: "none", color: "#6e7681", cursor: "pointer", fontSize: 11, padding: 0, lineHeight: 1, width: 12 }}
                       >✕</button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); moveSym(sym, -1); }}
-                        title="Move up"
-                        style={{ background: "#161b22", border: "1px solid #30363d", color: "#8b949e", cursor: "pointer", padding: "1px 3px", fontSize: 9, lineHeight: 1, borderRadius: 3 }}
-                      >▲</button>
                       {sym}
                       <span style={{ fontSize: 9, color: sigC, fontWeight: 800 }}>{sig}</span>
                       {hasAlert && <span style={{ fontSize: 8 }}>🔔</span>}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); moveSym(sym, 1); }}
-                        title="Move down"
-                        style={{ background: "#161b22", border: "1px solid #30363d", color: "#8b949e", cursor: "pointer", padding: "1px 3px", fontSize: 9, lineHeight: 1, borderRadius: 3 }}
-                      >▼</button>
+                      <span
+                        role="button"
+                        aria-label="Drag to reorder"
+                        title="Drag to reorder"
+                        onPointerDown={(e) => onHandlePointerDown(e, sym)}
+                        onPointerMove={(e) => {
+                          if (draggingSym === sym) {
+                            e.preventDefault();
+                            const t = findSymAtY(e.clientY);
+                            if (t) reorderTo(sym, t);
+                          }
+                        }}
+                        onPointerUp={() => { if (draggingSym) setDraggingSym(null); }}
+                        onPointerCancel={() => { if (draggingSym) setDraggingSym(null); }}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                          background: "#161b22", border: "1px solid #30363d", color: "#8b949e",
+                          cursor: "grab", padding: "2px 5px", fontSize: 11, lineHeight: 1,
+                          borderRadius: 3, userSelect: "none", touchAction: "none",
+                        }}
+                      >⋮⋮</span>
                     </div>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginTop: 1, fontSize: 9 }}>
