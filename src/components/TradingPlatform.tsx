@@ -585,8 +585,20 @@ export default function TradingPlatform() {
     }
   }
 
-  const chartData = allData[selectedStock] || [];
-  const displayData = chartData.slice(-chartRange);
+  const dailyChartData = allData[selectedStock] || [];
+  // Convert intraday bars -> Row[] (same shape) so we can reuse buildChartData/charts.
+  const intradayRows: Row[] = useMemo(() => {
+    const bars = (intradayChartData ?? []) as IntradayBar[];
+    if (!bars.length) return [];
+    const rows: Row[] = bars.map((b) => ({
+      date: new Date(b.t * 1000).toLocaleString([], { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }),
+      close: b.close, open: b.open, high: b.high, low: b.low, volume: b.volume,
+    }));
+    return buildChartData(rows);
+  }, [intradayChartData]);
+
+  const chartData = chartMode === "D" ? dailyChartData : intradayRows;
+  const displayData = chartMode === "D" ? chartData.slice(-chartRange) : chartData;
   const last = chartData[chartData.length - 1] || ({} as Row);
   const prev = chartData[chartData.length - 2] || ({} as Row);
   const liveSel = live[selectedStock];
