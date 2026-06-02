@@ -20,6 +20,7 @@ import { getSchwabAuthUrl } from "@/lib/schwab.functions";
 import { getShortInterest, type ShortInterest } from "@/lib/shortinterest.functions";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { useSubscription } from "@/hooks/useSubscription";
+import { supabase } from "@/integrations/supabase/client";
 import { Link } from "@tanstack/react-router";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
