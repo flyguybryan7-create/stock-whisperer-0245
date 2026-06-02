@@ -1009,6 +1009,9 @@ export default function TradingPlatform() {
                     {si?.sharesOutstanding != null && (
                       <span title="Total shares outstanding">SHARES OUT <span style={{ color: "#e6edf3", fontWeight: 700 }}>{fmtM(si.sharesOutstanding)}</span></span>
                     )}
+                    {last.volume != null && last.volume > 0 && (
+                      <span title="Latest daily volume (shares traded)">VOL <span style={{ color: "#e6edf3", fontWeight: 700 }}>{fmtM(last.volume)}</span></span>
+                    )}
                   </span>
                   {(liveSel?.fiftyTwoWeekHigh != null || liveSel?.fiftyTwoWeekLow != null) && (
                     <span style={{ display: "flex", gap: 10, flexBasis: "100%" }}>
