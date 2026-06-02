@@ -652,42 +652,42 @@ export default function TradingPlatform() {
                   onDragOver={onDragOver}
                   onDrop={() => onDrop(sym)}
                   title="Drag to reorder"
-                  style={{ padding: "8px 12px", borderBottom: "1px solid #161b22", background: selectedStock === sym ? "#161b22" : "transparent", borderLeft: selectedStock === sym ? "2px solid #58a6ff" : "2px solid transparent" }}>
+                  style={{ padding: "4px 5px", borderBottom: "1px solid #161b22", background: selectedStock === sym ? "#161b22" : "transparent", borderLeft: selectedStock === sym ? "2px solid #58a6ff" : "2px solid transparent" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={{ fontWeight: 600, fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{ fontWeight: 600, fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); removeStock(sym); }}
+                        title="Remove"
+                        style={{ background: "transparent", border: "none", color: "#6e7681", cursor: "pointer", fontSize: 11, padding: 0, lineHeight: 1, width: 12 }}
+                      >✕</button>
                       <button
                         onClick={(e) => { e.stopPropagation(); moveSym(sym, -1); }}
                         title="Move up"
-                        style={{ background: "#161b22", border: "1px solid #30363d", color: "#8b949e", cursor: "pointer", padding: "2px 6px", fontSize: 11, lineHeight: 1, borderRadius: 3, marginRight: 6 }}
+                        style={{ background: "#161b22", border: "1px solid #30363d", color: "#8b949e", cursor: "pointer", padding: "1px 3px", fontSize: 9, lineHeight: 1, borderRadius: 3 }}
                       >▲</button>
                       {sym}
-                      <span style={{ fontSize: 10, color: sigC, fontWeight: 800, letterSpacing: 0.5 }}>{sig}</span>
-                      {hasAlert && <span style={{ fontSize: 9 }}>🔔</span>}
+                      <span style={{ fontSize: 9, color: sigC, fontWeight: 800 }}>{sig}</span>
+                      {hasAlert && <span style={{ fontSize: 8 }}>🔔</span>}
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                       <button
                         onClick={(e) => { e.stopPropagation(); moveSym(sym, 1); }}
                         title="Move down"
-                        style={{ background: "#161b22", border: "1px solid #30363d", color: "#8b949e", cursor: "pointer", padding: "2px 6px", fontSize: 11, lineHeight: 1, borderRadius: 3 }}
+                        style={{ background: "#161b22", border: "1px solid #30363d", color: "#8b949e", cursor: "pointer", padding: "1px 3px", fontSize: 9, lineHeight: 1, borderRadius: 3 }}
                       >▼</button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); removeStock(sym); }}
-                        title="Remove from watchlist"
-                        style={{ background: "transparent", border: "none", color: "#8b949e", cursor: "pointer", fontSize: 11, padding: 0, lineHeight: 1 }}
-                      >✕</button>
                     </div>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2, fontSize: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 1, fontSize: 9 }}>
                     <span style={{ color: "#8b949e" }}>
                       {livePrice != null ? `$${livePrice.toFixed(2)}` : <span style={{ opacity: 0.6 }}>Loading…</span>}
                     </span>
-                    <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
                       {siPct != null && (
                         <span
                           title={`Short interest: ${siPct.toFixed(1)}% of float · ${si?.risk}${si?.shortRatio ? ` · ${si.shortRatio.toFixed(1)}d to cover` : ""}`}
-                          style={{ fontSize: 8, fontWeight: 700, color: siColor, border: `1px solid ${siColor}`, borderRadius: 3, padding: "1px 4px", letterSpacing: 0.5 }}
+                          style={{ fontSize: 7, fontWeight: 700, color: siColor, border: `1px solid ${siColor}`, borderRadius: 2, padding: "0 3px" }}
                         >
-                          {si?.risk === "EXTREME" || si?.risk === "HIGH" ? "⚠ " : ""}S {siPct.toFixed(0)}%
+                          S{siPct.toFixed(0)}%
                         </span>
                       )}
                       {livePrice != null ? (
