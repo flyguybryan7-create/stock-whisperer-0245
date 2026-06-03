@@ -632,14 +632,14 @@ export default function TradingPlatform() {
   const intradayBars: IntradayBar[] = intradayData ?? [];
   const dayTrade = useMemo(() => getDayTradeSignal(intradayBars), [intradayBars]);
 
-  // Intraday bars for every watchlist symbol — refreshed every 30s so the
+  // Intraday bars for every watchlist symbol — refreshed every 3s so the
   // BUY/SELL/HOLD badges next to each ticker react to live MACD momentum.
   const { data: watchlistIntradayData } = useQuery({
     queryKey: ["intradayBatch", [...watchlist].sort().join(",")],
     queryFn: () => fetchIntradayBatch({ data: { symbols: watchlist, interval: "1m", range: "2d" } }),
-    refetchInterval: 30_000,
+    refetchInterval: 3_000,
     refetchIntervalInBackground: true,
-    staleTime: 15_000,
+    staleTime: 2_000,
     enabled: watchlist.length > 0,
   });
   const watchlistMacdSignals = useMemo(() => {
@@ -753,7 +753,7 @@ export default function TradingPlatform() {
   const change = liveSel ? liveSel.change : (last.close && prev.close ? last.close - prev.close : 0);
   const changePct = liveSel ? liveSel.changePercent : (prev.close ? (change / prev.close) * 100 : 0);
   const signal = liveMacdSignal.signal;
-  const signalFrameLabel = selectedLiveMacdRows.length >= 5 ? "MACD live · 30s refresh" : "MACD daily fallback";
+  const signalFrameLabel = selectedLiveMacdRows.length >= 5 ? "MACD live · 3s refresh" : "MACD daily fallback";
 
   // Watch every watchlist symbol; when its signal flips to BUY or SELL,
   // fire a web push to every subscribed device (5-min server-side cooldown).
