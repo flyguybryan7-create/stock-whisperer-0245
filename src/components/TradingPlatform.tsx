@@ -1002,6 +1002,7 @@ export default function TradingPlatform() {
               const lq = live[sym];
               const liveChg = lq ? lq.changePercent : chg;
               const livePrice = lq ? lq.price : l?.close;
+              const liveChgAbs = lq ? lq.change : (l && p ? l.close - p.close : 0);
               const si = shorts[sym];
               const siPct = si?.shortPercentOfFloat ?? null;
               const siColor =
@@ -1102,7 +1103,9 @@ export default function TradingPlatform() {
                         </span>
                       )}
                       {livePrice != null ? (
-                        <span style={{ color: liveChg >= 0 ? "#39d353" : "#f85149" }}>{liveChg >= 0 ? "+" : ""}{liveChg.toFixed(2)}%</span>
+                        <span style={{ color: liveChg >= 0 ? "#39d353" : "#f85149" }}>
+                          {liveChg >= 0 ? "+" : ""}${Math.abs(liveChgAbs).toFixed(2)} ({liveChg >= 0 ? "+" : ""}{liveChg.toFixed(2)}%)
+                        </span>
                       ) : (
                         <span style={{ color: "#484f58" }}>—</span>
                       )}
