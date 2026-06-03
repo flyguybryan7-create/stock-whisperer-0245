@@ -15,7 +15,7 @@ export const subscribeToPush = createServerFn({ method: "POST" })
     auth: string;
     userAgent?: string;
   }) => d)
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
     if (!data.endpoint || !data.p256dh || !data.auth) {
       throw new Error("missing subscription fields");
     }
@@ -27,6 +27,7 @@ export const subscribeToPush = createServerFn({ method: "POST" })
           p256dh: data.p256dh,
           auth: data.auth,
           user_agent: data.userAgent ?? null,
+          user_id: context.userId,
         },
         { onConflict: "endpoint" },
       );
@@ -37,16 +38,17 @@ export const subscribeToPush = createServerFn({ method: "POST" })
 export const unsubscribeFromPush = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: { endpoint: string }) => d)
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
     const { error } = await supabaseAdmin
       .from("push_subscriptions")
       .delete()
-      .eq("endpoint", data.endpoint);
+      .eq("endpoint", data.endpoint)
+      .eq("user_id", context.userId);
     if (error) throw new Error(error.message);
     return { ok: true };
   });
 
-async function broadcast(payload: {
+async function broadcast(userId: string, payload: {
   title: string;
   body: string;
   url?: string;
@@ -54,7 +56,8 @@ async function broadcast(payload: {
 }) {
   const { data: subs, error } = await supabaseAdmin
     .from("push_subscriptions")
-    .select("endpoint, p256dh, auth");
+    .select("endpoint, p256dh, auth")
+    .eq("user_id", userId);
   if (error) throw new Error(error.message);
   if (!subs || subs.length === 0) return { sent: 0, pruned: 0 };
 
@@ -85,13 +88,13 @@ export const sendAlert = createServerFn({ method: "POST" })
     price: number;
     reason?: string;
   }) => d)
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
     const symbol = String(data.symbol || "").toUpperCase().slice(0, 10);
     const signal = data.signal === "SELL" ? "SELL" : "BUY";
     const price = Number(data.price);
     if (!symbol || !Number.isFinite(price)) throw new Error("invalid input");
 
-    const key = `${symbol}:${signal}`;
+    const key = `${context.userId}:${symbol}:${signal}`;
     const now = Date.now();
     const prev = lastSent.get(key) ?? 0;
     if (now - prev < COOLDOWN_MS) {
@@ -99,7 +102,7 @@ export const sendAlert = createServerFn({ method: "POST" })
     }
     lastSent.set(key, now);
 
-    const result = await broadcast({
+    const result = await broadcast(context.userId, {
       title: `${signal} ${symbol} @ $${price.toFixed(2)}`,
       body: data.reason ? data.reason.slice(0, 140) : `Auto signal: ${signal} ${symbol}`,
       url: "/",
@@ -110,8 +113,8 @@ export const sendAlert = createServerFn({ method: "POST" })
 
 export const sendTestPush = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async () => {
-  const result = await broadcast({
+  .handler(async ({ context }) => {
+  const result = await broadcast(context.userId, {
     title: "BryanTrade test alert",
     body: "Push notifications are working 🎉",
     url: "/",
