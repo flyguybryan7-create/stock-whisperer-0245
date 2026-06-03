@@ -23,7 +23,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Link } from "@tanstack/react-router";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  ReferenceLine, AreaChart, Area, ComposedChart, Bar, BarChart, Cell,
+  ReferenceLine, AreaChart, Area, ComposedChart, Bar, BarChart, Cell, Scatter,
 } from "recharts";
 
 const DEFAULT_STOCKS = [
@@ -68,6 +68,9 @@ type Row = {
   sma9?: number | null; sma15?: number | null; sma50?: number | null; ema9?: number | null;
   rsi?: number | null; bbUpper?: number | null; bbMiddle?: number | null; bbLower?: number | null;
   macd?: number | null; macdSignal?: number | null; macdHist?: number | null;
+  macdAlert?: "BUY" | "SELL" | "HOLD";
+  macdBuyMark?: number | null;
+  macdSellMark?: number | null;
 };
 
 function calcSMA(data: Row[], period: number, key: "sma9"|"sma15"|"sma50") {
@@ -150,6 +153,51 @@ function getSignal(data: Row[], sentimentScore = 0): "BUY" | "SELL" | "HOLD" {
   if (bull > bear + 1) return "BUY";
   if (bear > bull + 1) return "SELL";
   return "HOLD";
+}
+
+// ============ MACD-only signal ============
+// Classic MACD rules:
+//   BUY  = MACD crosses above Signal (bullish crossover), confirmed by hist > 0
+//   SELL = MACD crosses below Signal (bearish crossover), confirmed by hist < 0
+//   HOLD = no crossover this bar
+// We also annotate each bar so we can plot markers on the MACD chart.
+export type MacdSignal = "BUY" | "SELL" | "HOLD";
+export function macdSignalForBar(curr: Row, prev: Row | undefined): MacdSignal {
+  if (!prev) return "HOLD";
+  const m = curr.macd ?? null, s = curr.macdSignal ?? null;
+  const pm = prev.macd ?? null, ps = prev.macdSignal ?? null;
+  if (m == null || s == null || pm == null || ps == null) return "HOLD";
+  const crossedUp = pm <= ps && m > s;
+  const crossedDown = pm >= ps && m < s;
+  if (crossedUp) return "BUY";
+  if (crossedDown) return "SELL";
+  return "HOLD";
+}
+export function annotateMacdSignals(data: Row[]): Row[] {
+  return data.map((d, i) => {
+    const sig = macdSignalForBar(d, data[i - 1]);
+    return {
+      ...d,
+      macdAlert: sig,
+      macdBuyMark: sig === "BUY" ? d.macd : null,
+      macdSellMark: sig === "SELL" ? d.macd : null,
+    } as Row;
+  });
+}
+export function getCurrentMacdSignal(data: Row[]): { signal: MacdSignal; reason: string; barsAgo: number | null } {
+  for (let i = data.length - 1; i >= Math.max(0, data.length - 20); i--) {
+    const sig = macdSignalForBar(data[i], data[i - 1]);
+    if (sig !== "HOLD") {
+      const m = data[i].macd ?? 0, s = data[i].macdSignal ?? 0;
+      const barsAgo = data.length - 1 - i;
+      return {
+        signal: sig,
+        reason: `${sig === "BUY" ? "Bullish" : "Bearish"} crossover ${barsAgo === 0 ? "now" : `${barsAgo} bar${barsAgo === 1 ? "" : "s"} ago`} · MACD ${m.toFixed(3)} ${sig === "BUY" ? ">" : "<"} Signal ${s.toFixed(3)}`,
+        barsAgo,
+      };
+    }
+  }
+  return { signal: "HOLD", reason: "No recent MACD crossover", barsAgo: null };
 }
 
 // ============ Market hours + breakout helpers ============
@@ -595,7 +643,9 @@ export default function TradingPlatform() {
 
   const chartData = chartMode === "D" ? dailyChartData : intradayRows;
   const signalData = intradayRows.length >= 30 ? intradayRows : dailyChartData;
-  const displayData = chartMode === "D" ? chartData.slice(-chartRange) : chartData;
+  const displayDataRaw = chartMode === "D" ? chartData.slice(-chartRange) : chartData;
+  const displayData = useMemo(() => annotateMacdSignals(displayDataRaw), [displayDataRaw]);
+  const macdCurrent = useMemo(() => getCurrentMacdSignal(displayData), [displayData]);
   const last = chartData[chartData.length - 1] || ({} as Row);
   const prev = chartData[chartData.length - 2] || ({} as Row);
   const liveSel = live[selectedStock];
@@ -1127,8 +1177,43 @@ export default function TradingPlatform() {
           </ChartCard>
 
           {/* MACD */}
-          <ChartCard title="MACD (12,26,9) — MOVING AVERAGE CONVERGENCE DIVERGENCE"
-            legend={[{ label: "MACD", color: "#79c0ff" }, { label: "Signal", color: "#f85149" }, { label: "Histogram", color: "#39d353" }]}>
+          <ChartCard
+            title="MACD (12,26,9) — MOVING AVERAGE CONVERGENCE DIVERGENCE"
+            legend={[
+              { label: "MACD", color: "#79c0ff" },
+              { label: "Signal", color: "#f85149" },
+              { label: "Histogram", color: "#39d353" },
+              { label: "BUY ▲", color: "#39d353" },
+              { label: "SELL ▼", color: "#f85149" },
+            ]}
+            titleRight={
+              <span
+                title={macdCurrent.reason}
+                style={{
+                  fontSize: 10,
+                  fontWeight: 800,
+                  padding: "2px 8px",
+                  borderRadius: 4,
+                  letterSpacing: 0.5,
+                  color:
+                    macdCurrent.signal === "BUY" ? "#39d353" :
+                    macdCurrent.signal === "SELL" ? "#f85149" : "#e3b341",
+                  background:
+                    macdCurrent.signal === "BUY" ? "rgba(57,211,83,0.12)" :
+                    macdCurrent.signal === "SELL" ? "rgba(248,81,73,0.12)" : "rgba(227,179,65,0.12)",
+                  border: `1px solid ${
+                    macdCurrent.signal === "BUY" ? "#39d353" :
+                    macdCurrent.signal === "SELL" ? "#f85149" : "#e3b341"
+                  }`,
+                }}
+              >
+                MACD {macdCurrent.signal}
+                {macdCurrent.barsAgo !== null && macdCurrent.barsAgo > 0
+                  ? ` · ${macdCurrent.barsAgo} bar${macdCurrent.barsAgo === 1 ? "" : "s"} ago`
+                  : ""}
+              </span>
+            }
+          >
             <ResponsiveContainer width="100%" height={160}>
               <ComposedChart data={displayData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
@@ -1143,6 +1228,8 @@ export default function TradingPlatform() {
                 </Bar>
                 <Line type="monotone" dataKey="macd" stroke="#79c0ff" strokeWidth={1.5} dot={false} name="MACD" />
                 <Line type="monotone" dataKey="macdSignal" stroke="#f85149" strokeWidth={1.5} dot={false} name="Signal" />
+                <Scatter dataKey="macdBuyMark" name="BUY" fill="#39d353" shape="triangle" />
+                <Scatter dataKey="macdSellMark" name="SELL" fill="#f85149" shape="triangle" />
               </ComposedChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -1291,11 +1378,14 @@ export default function TradingPlatform() {
   );
 }
 
-function ChartCard({ title, legend, children }: { title: string; legend?: { label: string; color: string }[]; children: React.ReactNode }) {
+function ChartCard({ title, legend, titleRight, children }: { title: string; legend?: { label: string; color: string }[]; titleRight?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: "6px 8px 4px", marginBottom: 6 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
-        <div style={{ fontSize: 10, color: "#8b949e", letterSpacing: 1.5 }}>{title}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 10, color: "#8b949e", letterSpacing: 1.5 }}>{title}</div>
+          {titleRight}
+        </div>
         {legend && (
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             {legend.map(l => (
