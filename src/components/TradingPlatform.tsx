@@ -431,6 +431,7 @@ export default function TradingPlatform() {
   const fetchNews = useServerFn(getNews);
   const fetchSentiment = useServerFn(analyzeNewsSentiment);
   const fetchIntraday = useServerFn(getIntraday);
+  const fetchIntradayBatch = useServerFn(getIntradayBatch);
   const firePush = useServerFn(sendAlert);
   const fireTestPush = useServerFn(sendTestPush);
   const callSubscribe = useServerFn(subscribeToPush);
