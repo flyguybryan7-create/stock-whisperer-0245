@@ -984,7 +984,7 @@ export default function TradingPlatform() {
               const l = d[d.length - 1]; const p = d[d.length - 2];
               const chg = l && p ? ((l.close - p.close) / p.close) * 100 : 0;
               const sig: "BUY" | "SELL" | "HOLD" =
-                watchlistMacdSignals[sym] ?? (d.length ? getCurrentMacdSignal(d).signal : "HOLD");
+                watchlistMacdSignals[sym] ?? (d.length ? getMacdMomentumSignal(d).signal : "HOLD");
               const hasAlert = (alerts[sym]?.length ?? 0) > 0;
               const sigC = sig === "BUY" ? "#39d353" : sig === "SELL" ? "#f85149" : "#e3b341";
               const lq = live[sym];
@@ -1138,8 +1138,8 @@ export default function TradingPlatform() {
                     <span style={{ fontSize: 8, fontWeight: 700, color: sessColor, border: `1px solid ${sessColor}`, borderRadius: 3, padding: "1px 4px", lineHeight: 1 }}>● {sessLabel}</span>
                   )}
                   <span style={{ flex: 1 }} />
-                  <span style={{ background: signalBg, border: `1px solid ${signalColor}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 800, color: signalColor, lineHeight: 1 }} title={`AI signal (${signalFrameLabel})`}>
-                    AI {signal}
+                  <span style={{ background: signalBg, border: `1px solid ${signalColor}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 800, color: signalColor, lineHeight: 1 }} title={`${signalFrameLabel} · ${liveMacdSignal.reason}`}>
+                    MACD {signal}
                   </span>
                   {isPro ? (
                     <span
