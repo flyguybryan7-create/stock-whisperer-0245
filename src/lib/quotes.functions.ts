@@ -56,6 +56,8 @@ type YahooQuoteV7 = {
   regularMarketTime?: number;
   fiftyTwoWeekHigh?: number;
   fiftyTwoWeekLow?: number;
+  regularMarketDayHigh?: number;
+  regularMarketDayLow?: number;
 };
 
 async function fetchYahooV7Quotes(symbols: string[]): Promise<Record<string, LiveQuote>> {
@@ -130,6 +132,8 @@ async function fetchYahooV7Quotes(symbols: string[]): Promise<Record<string, Liv
       lastTickTime,
       fiftyTwoWeekHigh: q.fiftyTwoWeekHigh,
       fiftyTwoWeekLow: q.fiftyTwoWeekLow,
+      dayHigh: q.regularMarketDayHigh,
+      dayLow: q.regularMarketDayLow,
     };
   }
   return out;
@@ -274,6 +278,8 @@ export type LiveQuote = {
   lastTickTime?: number;
   fiftyTwoWeekHigh?: number;
   fiftyTwoWeekLow?: number;
+  dayHigh?: number;
+  dayLow?: number;
 };
 
 // ============ Intraday 1-minute candles for day-trade signals ============
@@ -374,6 +380,8 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
                   chartPreviousClose?: number;
                   fiftyTwoWeekHigh?: number;
                   fiftyTwoWeekLow?: number;
+                  regularMarketDayHigh?: number;
+                  regularMarketDayLow?: number;
                   currentTradingPeriod?: {
                     pre?: { start: number; end: number };
                     regular?: { start: number; end: number };
@@ -381,7 +389,7 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
                   };
                 };
                 timestamp?: number[];
-                indicators: { quote: Array<{ close: (number | null)[] }> };
+                indicators: { quote: Array<{ close: (number | null)[]; high?: (number | null)[]; low?: (number | null)[] }> };
               }>;
             };
           };
@@ -477,6 +485,28 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
             lastTickTime: lastTs,
             fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh,
             fiftyTwoWeekLow: meta.fiftyTwoWeekLow,
+            dayHigh: meta.regularMarketDayHigh ?? (() => {
+              const reg = periods.regular;
+              const highs = r.indicators.quote[0]?.high ?? [];
+              let hi: number | undefined;
+              for (let i = 0; i < highs.length; i++) {
+                const h = highs[i]; if (h == null) continue;
+                if (reg && (ts[i] < reg.start || ts[i] >= reg.end)) continue;
+                if (hi == null || h > hi) hi = h;
+              }
+              return hi;
+            })(),
+            dayLow: meta.regularMarketDayLow ?? (() => {
+              const reg = periods.regular;
+              const lows = r.indicators.quote[0]?.low ?? [];
+              let lo: number | undefined;
+              for (let i = 0; i < lows.length; i++) {
+                const lv = lows[i]; if (lv == null) continue;
+                if (reg && (ts[i] < reg.start || ts[i] >= reg.end)) continue;
+                if (lo == null || lv < lo) lo = lv;
+              }
+              return lo;
+            })(),
           };
         } catch {
           /* skip */

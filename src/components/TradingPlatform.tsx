@@ -585,9 +585,10 @@ export default function TradingPlatform() {
   // BUY/SELL/HOLD badges next to each ticker react to live MACD crossovers
   // (still 12/26/9 — only the refresh cadence and data source change).
   const { data: watchlistIntradayData } = useQuery({
-    queryKey: ["intradayBatch", watchlist],
+    queryKey: ["intradayBatch", [...watchlist].sort().join(",")],
     queryFn: () => fetchIntradayBatch({ data: { symbols: watchlist, interval: "5m", range: "5d" } }),
     refetchInterval: 30_000,
+    refetchIntervalInBackground: true,
     staleTime: 15_000,
     enabled: watchlist.length > 0,
   });
@@ -596,7 +597,7 @@ export default function TradingPlatform() {
     const batch = (watchlistIntradayData ?? {}) as Record<string, IntradayBar[]>;
     for (const sym of Object.keys(batch)) {
       const bars = batch[sym] ?? [];
-      if (bars.length < 30) continue;
+      if (bars.length < 5) continue;
       const rows: Row[] = bars.map((b) => ({
         date: String(b.t), close: b.close, open: b.open, high: b.high, low: b.low, volume: b.volume,
       }));
@@ -1129,6 +1130,16 @@ export default function TradingPlatform() {
                       <span title="Latest daily volume (shares traded)">VOL <span style={{ color: "#e6edf3", fontWeight: 700 }}>{fmtM(last.volume)}</span></span>
                     )}
                   </span>
+                  {(liveSel?.dayHigh != null || liveSel?.dayLow != null) && (
+                    <span style={{ display: "flex", gap: 10, flexBasis: "100%" }}>
+                      {liveSel?.dayHigh != null && (
+                        <span title="Today's high">DAY H <span style={{ color: "#39d353", fontWeight: 700 }}>${liveSel.dayHigh.toFixed(2)}</span></span>
+                      )}
+                      {liveSel?.dayLow != null && (
+                        <span title="Today's low">DAY L <span style={{ color: "#f85149", fontWeight: 700 }}>${liveSel.dayLow.toFixed(2)}</span></span>
+                      )}
+                    </span>
+                  )}
                   {(liveSel?.fiftyTwoWeekHigh != null || liveSel?.fiftyTwoWeekLow != null) && (
                     <span style={{ display: "flex", gap: 10, flexBasis: "100%" }}>
                       {liveSel?.fiftyTwoWeekHigh != null && (
@@ -1229,10 +1240,9 @@ export default function TradingPlatform() {
                   width={45}
                   domain={([min, max]: [number, number]) => {
                     const m = Math.max(Math.abs(min), Math.abs(max)) || 0.1;
-                    const z = m * 0.6;
+                    const z = m * 1.15;
                     return [-z, z];
                   }}
-                  allowDataOverflow
                 />
                 <Tooltip content={<CustomTooltip />} />
                 <ReferenceLine y={0} stroke="#30363d" />
