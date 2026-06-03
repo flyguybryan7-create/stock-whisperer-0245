@@ -643,7 +643,9 @@ export default function TradingPlatform() {
 
   const chartData = chartMode === "D" ? dailyChartData : intradayRows;
   const signalData = intradayRows.length >= 30 ? intradayRows : dailyChartData;
-  const displayData = chartMode === "D" ? chartData.slice(-chartRange) : chartData;
+  const displayDataRaw = chartMode === "D" ? chartData.slice(-chartRange) : chartData;
+  const displayData = useMemo(() => annotateMacdSignals(displayDataRaw), [displayDataRaw]);
+  const macdCurrent = useMemo(() => getCurrentMacdSignal(displayData), [displayData]);
   const last = chartData[chartData.length - 1] || ({} as Row);
   const prev = chartData[chartData.length - 2] || ({} as Row);
   const liveSel = live[selectedStock];
