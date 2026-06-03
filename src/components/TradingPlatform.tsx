@@ -152,6 +152,51 @@ function getSignal(data: Row[], sentimentScore = 0): "BUY" | "SELL" | "HOLD" {
   return "HOLD";
 }
 
+// ============ MACD-only signal ============
+// Classic MACD rules:
+//   BUY  = MACD crosses above Signal (bullish crossover), confirmed by hist > 0
+//   SELL = MACD crosses below Signal (bearish crossover), confirmed by hist < 0
+//   HOLD = no crossover this bar
+// We also annotate each bar so we can plot markers on the MACD chart.
+export type MacdSignal = "BUY" | "SELL" | "HOLD";
+export function macdSignalForBar(curr: Row, prev: Row | undefined): MacdSignal {
+  if (!prev) return "HOLD";
+  const m = curr.macd ?? null, s = curr.macdSignal ?? null;
+  const pm = prev.macd ?? null, ps = prev.macdSignal ?? null;
+  if (m == null || s == null || pm == null || ps == null) return "HOLD";
+  const crossedUp = pm <= ps && m > s;
+  const crossedDown = pm >= ps && m < s;
+  if (crossedUp) return "BUY";
+  if (crossedDown) return "SELL";
+  return "HOLD";
+}
+export function annotateMacdSignals(data: Row[]): Row[] {
+  return data.map((d, i) => {
+    const sig = macdSignalForBar(d, data[i - 1]);
+    return {
+      ...d,
+      macdAlert: sig,
+      macdBuyMark: sig === "BUY" ? d.macd : null,
+      macdSellMark: sig === "SELL" ? d.macd : null,
+    } as Row;
+  });
+}
+export function getCurrentMacdSignal(data: Row[]): { signal: MacdSignal; reason: string; barsAgo: number | null } {
+  for (let i = data.length - 1; i >= Math.max(0, data.length - 20); i--) {
+    const sig = macdSignalForBar(data[i], data[i - 1]);
+    if (sig !== "HOLD") {
+      const m = data[i].macd ?? 0, s = data[i].macdSignal ?? 0;
+      const barsAgo = data.length - 1 - i;
+      return {
+        signal: sig,
+        reason: `${sig === "BUY" ? "Bullish" : "Bearish"} crossover ${barsAgo === 0 ? "now" : `${barsAgo} bar${barsAgo === 1 ? "" : "s"} ago`} · MACD ${m.toFixed(3)} ${sig === "BUY" ? ">" : "<"} Signal ${s.toFixed(3)}`,
+        barsAgo,
+      };
+    }
+  }
+  return { signal: "HOLD", reason: "No recent MACD crossover", barsAgo: null };
+}
+
 // ============ Market hours + breakout helpers ============
 // US regular session: Mon–Fri 09:30–16:00 America/New_York.
 function isUsMarketOpen(now: Date = new Date()): boolean {
