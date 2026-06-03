@@ -68,6 +68,9 @@ type Row = {
   sma9?: number | null; sma15?: number | null; sma50?: number | null; ema9?: number | null;
   rsi?: number | null; bbUpper?: number | null; bbMiddle?: number | null; bbLower?: number | null;
   macd?: number | null; macdSignal?: number | null; macdHist?: number | null;
+  macdAlert?: "BUY" | "SELL" | "HOLD";
+  macdBuyMark?: number | null;
+  macdSellMark?: number | null;
 };
 
 function calcSMA(data: Row[], period: number, key: "sma9"|"sma15"|"sma50") {
