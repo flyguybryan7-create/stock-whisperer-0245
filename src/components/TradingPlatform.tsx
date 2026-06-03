@@ -1230,10 +1230,9 @@ export default function TradingPlatform() {
                   width={45}
                   domain={([min, max]: [number, number]) => {
                     const m = Math.max(Math.abs(min), Math.abs(max)) || 0.1;
-                    const z = m * 0.6;
+                    const z = m * 1.15;
                     return [-z, z];
                   }}
-                  allowDataOverflow
                 />
                 <Tooltip content={<CustomTooltip />} />
                 <ReferenceLine y={0} stroke="#30363d" />
