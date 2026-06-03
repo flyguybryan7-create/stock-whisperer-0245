@@ -894,7 +894,7 @@ export default function TradingPlatform() {
               const d = allData[sym] || [];
               const l = d[d.length - 1]; const p = d[d.length - 2];
               const chg = l && p ? ((l.close - p.close) / p.close) * 100 : 0;
-              const sig = sym === selectedStock ? signal : d.length ? getSignal(d) : "HOLD";
+              const sig = d.length ? getCurrentMacdSignal(d).signal : "HOLD";
               const hasAlert = (alerts[sym]?.length ?? 0) > 0;
               const sigC = sig === "BUY" ? "#39d353" : sig === "SELL" ? "#f85149" : "#e3b341";
               const lq = live[sym];
@@ -1177,64 +1177,36 @@ export default function TradingPlatform() {
           </ChartCard>
 
           {/* MACD */}
-          <ChartCard
-            title="MACD (12,26,9) — MOVING AVERAGE CONVERGENCE DIVERGENCE"
-            legend={[
-              { label: "MACD", color: "#79c0ff" },
-              { label: "Signal", color: "#f85149" },
-              { label: "Histogram", color: "#39d353" },
-              { label: "BUY ▲", color: "#39d353" },
-              { label: "SELL ▼", color: "#f85149" },
-              { label: "Volume", color: "#58a6ff" },
-            ]}
-            titleRight={
-              <span
-                title={macdCurrent.reason}
-                style={{
-                  fontSize: 10,
-                  fontWeight: 800,
-                  padding: "2px 8px",
-                  borderRadius: 4,
-                  letterSpacing: 0.5,
-                  color:
-                    macdCurrent.signal === "BUY" ? "#39d353" :
-                    macdCurrent.signal === "SELL" ? "#f85149" : "#e3b341",
-                  background:
-                    macdCurrent.signal === "BUY" ? "rgba(57,211,83,0.12)" :
-                    macdCurrent.signal === "SELL" ? "rgba(248,81,73,0.12)" : "rgba(227,179,65,0.12)",
-                  border: `1px solid ${
-                    macdCurrent.signal === "BUY" ? "#39d353" :
-                    macdCurrent.signal === "SELL" ? "#f85149" : "#e3b341"
-                  }`,
-                }}
-              >
-                MACD {macdCurrent.signal}
-                {macdCurrent.barsAgo !== null && macdCurrent.barsAgo > 0
-                  ? ` · ${macdCurrent.barsAgo} bar${macdCurrent.barsAgo === 1 ? "" : "s"} ago`
-                  : ""}
-              </span>
-            }
-          >
-            <ResponsiveContainer width="100%" height={340}>
+          <ChartCard title="MACD (12,26,9) — MOVING AVERAGE CONVERGENCE DIVERGENCE"
+            legend={[{ label: "MACD", color: "#79c0ff" }, { label: "Signal", color: "#f85149" }, { label: "Histogram", color: "#39d353" }]}>
+            <ResponsiveContainer width="100%" height={160}>
               <ComposedChart data={displayData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                 <XAxis dataKey="date" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} />
-                <YAxis yAxisId="macd" stroke="#8b949e" fontSize={9} width={45} />
-                <YAxis yAxisId="vol" orientation="right" stroke="#58a6ff" fontSize={9} width={45}
-                  tickFormatter={(v: number) => (v / 1e6).toFixed(1) + "M"} />
+                <YAxis stroke="#8b949e" fontSize={9} width={45} />
                 <Tooltip content={<CustomTooltip />} />
-                <ReferenceLine yAxisId="macd" y={0} stroke="#30363d" />
-                <Bar yAxisId="vol" dataKey="volume" fill="#58a6ff" opacity={0.25} name="Volume" />
-                <Bar yAxisId="macd" dataKey="macdHist" name="Histogram">
+                <ReferenceLine y={0} stroke="#30363d" />
+                <Bar dataKey="macdHist" name="Histogram">
                   {displayData.map((d: Row, i: number) => (
                     <Cell key={i} fill={(d.macdHist ?? 0) >= 0 ? "#39d353" : "#f85149"} fillOpacity={0.7} />
                   ))}
                 </Bar>
-                <Line yAxisId="macd" type="monotone" dataKey="macd" stroke="#79c0ff" strokeWidth={1.5} dot={false} name="MACD" />
-                <Line yAxisId="macd" type="monotone" dataKey="macdSignal" stroke="#f85149" strokeWidth={1.5} dot={false} name="Signal" />
-                <Scatter yAxisId="macd" dataKey="macdBuyMark" name="BUY" fill="#39d353" shape="triangle" />
-                <Scatter yAxisId="macd" dataKey="macdSellMark" name="SELL" fill="#f85149" shape="triangle" />
+                <Line type="monotone" dataKey="macd" stroke="#79c0ff" strokeWidth={1.5} dot={false} name="MACD" />
+                <Line type="monotone" dataKey="macdSignal" stroke="#f85149" strokeWidth={1.5} dot={false} name="Signal" />
               </ComposedChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
+          {/* Volume */}
+          <ChartCard title="VOLUME">
+            <ResponsiveContainer width="100%" height={120}>
+              <BarChart data={displayData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
+                <XAxis dataKey="date" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} />
+                <YAxis stroke="#8b949e" fontSize={9} tickFormatter={(v: number) => (v / 1e6).toFixed(1) + "M"} width={45} />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="volume" fill="#58a6ff" opacity={0.6} name="Volume" />
+              </BarChart>
             </ResponsiveContainer>
           </ChartCard>
 
