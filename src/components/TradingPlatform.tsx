@@ -894,7 +894,7 @@ export default function TradingPlatform() {
               const d = allData[sym] || [];
               const l = d[d.length - 1]; const p = d[d.length - 2];
               const chg = l && p ? ((l.close - p.close) / p.close) * 100 : 0;
-              const sig = sym === selectedStock ? signal : d.length ? getSignal(d) : "HOLD";
+              const sig = d.length ? getCurrentMacdSignal(d).signal : "HOLD";
               const hasAlert = (alerts[sym]?.length ?? 0) > 0;
               const sigC = sig === "BUY" ? "#39d353" : sig === "SELL" ? "#f85149" : "#e3b341";
               const lq = live[sym];
