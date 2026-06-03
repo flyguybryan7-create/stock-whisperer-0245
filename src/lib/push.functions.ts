@@ -1,12 +1,14 @@
 import { createServerFn } from "@tanstack/react-start";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { sendWebPush, type PushSubscriptionRow } from "./push.server";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 // 5-minute per-symbol+signal cooldown so we don't spam devices.
 const lastSent = new Map<string, number>();
 const COOLDOWN_MS = 5 * 60 * 1000;
 
 export const subscribeToPush = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((d: {
     endpoint: string;
     p256dh: string;
@@ -33,6 +35,7 @@ export const subscribeToPush = createServerFn({ method: "POST" })
   });
 
 export const unsubscribeFromPush = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((d: { endpoint: string }) => d)
   .handler(async ({ data }) => {
     const { error } = await supabaseAdmin
@@ -75,6 +78,7 @@ async function broadcast(payload: {
 }
 
 export const sendAlert = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((d: {
     symbol: string;
     signal: "BUY" | "SELL";
@@ -104,7 +108,9 @@ export const sendAlert = createServerFn({ method: "POST" })
     return { ok: true, ...result };
   });
 
-export const sendTestPush = createServerFn({ method: "POST" }).handler(async () => {
+export const sendTestPush = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async () => {
   const result = await broadcast({
     title: "BryanTrade test alert",
     body: "Push notifications are working 🎉",
