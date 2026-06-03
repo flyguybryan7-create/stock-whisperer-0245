@@ -632,9 +632,8 @@ export default function TradingPlatform() {
   const intradayBars: IntradayBar[] = intradayData ?? [];
   const dayTrade = useMemo(() => getDayTradeSignal(intradayBars), [intradayBars]);
 
-  // Intraday bars for every watchlist symbol — refreshed every 60s so the
-  // BUY/SELL/HOLD badges next to each ticker react to live MACD crossovers
-  // (still 12/26/9 — only the refresh cadence and data source change).
+  // Intraday bars for every watchlist symbol — refreshed every 30s so the
+  // BUY/SELL/HOLD badges next to each ticker react to live MACD momentum.
   const { data: watchlistIntradayData } = useQuery({
     queryKey: ["intradayBatch", [...watchlist].sort().join(",")],
     queryFn: () => fetchIntradayBatch({ data: { symbols: watchlist, interval: "1m", range: "2d" } }),
@@ -723,9 +722,22 @@ export default function TradingPlatform() {
   const displayDataRaw = chartMode === "D" ? chartData.slice(-chartRange) : chartData;
   const displayData = useMemo(() => annotateMacdSignals(displayDataRaw), [displayDataRaw]);
   const macdCurrent = useMemo(() => getCurrentMacdSignal(displayData), [displayData]);
+  const selectedLiveMacdRows = useMemo(() => {
+    const batch = (watchlistIntradayData ?? {}) as Record<string, IntradayBar[]>;
+    const bars = batch[selectedStock] ?? [];
+    if (bars.length < 5) return [] as Row[];
+    return annotateMacdSignals(buildChartData(bars.map((b) => ({
+      date: new Date(b.t * 1000).toLocaleString([], { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }),
+      close: b.close,
+      open: b.open,
+      high: b.high,
+      low: b.low,
+      volume: b.volume,
+    }))));
+  }, [watchlistIntradayData, selectedStock]);
   const liveMacdSignal = useMemo(
-    () => (intradayRows.length >= 5 ? getMacdMomentumSignal(intradayRows) : getMacdMomentumSignal(dailyChartData)),
-    [intradayRows, dailyChartData],
+    () => (selectedLiveMacdRows.length >= 5 ? getMacdMomentumSignal(selectedLiveMacdRows) : getMacdMomentumSignal(dailyChartData)),
+    [selectedLiveMacdRows, dailyChartData],
   );
   // Show only the most recent ~3 hours on the MACD chart so the crossover
   // structure is readable. Daily mode keeps the full visible range.
@@ -741,7 +753,7 @@ export default function TradingPlatform() {
   const change = liveSel ? liveSel.change : (last.close && prev.close ? last.close - prev.close : 0);
   const changePct = liveSel ? liveSel.changePercent : (prev.close ? (change / prev.close) * 100 : 0);
   const signal = liveMacdSignal.signal;
-  const signalFrameLabel = intradayRows.length >= 5 ? `MACD live · ${intradayInterval} · ${intradayRange}` : "MACD daily fallback";
+  const signalFrameLabel = selectedLiveMacdRows.length >= 5 ? "MACD live · 30s refresh" : "MACD daily fallback";
 
   // Watch every watchlist symbol; when its signal flips to BUY or SELL,
   // fire a web push to every subscribed device (5-min server-side cooldown).
