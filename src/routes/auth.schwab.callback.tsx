@@ -25,7 +25,11 @@ function SchwabCallback() {
     const redirectUri = `${window.location.origin}/auth/schwab/callback`;
     exchange({ data: { code, redirectUri, state } })
       .then((tokens) => {
-        localStorage.setItem(SCHWAB_TOKEN_KEY, JSON.stringify(tokens));
+        // Use sessionStorage (cleared on tab close) to reduce XSS exposure window
+        // for sensitive OAuth tokens.
+        sessionStorage.setItem(SCHWAB_TOKEN_KEY, JSON.stringify(tokens));
+        // Clean up any token previously written to localStorage.
+        try { localStorage.removeItem(SCHWAB_TOKEN_KEY); } catch {}
         setStatus("Connected! Redirecting…");
         setTimeout(() => navigate({ to: "/" }), 800);
       })
