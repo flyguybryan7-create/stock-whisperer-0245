@@ -278,6 +278,8 @@ export type LiveQuote = {
   lastTickTime?: number;
   fiftyTwoWeekHigh?: number;
   fiftyTwoWeekLow?: number;
+  dayHigh?: number;
+  dayLow?: number;
 };
 
 // ============ Intraday 1-minute candles for day-trade signals ============
