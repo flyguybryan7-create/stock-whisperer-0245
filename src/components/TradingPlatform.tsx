@@ -672,6 +672,14 @@ export default function TradingPlatform() {
   const displayDataRaw = chartMode === "D" ? chartData.slice(-chartRange) : chartData;
   const displayData = useMemo(() => annotateMacdSignals(displayDataRaw), [displayDataRaw]);
   const macdCurrent = useMemo(() => getCurrentMacdSignal(displayData), [displayData]);
+  // Show only the most recent ~3 hours on the MACD chart so the crossover
+  // structure is readable. Daily mode keeps the full visible range.
+  const macdDisplayData = useMemo(() => {
+    if (chartMode === "D") return displayData;
+    const minutesPerBar = parseInt(intradayInterval) || 5;
+    const bars = Math.max(12, Math.ceil(180 / minutesPerBar));
+    return displayData.slice(-bars);
+  }, [displayData, chartMode, intradayInterval]);
   const last = chartData[chartData.length - 1] || ({} as Row);
   const prev = chartData[chartData.length - 2] || ({} as Row);
   const liveSel = live[selectedStock];
