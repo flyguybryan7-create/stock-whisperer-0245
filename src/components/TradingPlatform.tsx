@@ -597,7 +597,7 @@ export default function TradingPlatform() {
     const batch = (watchlistIntradayData ?? {}) as Record<string, IntradayBar[]>;
     for (const sym of Object.keys(batch)) {
       const bars = batch[sym] ?? [];
-      if (bars.length < 30) continue;
+      if (bars.length < 5) continue;
       const rows: Row[] = bars.map((b) => ({
         date: String(b.t), close: b.close, open: b.open, high: b.high, low: b.low, volume: b.volume,
       }));
