@@ -581,6 +581,31 @@ export default function TradingPlatform() {
   const intradayBars: IntradayBar[] = intradayData ?? [];
   const dayTrade = useMemo(() => getDayTradeSignal(intradayBars), [intradayBars]);
 
+  // Intraday bars for every watchlist symbol — refreshed every 60s so the
+  // BUY/SELL/HOLD badges next to each ticker react to live MACD crossovers
+  // (still 12/26/9 — only the refresh cadence and data source change).
+  const { data: watchlistIntradayData } = useQuery({
+    queryKey: ["intradayBatch", watchlist],
+    queryFn: () => fetchIntradayBatch({ data: { symbols: watchlist, interval: "5m", range: "5d" } }),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+    enabled: watchlist.length > 0,
+  });
+  const watchlistMacdSignals = useMemo(() => {
+    const out: Record<string, "BUY" | "SELL" | "HOLD"> = {};
+    const batch = (watchlistIntradayData ?? {}) as Record<string, IntradayBar[]>;
+    for (const sym of Object.keys(batch)) {
+      const bars = batch[sym] ?? [];
+      if (bars.length < 30) continue;
+      const rows: Row[] = bars.map((b) => ({
+        date: String(b.t), close: b.close, open: b.open, high: b.high, low: b.low, volume: b.volume,
+      }));
+      const annotated = annotateMacdSignals(buildChartData(rows));
+      out[sym] = getCurrentMacdSignal(annotated).signal;
+    }
+    return out;
+  }, [watchlistIntradayData]);
+
   // AI sentiment based on headlines
   const { data: sentimentData } = useQuery({
     queryKey: ["sentiment", selectedStock, newsItems.map((n) => n.title).join("|")],
