@@ -1378,11 +1378,14 @@ export default function TradingPlatform() {
   );
 }
 
-function ChartCard({ title, legend, children }: { title: string; legend?: { label: string; color: string }[]; children: React.ReactNode }) {
+function ChartCard({ title, legend, titleRight, children }: { title: string; legend?: { label: string; color: string }[]; titleRight?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: "6px 8px 4px", marginBottom: 6 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
-        <div style={{ fontSize: 10, color: "#8b949e", letterSpacing: 1.5 }}>{title}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 10, color: "#8b949e", letterSpacing: 1.5 }}>{title}</div>
+          {titleRight}
+        </div>
         {legend && (
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             {legend.map(l => (
