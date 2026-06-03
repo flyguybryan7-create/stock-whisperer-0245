@@ -1,0 +1,2 @@
+GRANT SELECT ON public.push_subscriptions TO authenticated;
+CREATE POLICY "Users can view their own push subscriptions" ON public.push_subscriptions FOR SELECT TO authenticated USING (auth.uid() = user_id);
