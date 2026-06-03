@@ -609,3 +609,54 @@ Weight company news most, then sector, then market/global. Return JSON ONLY.`;
       return { score: 0, label: "NEUTRAL", summary: "AI request failed.", drivers: [] };
     }
   });
+// Batch intraday fetch — pulls bars for many watchlist symbols in parallel
+// so the client can compute per-symbol MACD signals on a frequent interval
+// without firing one request per symbol from the browser.
+export const getIntradayBatch = createServerFn({ method: "POST" })
+  .inputValidator((input: { symbols: string[]; interval?: "1m" | "2m" | "5m"; range?: "1d" | "2d" | "5d" }) => ({
+    symbols: (Array.isArray(input?.symbols) ? input.symbols : [])
+      .filter((s) => typeof s === "string" && /^[A-Z.\-]{1,10}$/i.test(s))
+      .map((s) => s.toUpperCase())
+      .slice(0, 50),
+    interval: (["1m", "2m", "5m"] as const).includes(input?.interval as "1m" | "2m" | "5m")
+      ? (input.interval as "1m" | "2m" | "5m")
+      : "5m",
+    range: input?.range === "1d" || input?.range === "5d" ? input.range : "2d",
+  }))
+  .handler(async ({ data }): Promise<Record<string, IntradayBar[]>> => {
+    if (data.symbols.length === 0) return {};
+    const out: Record<string, IntradayBar[]> = {};
+    await Promise.all(
+      data.symbols.map(async (sym) => {
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=${data.interval}&range=${data.range}&includePrePost=true`;
+        try {
+          const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; BryanTrade/1.0)" } });
+          if (!res.ok) { out[sym] = []; return; }
+          const json = (await res.json()) as {
+            chart: { result?: Array<{ timestamp?: number[]; indicators: { quote: Array<{ open: (number | null)[]; high: (number | null)[]; low: (number | null)[]; close: (number | null)[]; volume: (number | null)[] }> } }> };
+          };
+          const r = json.chart.result?.[0];
+          if (!r) { out[sym] = []; return; }
+          const q = r.indicators.quote[0];
+          const ts = r.timestamp ?? [];
+          const bars: IntradayBar[] = [];
+          for (let i = 0; i < ts.length; i++) {
+            const c = q.close[i];
+            if (c == null) continue;
+            bars.push({
+              t: ts[i],
+              open: q.open[i] ?? c,
+              high: q.high[i] ?? c,
+              low: q.low[i] ?? c,
+              close: c,
+              volume: q.volume[i] ?? 0,
+            });
+          }
+          out[sym] = bars;
+        } catch {
+          out[sym] = [];
+        }
+      })
+    );
+    return out;
+  });
