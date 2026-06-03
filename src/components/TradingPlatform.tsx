@@ -200,6 +200,57 @@ export function getCurrentMacdSignal(data: Row[]): { signal: MacdSignal; reason:
   return { signal: "HOLD", reason: "No recent MACD crossover", barsAgo: null };
 }
 
+export function getMacdMomentumSignal(data: Row[]): { signal: MacdSignal; reason: string } {
+  const last = data[data.length - 1];
+  const prev = data[data.length - 2];
+  if (!last || !prev) return { signal: "HOLD", reason: "Not enough MACD data" };
+
+  const macd = last.macd ?? null;
+  const signal = last.macdSignal ?? null;
+  const prevMacd = prev.macd ?? null;
+  const prevSignal = prev.macdSignal ?? null;
+  const hist = last.macdHist ?? null;
+  const prevHist = prev.macdHist ?? null;
+
+  if (macd == null || signal == null || prevMacd == null || prevSignal == null || hist == null || prevHist == null) {
+    return { signal: "HOLD", reason: "MACD still forming" };
+  }
+
+  const crossover = macdSignalForBar(last, prev);
+  const macdSlopeUp = macd > prevMacd;
+  const macdSlopeDown = macd < prevMacd;
+  const signalSlopeUp = signal > prevSignal;
+  const signalSlopeDown = signal < prevSignal;
+  const histRising = hist > prevHist;
+  const histFalling = hist < prevHist;
+
+  if (crossover === "BUY" || (macd > signal && macdSlopeUp && histRising)) {
+    return {
+      signal: "BUY",
+      reason:
+        crossover === "BUY"
+          ? `Bullish crossover now · MACD ${macd.toFixed(3)} above Signal ${signal.toFixed(3)}`
+          : `MACD rising above Signal with improving momentum · ${macd.toFixed(3)} vs ${signal.toFixed(3)}`,
+    };
+  }
+
+  if (crossover === "SELL" || (macd < signal && macdSlopeDown && histFalling)) {
+    return {
+      signal: "SELL",
+      reason:
+        crossover === "SELL"
+          ? `Bearish crossover now · MACD ${macd.toFixed(3)} below Signal ${signal.toFixed(3)}`
+          : `MACD falling below Signal with weakening momentum · ${macd.toFixed(3)} vs ${signal.toFixed(3)}`,
+    };
+  }
+
+  if ((macdSlopeUp && signalSlopeUp) || (macdSlopeDown && signalSlopeDown)) {
+    return { signal: "HOLD", reason: "Momentum is moving, but MACD and Signal have not separated enough" };
+  }
+
+  return { signal: "HOLD", reason: "MACD momentum is flat" };
+}
+
 // ============ Market hours + breakout helpers ============
 // US regular session: Mon–Fri 09:30–16:00 America/New_York.
 function isUsMarketOpen(now: Date = new Date()): boolean {
@@ -581,12 +632,11 @@ export default function TradingPlatform() {
   const intradayBars: IntradayBar[] = intradayData ?? [];
   const dayTrade = useMemo(() => getDayTradeSignal(intradayBars), [intradayBars]);
 
-  // Intraday bars for every watchlist symbol — refreshed every 60s so the
-  // BUY/SELL/HOLD badges next to each ticker react to live MACD crossovers
-  // (still 12/26/9 — only the refresh cadence and data source change).
+  // Intraday bars for every watchlist symbol — refreshed every 30s so the
+  // BUY/SELL/HOLD badges next to each ticker react to live MACD momentum.
   const { data: watchlistIntradayData } = useQuery({
     queryKey: ["intradayBatch", [...watchlist].sort().join(",")],
-    queryFn: () => fetchIntradayBatch({ data: { symbols: watchlist, interval: "5m", range: "5d" } }),
+    queryFn: () => fetchIntradayBatch({ data: { symbols: watchlist, interval: "1m", range: "2d" } }),
     refetchInterval: 30_000,
     refetchIntervalInBackground: true,
     staleTime: 15_000,
@@ -602,7 +652,7 @@ export default function TradingPlatform() {
         date: String(b.t), close: b.close, open: b.open, high: b.high, low: b.low, volume: b.volume,
       }));
       const annotated = annotateMacdSignals(buildChartData(rows));
-      out[sym] = getCurrentMacdSignal(annotated).signal;
+      out[sym] = getMacdMomentumSignal(annotated).signal;
     }
     return out;
   }, [watchlistIntradayData]);
@@ -669,10 +719,26 @@ export default function TradingPlatform() {
   }, [intradayBars]);
 
   const chartData = chartMode === "D" ? dailyChartData : intradayRows;
-  const signalData = intradayRows.length >= 30 ? intradayRows : dailyChartData;
   const displayDataRaw = chartMode === "D" ? chartData.slice(-chartRange) : chartData;
   const displayData = useMemo(() => annotateMacdSignals(displayDataRaw), [displayDataRaw]);
   const macdCurrent = useMemo(() => getCurrentMacdSignal(displayData), [displayData]);
+  const selectedLiveMacdRows = useMemo(() => {
+    const batch = (watchlistIntradayData ?? {}) as Record<string, IntradayBar[]>;
+    const bars = batch[selectedStock] ?? [];
+    if (bars.length < 5) return [] as Row[];
+    return annotateMacdSignals(buildChartData(bars.map((b) => ({
+      date: new Date(b.t * 1000).toLocaleString([], { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }),
+      close: b.close,
+      open: b.open,
+      high: b.high,
+      low: b.low,
+      volume: b.volume,
+    }))));
+  }, [watchlistIntradayData, selectedStock]);
+  const liveMacdSignal = useMemo(
+    () => (selectedLiveMacdRows.length >= 5 ? getMacdMomentumSignal(selectedLiveMacdRows) : getMacdMomentumSignal(dailyChartData)),
+    [selectedLiveMacdRows, dailyChartData],
+  );
   // Show only the most recent ~3 hours on the MACD chart so the crossover
   // structure is readable. Daily mode keeps the full visible range.
   const macdDisplayData = useMemo(() => {
@@ -686,8 +752,8 @@ export default function TradingPlatform() {
   const liveSel = live[selectedStock];
   const change = liveSel ? liveSel.change : (last.close && prev.close ? last.close - prev.close : 0);
   const changePct = liveSel ? liveSel.changePercent : (prev.close ? (change / prev.close) * 100 : 0);
-  const signal = getSignal(signalData, intradayRows.length >= 30 ? 0 : sentiment.score);
-  const signalFrameLabel = intradayRows.length >= 30 ? `${intradayInterval} · ${intradayRange}` : "daily fallback";
+  const signal = liveMacdSignal.signal;
+  const signalFrameLabel = selectedLiveMacdRows.length >= 5 ? "MACD live · 30s refresh" : "MACD daily fallback";
 
   // Watch every watchlist symbol; when its signal flips to BUY or SELL,
   // fire a web push to every subscribed device (5-min server-side cooldown).
@@ -930,7 +996,7 @@ export default function TradingPlatform() {
               const l = d[d.length - 1]; const p = d[d.length - 2];
               const chg = l && p ? ((l.close - p.close) / p.close) * 100 : 0;
               const sig: "BUY" | "SELL" | "HOLD" =
-                watchlistMacdSignals[sym] ?? (d.length ? getCurrentMacdSignal(d).signal : "HOLD");
+                watchlistMacdSignals[sym] ?? (d.length ? getMacdMomentumSignal(d).signal : "HOLD");
               const hasAlert = (alerts[sym]?.length ?? 0) > 0;
               const sigC = sig === "BUY" ? "#39d353" : sig === "SELL" ? "#f85149" : "#e3b341";
               const lq = live[sym];
@@ -1084,8 +1150,8 @@ export default function TradingPlatform() {
                     <span style={{ fontSize: 8, fontWeight: 700, color: sessColor, border: `1px solid ${sessColor}`, borderRadius: 3, padding: "1px 4px", lineHeight: 1 }}>● {sessLabel}</span>
                   )}
                   <span style={{ flex: 1 }} />
-                  <span style={{ background: signalBg, border: `1px solid ${signalColor}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 800, color: signalColor, lineHeight: 1 }} title={`AI signal (${signalFrameLabel})`}>
-                    AI {signal}
+                  <span style={{ background: signalBg, border: `1px solid ${signalColor}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 800, color: signalColor, lineHeight: 1 }} title={`${signalFrameLabel} · ${liveMacdSignal.reason}`}>
+                    MACD {signal}
                   </span>
                   {isPro ? (
                     <span
