@@ -1185,6 +1185,7 @@ export default function TradingPlatform() {
               { label: "Histogram", color: "#39d353" },
               { label: "BUY ▲", color: "#39d353" },
               { label: "SELL ▼", color: "#f85149" },
+              { label: "Volume", color: "#58a6ff" },
             ]}
             titleRight={
               <span
@@ -1214,36 +1215,26 @@ export default function TradingPlatform() {
               </span>
             }
           >
-            <ResponsiveContainer width="100%" height={160}>
+            <ResponsiveContainer width="100%" height={340}>
               <ComposedChart data={displayData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                 <XAxis dataKey="date" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} />
-                <YAxis stroke="#8b949e" fontSize={9} width={45} />
+                <YAxis yAxisId="macd" stroke="#8b949e" fontSize={9} width={45} />
+                <YAxis yAxisId="vol" orientation="right" stroke="#58a6ff" fontSize={9} width={45}
+                  tickFormatter={(v: number) => (v / 1e6).toFixed(1) + "M"} />
                 <Tooltip content={<CustomTooltip />} />
-                <ReferenceLine y={0} stroke="#30363d" />
-                <Bar dataKey="macdHist" name="Histogram">
+                <ReferenceLine yAxisId="macd" y={0} stroke="#30363d" />
+                <Bar yAxisId="vol" dataKey="volume" fill="#58a6ff" opacity={0.25} name="Volume" />
+                <Bar yAxisId="macd" dataKey="macdHist" name="Histogram">
                   {displayData.map((d: Row, i: number) => (
                     <Cell key={i} fill={(d.macdHist ?? 0) >= 0 ? "#39d353" : "#f85149"} fillOpacity={0.7} />
                   ))}
                 </Bar>
-                <Line type="monotone" dataKey="macd" stroke="#79c0ff" strokeWidth={1.5} dot={false} name="MACD" />
-                <Line type="monotone" dataKey="macdSignal" stroke="#f85149" strokeWidth={1.5} dot={false} name="Signal" />
-                <Scatter dataKey="macdBuyMark" name="BUY" fill="#39d353" shape="triangle" />
-                <Scatter dataKey="macdSellMark" name="SELL" fill="#f85149" shape="triangle" />
+                <Line yAxisId="macd" type="monotone" dataKey="macd" stroke="#79c0ff" strokeWidth={1.5} dot={false} name="MACD" />
+                <Line yAxisId="macd" type="monotone" dataKey="macdSignal" stroke="#f85149" strokeWidth={1.5} dot={false} name="Signal" />
+                <Scatter yAxisId="macd" dataKey="macdBuyMark" name="BUY" fill="#39d353" shape="triangle" />
+                <Scatter yAxisId="macd" dataKey="macdSellMark" name="SELL" fill="#f85149" shape="triangle" />
               </ComposedChart>
-            </ResponsiveContainer>
-          </ChartCard>
-
-          {/* Volume */}
-          <ChartCard title="VOLUME">
-            <ResponsiveContainer width="100%" height={120}>
-              <BarChart data={displayData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-                <XAxis dataKey="date" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} />
-                <YAxis stroke="#8b949e" fontSize={9} tickFormatter={(v: number) => (v / 1e6).toFixed(1) + "M"} width={45} />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="volume" fill="#58a6ff" opacity={0.6} name="Volume" />
-              </BarChart>
             </ResponsiveContainer>
           </ChartCard>
 
