@@ -587,8 +587,8 @@ export default function TradingPlatform() {
   const { data: watchlistIntradayData } = useQuery({
     queryKey: ["intradayBatch", watchlist],
     queryFn: () => fetchIntradayBatch({ data: { symbols: watchlist, interval: "5m", range: "5d" } }),
-    refetchInterval: 60_000,
-    staleTime: 30_000,
+    refetchInterval: 30_000,
+    staleTime: 15_000,
     enabled: watchlist.length > 0,
   });
   const watchlistMacdSignals = useMemo(() => {
@@ -1218,7 +1218,17 @@ export default function TradingPlatform() {
               <ComposedChart data={macdDisplayData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                 <XAxis dataKey="date" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} />
-                <YAxis stroke="#8b949e" fontSize={9} width={45} />
+                <YAxis
+                  stroke="#8b949e"
+                  fontSize={9}
+                  width={45}
+                  domain={([min, max]: [number, number]) => {
+                    const m = Math.max(Math.abs(min), Math.abs(max)) || 0.1;
+                    const z = m * 0.6;
+                    return [-z, z];
+                  }}
+                  allowDataOverflow
+                />
                 <Tooltip content={<CustomTooltip />} />
                 <ReferenceLine y={0} stroke="#30363d" />
                 <Bar dataKey="macdHist" name="Histogram">
@@ -1226,8 +1236,8 @@ export default function TradingPlatform() {
                     <Cell key={i} fill={(d.macdHist ?? 0) >= 0 ? "#39d353" : "#f85149"} fillOpacity={0.7} />
                   ))}
                 </Bar>
-                <Line type="monotone" dataKey="macd" stroke="#79c0ff" strokeWidth={1.5} dot={false} name="MACD" />
-                <Line type="monotone" dataKey="macdSignal" stroke="#f85149" strokeWidth={1.5} dot={false} name="Signal" />
+                <Line type="monotone" dataKey="macd" stroke="#79c0ff" strokeWidth={3} dot={false} name="MACD" />
+                <Line type="monotone" dataKey="macdSignal" stroke="#f85149" strokeWidth={3} dot={false} name="Signal" />
               </ComposedChart>
             </ResponsiveContainer>
           </ChartCard>
