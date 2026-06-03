@@ -17,11 +17,13 @@ function SchwabCallback() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
+    const state = params.get("state");
     const err = params.get("error");
     if (err) { setStatus(`Schwab error: ${err}`); return; }
     if (!code) { setStatus("Missing authorization code."); return; }
+    if (!state) { setStatus("Missing OAuth state."); return; }
     const redirectUri = `${window.location.origin}/auth/schwab/callback`;
-    exchange({ data: { code, redirectUri } })
+    exchange({ data: { code, redirectUri, state } })
       .then((tokens) => {
         localStorage.setItem(SCHWAB_TOKEN_KEY, JSON.stringify(tokens));
         setStatus("Connected! Redirecting…");

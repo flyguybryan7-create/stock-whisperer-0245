@@ -1016,6 +1016,11 @@ export default function TradingPlatform() {
                       >{reorderModeSym === sym ? "✕" : "⋮⋮"}</button>
                     </div>
                   </div>
+                  {stockNames[sym] && (
+                    <div style={{ fontSize: 9, color: "#8b949e", marginTop: 1, marginLeft: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {stockNames[sym]}
+                    </div>
+                  )}
                   <div style={{ display: "flex", justifyContent: "space-between", marginTop: 1, fontSize: 9 }}>
                     <span style={{ color: "#8b949e" }}>
                       {livePrice != null ? `$${livePrice.toFixed(2)}` : <span style={{ opacity: 0.6 }}>Loading…</span>}

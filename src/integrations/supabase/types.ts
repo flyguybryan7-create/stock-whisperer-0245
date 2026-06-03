@@ -22,6 +22,7 @@ export type Database = {
           id: string
           p256dh: string
           user_agent: string | null
+          user_id: string | null
         }
         Insert: {
           auth: string
@@ -30,6 +31,7 @@ export type Database = {
           id?: string
           p256dh: string
           user_agent?: string | null
+          user_id?: string | null
         }
         Update: {
           auth?: string
@@ -38,6 +40,7 @@ export type Database = {
           id?: string
           p256dh?: string
           user_agent?: string | null
+          user_id?: string | null
         }
         Relationships: []
       }
