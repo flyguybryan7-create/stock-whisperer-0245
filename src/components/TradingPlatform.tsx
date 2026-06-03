@@ -1123,7 +1123,13 @@ export default function TradingPlatform() {
         <div style={{ padding: "6px 10px", overflowY: "auto", maxHeight: "calc(100vh - 49px)" }}>
           {/* Stock header — ultra-tight single row */}
           {(() => {
-            const headPrice = liveSel?.price ?? last.close;
+            // Header shows the regular-session (4pm) close even during after-hours.
+            // AH/overnight price still ticks live in the left watchlist column.
+            const regClose = liveSel?.regularPrice ?? liveSel?.price ?? last.close;
+            const headPrice = regClose;
+            const headPrev = liveSel?.previousClose ?? prev.close ?? 0;
+            const headChange = headPrev ? regClose - headPrev : change;
+            const headChangePct = headPrev ? (headChange / headPrev) * 100 : changePct;
             const pink = "#ff4fa3";
             const dt = dayTrade.signal;
             const dtBg = dt === "BUY" ? "rgba(255,79,163,0.18)" : dt === "SELL" ? "rgba(255,79,163,0.10)" : "rgba(255,79,163,0.05)";
@@ -1141,8 +1147,8 @@ export default function TradingPlatform() {
                   {headPrice != null ? (
                     <>
                       <span style={{ fontSize: 18, fontWeight: 700, color: "#e6edf3", lineHeight: 1 }}>${headPrice.toFixed(2)}</span>
-                      <span style={{ fontSize: 11, fontWeight: 600, color: change >= 0 ? "#39d353" : "#f85149", lineHeight: 1 }}>
-                        {change >= 0 ? "▲" : "▼"}{changePct >= 0 ? "+" : ""}{changePct.toFixed(2)}%
+                      <span style={{ fontSize: 11, fontWeight: 600, color: headChange >= 0 ? "#39d353" : "#f85149", lineHeight: 1 }}>
+                        {headChange >= 0 ? "▲" : "▼"}{headChange >= 0 ? "+" : ""}${Math.abs(headChange).toFixed(2)} ({headChangePct >= 0 ? "+" : ""}{headChangePct.toFixed(2)}%)
                       </span>
                     </>
                   ) : <span style={{ fontSize: 13, color: "#8b949e" }}>…</span>}
