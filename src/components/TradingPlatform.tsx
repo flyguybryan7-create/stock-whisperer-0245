@@ -1177,8 +1177,43 @@ export default function TradingPlatform() {
           </ChartCard>
 
           {/* MACD */}
-          <ChartCard title="MACD (12,26,9) — MOVING AVERAGE CONVERGENCE DIVERGENCE"
-            legend={[{ label: "MACD", color: "#79c0ff" }, { label: "Signal", color: "#f85149" }, { label: "Histogram", color: "#39d353" }]}>
+          <ChartCard
+            title="MACD (12,26,9) — MOVING AVERAGE CONVERGENCE DIVERGENCE"
+            legend={[
+              { label: "MACD", color: "#79c0ff" },
+              { label: "Signal", color: "#f85149" },
+              { label: "Histogram", color: "#39d353" },
+              { label: "BUY ▲", color: "#39d353" },
+              { label: "SELL ▼", color: "#f85149" },
+            ]}
+            titleRight={
+              <span
+                title={macdCurrent.reason}
+                style={{
+                  fontSize: 10,
+                  fontWeight: 800,
+                  padding: "2px 8px",
+                  borderRadius: 4,
+                  letterSpacing: 0.5,
+                  color:
+                    macdCurrent.signal === "BUY" ? "#39d353" :
+                    macdCurrent.signal === "SELL" ? "#f85149" : "#e3b341",
+                  background:
+                    macdCurrent.signal === "BUY" ? "rgba(57,211,83,0.12)" :
+                    macdCurrent.signal === "SELL" ? "rgba(248,81,73,0.12)" : "rgba(227,179,65,0.12)",
+                  border: `1px solid ${
+                    macdCurrent.signal === "BUY" ? "#39d353" :
+                    macdCurrent.signal === "SELL" ? "#f85149" : "#e3b341"
+                  }`,
+                }}
+              >
+                MACD {macdCurrent.signal}
+                {macdCurrent.barsAgo !== null && macdCurrent.barsAgo > 0
+                  ? ` · ${macdCurrent.barsAgo} bar${macdCurrent.barsAgo === 1 ? "" : "s"} ago`
+                  : ""}
+              </span>
+            }
+          >
             <ResponsiveContainer width="100%" height={160}>
               <ComposedChart data={displayData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
@@ -1193,6 +1228,8 @@ export default function TradingPlatform() {
                 </Bar>
                 <Line type="monotone" dataKey="macd" stroke="#79c0ff" strokeWidth={1.5} dot={false} name="MACD" />
                 <Line type="monotone" dataKey="macdSignal" stroke="#f85149" strokeWidth={1.5} dot={false} name="Signal" />
+                <Scatter dataKey="macdBuyMark" name="BUY" fill="#39d353" shape="triangle" />
+                <Scatter dataKey="macdSellMark" name="SELL" fill="#f85149" shape="triangle" />
               </ComposedChart>
             </ResponsiveContainer>
           </ChartCard>
