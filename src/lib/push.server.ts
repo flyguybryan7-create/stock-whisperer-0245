@@ -1,11 +1,16 @@
 // SERVER ONLY. import-protection blocks *.server.ts files from the client bundle.
 // VAPID signing for Web Push (RFC 8292) using pure Web Crypto — no node-only deps.
 
-// Read from server-only env. Falls back to the legacy hardcoded key only if
-// the env var is missing so existing subscribers keep working until the key
-// is rotated and the new private key is stored in VAPID_PRIVATE_KEY_D.
-const VAPID_PRIVATE_KEY_D =
-  process.env.VAPID_PRIVATE_KEY_D ?? "INwmK0bzoqNCt-OneaSf50P9wxBokQLKQdcAMAs6Ubs";
+// Server-only. The private key MUST come from an env secret — never hardcoded.
+function getVapidPrivateKey(): string {
+  const k = process.env.VAPID_PRIVATE_KEY_D;
+  if (!k) {
+    throw new Error(
+      "VAPID_PRIVATE_KEY_D is not configured. Add it as a Lovable Cloud secret to enable push.",
+    );
+  }
+  return k;
+}
 const VAPID_PUBLIC_KEY =
   "BMR7dYueFO7Ik2HeHSs9X8Mo0EbIAjuuEB-CSuvahtdklpFqYeMiwKobZxMrrf1tjxGT4qiA8IEY71sBIfm3JCQ";
 export const VAPID_SUBJECT = "mailto:alerts@bryantrade.app";
@@ -39,7 +44,7 @@ async function importVapidSigningKey(): Promise<CryptoKey> {
   const pub = b64urlDecode(VAPID_PUBLIC_KEY);
   const x = pub.slice(1, 33);
   const y = pub.slice(33, 65);
-  const d = b64urlDecode(VAPID_PRIVATE_KEY_D);
+  const d = b64urlDecode(getVapidPrivateKey());
   const jwk: JsonWebKey = {
     kty: "EC",
     crv: "P-256",
