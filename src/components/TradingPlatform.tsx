@@ -23,7 +23,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Link } from "@tanstack/react-router";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  ReferenceLine, AreaChart, Area, ComposedChart, Bar, BarChart, Cell,
+  ReferenceLine, AreaChart, Area, ComposedChart, Bar, BarChart, Cell, Scatter,
 } from "recharts";
 
 const DEFAULT_STOCKS = [
