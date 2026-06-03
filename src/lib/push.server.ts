@@ -1,7 +1,11 @@
 // SERVER ONLY. import-protection blocks *.server.ts files from the client bundle.
 // VAPID signing for Web Push (RFC 8292) using pure Web Crypto — no node-only deps.
 
-const VAPID_PRIVATE_KEY_D = "INwmK0bzoqNCt-OneaSf50P9wxBokQLKQdcAMAs6Ubs";
+// Read from server-only env. Falls back to the legacy hardcoded key only if
+// the env var is missing so existing subscribers keep working until the key
+// is rotated and the new private key is stored in VAPID_PRIVATE_KEY_D.
+const VAPID_PRIVATE_KEY_D =
+  process.env.VAPID_PRIVATE_KEY_D ?? "INwmK0bzoqNCt-OneaSf50P9wxBokQLKQdcAMAs6Ubs";
 const VAPID_PUBLIC_KEY =
   "BMR7dYueFO7Ik2HeHSs9X8Mo0EbIAjuuEB-CSuvahtdklpFqYeMiwKobZxMrrf1tjxGT4qiA8IEY71sBIfm3JCQ";
 export const VAPID_SUBJECT = "mailto:alerts@bryantrade.app";
