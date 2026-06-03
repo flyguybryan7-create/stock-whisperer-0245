@@ -585,9 +585,10 @@ export default function TradingPlatform() {
   // BUY/SELL/HOLD badges next to each ticker react to live MACD crossovers
   // (still 12/26/9 — only the refresh cadence and data source change).
   const { data: watchlistIntradayData } = useQuery({
-    queryKey: ["intradayBatch", watchlist],
+    queryKey: ["intradayBatch", [...watchlist].sort().join(",")],
     queryFn: () => fetchIntradayBatch({ data: { symbols: watchlist, interval: "5m", range: "5d" } }),
     refetchInterval: 30_000,
+    refetchIntervalInBackground: true,
     staleTime: 15_000,
     enabled: watchlist.length > 0,
   });
