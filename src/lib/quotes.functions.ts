@@ -331,7 +331,6 @@ export const getIntraday = createServerFn({ method: "POST" })
   });
 
 export const getLiveQuotes = createServerFn({ method: "POST" })
-  // (batch intraday added below)
   .inputValidator((input: { symbols: string[] }) => {
     if (!input || !Array.isArray(input.symbols)) throw new Error("symbols required");
     const symbols = input.symbols
