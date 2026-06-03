@@ -672,6 +672,14 @@ export default function TradingPlatform() {
   const displayDataRaw = chartMode === "D" ? chartData.slice(-chartRange) : chartData;
   const displayData = useMemo(() => annotateMacdSignals(displayDataRaw), [displayDataRaw]);
   const macdCurrent = useMemo(() => getCurrentMacdSignal(displayData), [displayData]);
+  // Show only the most recent ~3 hours on the MACD chart so the crossover
+  // structure is readable. Daily mode keeps the full visible range.
+  const macdDisplayData = useMemo(() => {
+    if (chartMode === "D") return displayData;
+    const minutesPerBar = parseInt(intradayInterval) || 5;
+    const bars = Math.max(12, Math.ceil(180 / minutesPerBar));
+    return displayData.slice(-bars);
+  }, [displayData, chartMode, intradayInterval]);
   const last = chartData[chartData.length - 1] || ({} as Row);
   const prev = chartData[chartData.length - 2] || ({} as Row);
   const liveSel = live[selectedStock];
@@ -1207,14 +1215,14 @@ export default function TradingPlatform() {
           <ChartCard title="MACD (12,26,9) — MOVING AVERAGE CONVERGENCE DIVERGENCE"
             legend={[{ label: "MACD", color: "#79c0ff" }, { label: "Signal", color: "#f85149" }, { label: "Histogram", color: "#39d353" }]}>
             <ResponsiveContainer width="100%" height={340}>
-              <ComposedChart data={displayData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+              <ComposedChart data={macdDisplayData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                 <XAxis dataKey="date" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} />
                 <YAxis stroke="#8b949e" fontSize={9} width={45} />
                 <Tooltip content={<CustomTooltip />} />
                 <ReferenceLine y={0} stroke="#30363d" />
                 <Bar dataKey="macdHist" name="Histogram">
-                  {displayData.map((d: Row, i: number) => (
+                  {macdDisplayData.map((d: Row, i: number) => (
                     <Cell key={i} fill={(d.macdHist ?? 0) >= 0 ? "#39d353" : "#f85149"} fillOpacity={0.7} />
                   ))}
                 </Bar>
