@@ -380,6 +380,8 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
                   chartPreviousClose?: number;
                   fiftyTwoWeekHigh?: number;
                   fiftyTwoWeekLow?: number;
+                  regularMarketDayHigh?: number;
+                  regularMarketDayLow?: number;
                   currentTradingPeriod?: {
                     pre?: { start: number; end: number };
                     regular?: { start: number; end: number };
@@ -387,7 +389,7 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
                   };
                 };
                 timestamp?: number[];
-                indicators: { quote: Array<{ close: (number | null)[] }> };
+                indicators: { quote: Array<{ close: (number | null)[]; high?: (number | null)[]; low?: (number | null)[] }> };
               }>;
             };
           };
@@ -483,6 +485,28 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
             lastTickTime: lastTs,
             fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh,
             fiftyTwoWeekLow: meta.fiftyTwoWeekLow,
+            dayHigh: meta.regularMarketDayHigh ?? (() => {
+              const reg = periods.regular;
+              const highs = r.indicators.quote[0]?.high ?? [];
+              let hi: number | undefined;
+              for (let i = 0; i < highs.length; i++) {
+                const h = highs[i]; if (h == null) continue;
+                if (reg && (ts[i] < reg.start || ts[i] >= reg.end)) continue;
+                if (hi == null || h > hi) hi = h;
+              }
+              return hi;
+            })(),
+            dayLow: meta.regularMarketDayLow ?? (() => {
+              const reg = periods.regular;
+              const lows = r.indicators.quote[0]?.low ?? [];
+              let lo: number | undefined;
+              for (let i = 0; i < lows.length; i++) {
+                const lv = lows[i]; if (lv == null) continue;
+                if (reg && (ts[i] < reg.start || ts[i] >= reg.end)) continue;
+                if (lo == null || lv < lo) lo = lv;
+              }
+              return lo;
+            })(),
           };
         } catch {
           /* skip */
