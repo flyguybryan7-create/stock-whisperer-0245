@@ -59,6 +59,10 @@ type YahooQuoteV7 = {
   regularMarketDayHigh?: number;
   regularMarketDayLow?: number;
   regularMarketOpen?: number;
+  bid?: number;
+  ask?: number;
+  bidSize?: number;
+  askSize?: number;
 };
 
 async function fetchYahooV7Quotes(symbols: string[]): Promise<Record<string, LiveQuote>> {
@@ -136,6 +140,10 @@ async function fetchYahooV7Quotes(symbols: string[]): Promise<Record<string, Liv
       dayHigh: q.regularMarketDayHigh,
       dayLow: q.regularMarketDayLow,
       open: q.regularMarketOpen,
+      bid: q.bid,
+      ask: q.ask,
+      bidSize: q.bidSize,
+      askSize: q.askSize,
     };
   }
   return out;
@@ -283,6 +291,10 @@ export type LiveQuote = {
   dayHigh?: number;
   dayLow?: number;
   open?: number;
+  bid?: number;
+  ask?: number;
+  bidSize?: number;
+  askSize?: number;
 };
 
 // ============ Intraday 1-minute candles for day-trade signals ============

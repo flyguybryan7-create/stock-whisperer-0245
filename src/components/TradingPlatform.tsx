@@ -1181,6 +1181,16 @@ export default function TradingPlatform() {
                       <span style={{ fontSize: 11, fontWeight: 600, color: headChange >= 0 ? "#39d353" : "#f85149", lineHeight: 1 }}>
                         {headChange >= 0 ? "▲" : "▼"}{headChange >= 0 ? "+" : ""}${Math.abs(headChange).toFixed(2)} ({headChangePct >= 0 ? "+" : ""}{headChangePct.toFixed(2)}%)
                       </span>
+                      {liveSel?.bid != null && liveSel.bid > 0 && (
+                        <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Bid${liveSel.bidSize != null ? ` × ${liveSel.bidSize}` : ""}`}>
+                          BID <span style={{ color: "#f85149" }}>${liveSel.bid.toFixed(2)}</span>
+                        </span>
+                      )}
+                      {liveSel?.ask != null && liveSel.ask > 0 && (
+                        <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Ask${liveSel.askSize != null ? ` × ${liveSel.askSize}` : ""}`}>
+                          ASK <span style={{ color: "#39d353" }}>${liveSel.ask.toFixed(2)}</span>
+                        </span>
+                      )}
                     </>
                   ) : <span style={{ fontSize: 13, color: "#8b949e" }}>…</span>}
                   {sessLabel && (
