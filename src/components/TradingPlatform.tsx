@@ -1184,28 +1184,11 @@ export default function TradingPlatform() {
                   <span style={{ background: signalBg, border: `1px solid ${signalColor}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 800, color: signalColor, lineHeight: 1 }} title={`${signalFrameLabel} · ${liveMacdSignal.reason}`}>
                     MACD {signal}
                   </span>
-                  {isPro ? (
-                    <span
-                      title={`Day-trade signal (${intradayInterval} / ${intradayRange}): ${dayTrade.reason}\nRSI7 ${dayTrade.rsi ?? "—"} · VWAP ${dayTrade.vwap ?? "—"} · EMA9/21 ${dayTrade.emaFast ?? "—"}/${dayTrade.emaSlow ?? "—"}`}
-                      style={{ background: dtBg, border: `1.5px solid ${pink}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 900, color: pink, lineHeight: 1, boxShadow: dt !== "HOLD" ? `0 0 8px ${pink}55` : "none" }}>
-                      ⚡ {dt}
-                    </span>
-                  ) : (
-                    <Link to="/pricing" title="Day-trade signals are a Pro feature"
-                      style={{ background: "rgba(255,79,163,0.05)", border: `1.5px dashed ${pink}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 900, color: pink, lineHeight: 1, textDecoration: "none" }}>
-                      ⚡ PRO
-                    </Link>
-                  )}
-                  <button
-                    onClick={togglePush}
-                    disabled={pushBusy || pushPerm === "unsupported"}
-                    title={pushPerm === "unsupported" ? "Push not supported here. Publish + add to home screen on iPhone." : pushPerm === "granted" ? "Tap to disable push" : "Tap to enable push"}
-                    style={{ background: pushPerm === "granted" ? "#1f3d2a" : "#0d1117", border: `1px solid ${pushPerm === "granted" ? "#39d353" : "#21262d"}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, cursor: pushBusy || pushPerm === "unsupported" ? "not-allowed" : "pointer", color: pushPerm === "granted" ? "#39d353" : "#8b949e", fontFamily: "inherit", lineHeight: 1, opacity: pushBusy ? 0.6 : 1 }}>
-                    {pushPerm === "granted" ? "🔔 ON" : pushPerm === "denied" ? "🔕 BLK" : pushPerm === "unsupported" ? "🔕 N/A" : "🔕 OFF"}
-                  </button>
-                  {pushPerm === "granted" && (
-                    <button onClick={sendTest} title="Send test push" style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 4, padding: "3px 6px", fontSize: 11, cursor: "pointer", color: "#8b949e", lineHeight: 1 }}>📨</button>
-                  )}
+                  <span
+                    title={`Day-trade signal (${intradayInterval} / ${intradayRange}): ${dayTrade.reason}\nRSI7 ${dayTrade.rsi ?? "—"} · VWAP ${dayTrade.vwap ?? "—"} · EMA9/21 ${dayTrade.emaFast ?? "—"}/${dayTrade.emaSlow ?? "—"}`}
+                    style={{ background: dtBg, border: `1.5px solid ${pink}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 900, color: pink, lineHeight: 1, boxShadow: dt !== "HOLD" ? `0 0 8px ${pink}55` : "none" }}>
+                    ⚡ {dt}
+                  </span>
                 </div>
                 {/* Mini stat strip */}
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 6, fontSize: 10, color: "#8b949e", lineHeight: 1.2 }}>
