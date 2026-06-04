@@ -1319,8 +1319,13 @@ export default function TradingPlatform() {
                     return [-z, z];
                   }}
                 />
+                {/* Hidden right axis just for the volume overlay so it
+                    doesn't squash the MACD scale. */}
+                <YAxis yAxisId="vol" orientation="right" hide domain={[0, (dataMax: number) => dataMax * 4]} />
                 <Tooltip content={<CustomTooltip />} />
                 <ReferenceLine y={0} stroke="#30363d" />
+                {/* Volume bars rendered first so MACD lines/histogram sit on top */}
+                <Bar yAxisId="vol" dataKey="volume" fill="#8b949e" fillOpacity={0.22} name="Volume" isAnimationActive={false} />
                 <Bar dataKey="macdHist" name="Histogram">
                   {macdDisplayData.map((d: Row, i: number) => (
                     <Cell key={i} fill={(d.macdHist ?? 0) >= 0 ? "#39d353" : "#f85149"} fillOpacity={0.7} />
