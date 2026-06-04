@@ -1127,6 +1127,20 @@ export default function TradingPlatform() {
                       )}
                     </span>
                   </div>
+                  <div style={{ marginTop: 1, fontSize: 9, color: "#8b949e" }}>
+                    VWAP{" "}
+                    <span
+                      title="Intraday volume-weighted average price"
+                      style={{
+                        color: vwap == null || livePrice == null
+                          ? "#8b949e"
+                          : livePrice >= vwap ? "#39d353" : "#f85149",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {vwap != null ? `$${vwap.toFixed(2)}` : "—"}
+                    </span>
+                  </div>
                 </div>
               );
             })}
