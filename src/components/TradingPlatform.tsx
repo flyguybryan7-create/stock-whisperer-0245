@@ -1321,11 +1321,11 @@ export default function TradingPlatform() {
                 />
                 {/* Hidden right axis just for the volume overlay so it
                     doesn't squash the MACD scale. */}
-                <YAxis yAxisId="vol" orientation="right" hide domain={[0, (dataMax: number) => dataMax * 4]} />
+                <YAxis yAxisId="vol" orientation="right" hide domain={[0, (dataMax: number) => dataMax * 2.2]} />
                 <Tooltip content={<CustomTooltip />} />
                 <ReferenceLine y={0} stroke="#30363d" />
                 {/* Volume bars rendered first so MACD lines/histogram sit on top */}
-                <Bar yAxisId="vol" dataKey="volume" fill="#8b949e" fillOpacity={0.22} name="Volume" isAnimationActive={false} />
+                <Bar yAxisId="vol" dataKey="volume" fill="#c9d1d9" fillOpacity={0.35} stroke="#8b949e" strokeOpacity={0.4} name="Volume" isAnimationActive={false} />
                 <Bar dataKey="macdHist" name="Histogram">
                   {macdDisplayData.map((d: Row, i: number) => (
                     <Cell key={i} fill={(d.macdHist ?? 0) >= 0 ? "#39d353" : "#f85149"} fillOpacity={0.7} />
@@ -1334,19 +1334,6 @@ export default function TradingPlatform() {
                 <Line type="monotone" dataKey="macd" stroke="#79c0ff" strokeWidth={3} dot={false} name="MACD" />
                 <Line type="monotone" dataKey="macdSignal" stroke="#f85149" strokeWidth={3} dot={false} name="Signal" />
               </ComposedChart>
-            </ResponsiveContainer>
-          </ChartCard>
-
-          {/* Volume */}
-          <ChartCard title="VOLUME">
-            <ResponsiveContainer width="100%" height={120}>
-              <BarChart data={displayData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-                <XAxis dataKey="date" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} />
-                <YAxis stroke="#8b949e" fontSize={9} tickFormatter={(v: number) => (v / 1e6).toFixed(1) + "M"} width={45} />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="volume" fill="#58a6ff" opacity={0.6} name="Volume" />
-              </BarChart>
             </ResponsiveContainer>
           </ChartCard>
 
