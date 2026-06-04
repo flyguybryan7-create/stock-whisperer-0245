@@ -370,9 +370,10 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
       Object.assign(out, v7);
       remaining = data.symbols.filter((s) => !v7[s]);
       if (remaining.length === 0) return out;
-    } catch {
-      /* fall through to chart for all symbols */
+    } catch (e) {
+      console.error("[getLiveQuotes] v7 path failed:", e);
     }
+    console.log(`[getLiveQuotes] v7 returned ${data.symbols.length - remaining.length}/${data.symbols.length}; falling back to v8 chart for ${remaining.length}`);
     // Fallback: v8 chart endpoint per-symbol with includePrePost=true.
     // This returns the latest tick across PRE, REGULAR, and POST sessions
     // (v7 quote often returns stale postMarketPrice or requires a crumb).
