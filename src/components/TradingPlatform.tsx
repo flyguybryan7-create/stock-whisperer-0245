@@ -663,8 +663,14 @@ export default function TradingPlatform() {
     const batch = (watchlistIntradayData ?? {}) as Record<string, IntradayBar[]>;
     for (const sym of Object.keys(batch)) {
       const bars = batch[sym] ?? [];
+      if (bars.length === 0) continue;
+      // Anchor VWAP to the most recent trading day so it updates as today progresses
+      // (range="2d" returns yesterday + today; we only want today's session).
+      const lastTs = bars[bars.length - 1].t;
+      const lastDay = new Date(lastTs * 1000).toDateString();
+      const todayBars = bars.filter((b) => new Date(b.t * 1000).toDateString() === lastDay);
       let pv = 0, vv = 0;
-      for (const b of bars) {
+      for (const b of todayBars) {
         const typical = (b.high + b.low + b.close) / 3;
         pv += typical * b.volume;
         vv += b.volume;
