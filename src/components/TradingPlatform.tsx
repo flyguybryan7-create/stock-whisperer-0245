@@ -1393,75 +1393,8 @@ export default function TradingPlatform() {
             </div>
           </div>
 
-          {/* Active alerts */}
-          {alerts[selectedStock]?.length > 0 && (
-            <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 12, marginBottom: 12 }}>
-              <div style={{ fontSize: 10, color: "#8b949e", letterSpacing: 1.5, marginBottom: 8 }}>ACTIVE ALERTS — {selectedStock}</div>
-              {alerts[selectedStock].map((a, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 8px", background: "#010409", borderRadius: 4, marginBottom: 4, fontSize: 11 }}>
-                  <span>
-                    <span style={{ color: a.type === "above" ? "#39d353" : "#f85149" }}>{a.type === "above" ? "▲" : "▼"}</span>
-                    {" "}{selectedStock} {a.type} <span style={{ fontWeight: 600 }}>${a.price}</span>
-                    <span style={{ color: "#8b949e" }}> → 🔔 push</span>
-                  </span>
-                  <button onClick={() => setAlerts(prev => ({ ...prev, [selectedStock]: prev[selectedStock].filter((_, j) => j !== i) }))}
-                    style={{ background: "transparent", border: "none", color: "#f85149", cursor: "pointer", fontSize: 14 }}>✕</button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Push setup */}
-          <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 12 }}>
-            <div style={{ fontSize: 10, color: "#8b949e", letterSpacing: 1.5, marginBottom: 8 }}>🔔 PUSH NOTIFICATIONS</div>
-            <div style={{ fontSize: 11, color: "#8b949e", lineHeight: 1.7 }}>
-              BUY/SELL signals are pushed to every device where you tapped <b style={{ color: "#39d353" }}>PUSH ALERTS → ON</b>.<br />
-              <b>iPhone:</b> first add this app to your Home Screen (Safari → Share → Add to Home Screen), open it from the icon, then tap PUSH ALERTS.<br />
-              <b>Android/desktop:</b> just tap PUSH ALERTS in any browser tab.<br />
-              <span style={{ color: "#e3b341" }}>5-minute cooldown per symbol so you don't get spammed.</span>
-            </div>
-          </div>
         </div>
       </div>
-
-      {/* Alert Modal */}
-      {showAlertModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(1,4,9,0.8)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16 }}>
-          <div style={{ background: "#0d1117", border: "1px solid #30363d", borderRadius: 10, padding: 20, maxWidth: 380, width: "100%", animation: "slideIn 0.2s" }}>
-            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 14, color: "#e6edf3" }}>SET PRICE ALERT — {selectedStock}</div>
-
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1, marginBottom: 6 }}>ALERT TYPE</div>
-              <div style={{ display: "flex", gap: 6 }}>
-                {(["above", "below"] as const).map(t => (
-                  <button key={t} onClick={() => setAlertType(t)}
-                    style={{ flex: 1, background: alertType === t ? "#21262d" : "transparent", border: `1px solid ${alertType === t ? "#58a6ff" : "#21262d"}`, borderRadius: 6, padding: "8px", fontSize: 11, color: alertType === t ? "#58a6ff" : "#8b949e", cursor: "pointer", textTransform: "uppercase", fontFamily: mono }}>
-                    {t === "above" ? "▲ Price Above" : "▼ Price Below"}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1, marginBottom: 6 }}>TARGET PRICE (current: ${last.close?.toFixed(2)})</div>
-              <input value={alertPrice} onChange={e => setAlertPrice(e.target.value)} type="number" step="0.01"
-                placeholder={`e.g. ${(last.close * 1.05).toFixed(2)}`}
-                style={{ width: "100%", background: "#010409", border: "1px solid #21262d", borderRadius: 6, padding: "8px 10px", color: "#e6edf3", fontSize: 12, outline: "none", fontFamily: mono }} />
-            </div>
-
-            <div style={{ marginBottom: 16, fontSize: 10, color: "#8b949e" }}>
-              Alerts deliver via 🔔 push notifications on subscribed devices. SMS/text alerts have been removed.
-            </div>
-
-            <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => setShowAlertModal(false)}
-                style={{ flex: 1, background: "transparent", border: "1px solid #21262d", borderRadius: 6, padding: "10px", fontSize: 12, color: "#8b949e", cursor: "pointer", fontFamily: mono }}>Cancel</button>
-              <button onClick={addAlert} className="btn-primary"
-                style={{ flex: 1, background: "#238636", border: "1px solid #2ea043", borderRadius: 6, padding: "10px", fontSize: 12, color: "#fff", cursor: "pointer", fontWeight: 600, fontFamily: mono }}>Set Alert 🔔</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Notification */}
       {notification && (
