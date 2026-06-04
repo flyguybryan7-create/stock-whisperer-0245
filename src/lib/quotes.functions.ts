@@ -23,10 +23,11 @@ async function getYahooAuth(): Promise<{ cookie: string; crumb: string } | null>
         redirect: "manual",
       });
       // workerd exposes Set-Cookie via getSetCookie() (Web standard) when available
+      const h = c.headers as Headers & { getSetCookie?: () => string[] };
       const setCookies: string[] =
-        // @ts-expect-error - getSetCookie exists on workerd Headers
-        typeof c.headers.getSetCookie === "function" ? c.headers.getSetCookie() :
-        (c.headers.get("set-cookie") ?? "").split(/,(?=[^ ]+=)/);
+        typeof h.getSetCookie === "function"
+          ? h.getSetCookie()
+          : (c.headers.get("set-cookie") ?? "").split(/,(?=[^ ]+=)/);
       const cookie = setCookies
         .map((p) => p.split(";")[0].trim())
         .filter((p) => p && /^[A-Za-z0-9_]+=/.test(p))
