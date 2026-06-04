@@ -1014,8 +1014,8 @@ export default function TradingPlatform() {
               const chg = l && p ? ((l.close - p.close) / p.close) * 100 : 0;
               const sig: "BUY" | "SELL" | "HOLD" =
                 watchlistMacdSignals[sym] ?? (d.length ? getMacdMomentumSignal(d).signal : "HOLD");
-              const hasAlert = (alerts[sym]?.length ?? 0) > 0;
               const sigC = sig === "BUY" ? "#39d353" : sig === "SELL" ? "#f85149" : "#e3b341";
+              const vwap = watchlistVwap[sym];
               const lq = live[sym];
               const liveChg = lq ? lq.changePercent : chg;
               const livePrice = lq ? lq.price : l?.close;
@@ -1065,7 +1065,6 @@ export default function TradingPlatform() {
                       >✕</button>
                       {sym}
                       <span style={{ fontSize: 9, color: sigC, fontWeight: 800 }}>{sig}</span>
-                      {hasAlert && <span style={{ fontSize: 8 }}>🔔</span>}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                       {reorderModeSym && reorderModeSym !== sym ? (
