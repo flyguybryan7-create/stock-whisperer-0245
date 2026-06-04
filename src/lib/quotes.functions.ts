@@ -10,32 +10,46 @@ async function getYahooAuth(): Promise<{ cookie: string; crumb: string } | null>
   if (yahooAuth && Date.now() - yahooAuth.at < YAHOO_AUTH_TTL_MS) {
     return { cookie: yahooAuth.cookie, crumb: yahooAuth.crumb };
   }
-  try {
-    // Step 1: hit fc.yahoo.com to receive A1/A3 session cookies
-    const c = await fetch("https://fc.yahoo.com/", {
-      headers: { "User-Agent": YAHOO_UA },
-      redirect: "manual",
-    });
-    const setCookie = c.headers.get("set-cookie") ?? "";
-    // Reduce to "name=value" pairs joined with "; "
-    const cookie = setCookie
-      .split(/,(?=[^ ]+=)/)
-      .map((p) => p.split(";")[0].trim())
-      .filter(Boolean)
-      .join("; ");
-    if (!cookie) return null;
-    // Step 2: fetch the crumb using that cookie
-    const r = await fetch("https://query2.finance.yahoo.com/v1/test/getcrumb", {
-      headers: { "User-Agent": YAHOO_UA, Cookie: cookie },
-    });
-    if (!r.ok) return null;
-    const crumb = (await r.text()).trim();
-    if (!crumb || crumb.length < 4) return null;
-    yahooAuth = { cookie, crumb, at: Date.now() };
-    return { cookie, crumb };
-  } catch {
-    return null;
+  // Try multiple cookie sources — workerd's fetch sometimes drops Set-Cookie
+  // from fc.yahoo.com's 302; finance.yahoo.com is more reliable.
+  const cookieSources = [
+    "https://finance.yahoo.com/quote/AAPL/",
+    "https://fc.yahoo.com/",
+  ];
+  for (const src of cookieSources) {
+    try {
+      const c = await fetch(src, {
+        headers: { "User-Agent": YAHOO_UA, Accept: "text/html,*/*" },
+        redirect: "manual",
+      });
+      // workerd exposes Set-Cookie via getSetCookie() (Web standard) when available
+      const setCookies: string[] =
+        // @ts-expect-error - getSetCookie exists on workerd Headers
+        typeof c.headers.getSetCookie === "function" ? c.headers.getSetCookie() :
+        (c.headers.get("set-cookie") ?? "").split(/,(?=[^ ]+=)/);
+      const cookie = setCookies
+        .map((p) => p.split(";")[0].trim())
+        .filter((p) => p && /^[A-Za-z0-9_]+=/.test(p))
+        .join("; ");
+      console.log(`[yahooAuth] ${src} -> status=${c.status} cookies=${setCookies.length} parsed="${cookie.slice(0, 80)}"`);
+      if (!cookie) continue;
+      // Try crumb on both query1 and query2 — sometimes one is blocked
+      for (const host of ["query2.finance.yahoo.com", "query1.finance.yahoo.com"]) {
+        const r = await fetch(`https://${host}/v1/test/getcrumb`, {
+          headers: { "User-Agent": YAHOO_UA, Cookie: cookie, Accept: "*/*" },
+        });
+        const crumb = r.ok ? (await r.text()).trim() : "";
+        console.log(`[yahooAuth] getcrumb@${host} status=${r.status} crumb="${crumb.slice(0, 16)}"`);
+        if (r.ok && crumb && crumb.length >= 4 && !crumb.startsWith("<")) {
+          yahooAuth = { cookie, crumb, at: Date.now() };
+          return { cookie, crumb };
+        }
+      }
+    } catch (e) {
+      console.error(`[yahooAuth] ${src} failed:`, e);
+    }
   }
+  return null;
 }
 
 type YahooQuoteV7 = {
