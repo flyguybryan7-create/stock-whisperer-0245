@@ -657,6 +657,23 @@ export default function TradingPlatform() {
     return out;
   }, [watchlistIntradayData]);
 
+  // Per-symbol intraday VWAP for the watchlist (typical-price * volume / volume).
+  const watchlistVwap = useMemo(() => {
+    const out: Record<string, number> = {};
+    const batch = (watchlistIntradayData ?? {}) as Record<string, IntradayBar[]>;
+    for (const sym of Object.keys(batch)) {
+      const bars = batch[sym] ?? [];
+      let pv = 0, vv = 0;
+      for (const b of bars) {
+        const typical = (b.high + b.low + b.close) / 3;
+        pv += typical * b.volume;
+        vv += b.volume;
+      }
+      if (vv > 0) out[sym] = +(pv / vv).toFixed(2);
+    }
+    return out;
+  }, [watchlistIntradayData]);
+
   // AI sentiment based on headlines
   const { data: sentimentData } = useQuery({
     queryKey: ["sentiment", selectedStock, newsItems.map((n) => n.title).join("|")],
@@ -939,14 +956,6 @@ export default function TradingPlatform() {
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#39d353", animation: "pulse 2s infinite" }} />
             LIVE
           </div>
-          <button onClick={() => setShowAlertModal(true)} className="btn-primary"
-            style={{ background: "#21262d", border: "1px solid #30363d", color: "#e6edf3", padding: "6px 12px", borderRadius: 6, fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
-            🔔 Set Alert
-          </button>
-          <Link to="/pricing"
-            style={{ background: isPro ? "#1f3d2a" : "#21262d", border: `1px solid ${isPro ? "#39d353" : "#30363d"}`, color: isPro ? "#39d353" : "#e6edf3", padding: "6px 12px", borderRadius: 6, fontSize: 11, textDecoration: "none", display: "flex", alignItems: "center", gap: 6 }}>
-            {tier === "pro" ? "✓ PRO" : tier === "basic" ? "✓ BASIC" : "💳 Upgrade"}
-          </Link>
         </div>
       </div>
 
@@ -997,8 +1006,8 @@ export default function TradingPlatform() {
               const chg = l && p ? ((l.close - p.close) / p.close) * 100 : 0;
               const sig: "BUY" | "SELL" | "HOLD" =
                 watchlistMacdSignals[sym] ?? (d.length ? getMacdMomentumSignal(d).signal : "HOLD");
-              const hasAlert = (alerts[sym]?.length ?? 0) > 0;
               const sigC = sig === "BUY" ? "#39d353" : sig === "SELL" ? "#f85149" : "#e3b341";
+              const vwap = watchlistVwap[sym];
               const lq = live[sym];
               const liveChg = lq ? lq.changePercent : chg;
               const livePrice = lq ? lq.price : l?.close;
@@ -1048,7 +1057,6 @@ export default function TradingPlatform() {
                       >✕</button>
                       {sym}
                       <span style={{ fontSize: 9, color: sigC, fontWeight: 800 }}>{sig}</span>
-                      {hasAlert && <span style={{ fontSize: 8 }}>🔔</span>}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                       {reorderModeSym && reorderModeSym !== sym ? (
@@ -1111,6 +1119,20 @@ export default function TradingPlatform() {
                       )}
                     </span>
                   </div>
+                  <div style={{ marginTop: 1, fontSize: 9, color: "#8b949e" }}>
+                    VWAP{" "}
+                    <span
+                      title="Intraday volume-weighted average price"
+                      style={{
+                        color: vwap == null || livePrice == null
+                          ? "#8b949e"
+                          : livePrice >= vwap ? "#39d353" : "#f85149",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {vwap != null ? `$${vwap.toFixed(2)}` : "—"}
+                    </span>
+                  </div>
                 </div>
               );
             })}
@@ -1162,28 +1184,11 @@ export default function TradingPlatform() {
                   <span style={{ background: signalBg, border: `1px solid ${signalColor}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 800, color: signalColor, lineHeight: 1 }} title={`${signalFrameLabel} · ${liveMacdSignal.reason}`}>
                     MACD {signal}
                   </span>
-                  {isPro ? (
-                    <span
-                      title={`Day-trade signal (${intradayInterval} / ${intradayRange}): ${dayTrade.reason}\nRSI7 ${dayTrade.rsi ?? "—"} · VWAP ${dayTrade.vwap ?? "—"} · EMA9/21 ${dayTrade.emaFast ?? "—"}/${dayTrade.emaSlow ?? "—"}`}
-                      style={{ background: dtBg, border: `1.5px solid ${pink}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 900, color: pink, lineHeight: 1, boxShadow: dt !== "HOLD" ? `0 0 8px ${pink}55` : "none" }}>
-                      ⚡ {dt}
-                    </span>
-                  ) : (
-                    <Link to="/pricing" title="Day-trade signals are a Pro feature"
-                      style={{ background: "rgba(255,79,163,0.05)", border: `1.5px dashed ${pink}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 900, color: pink, lineHeight: 1, textDecoration: "none" }}>
-                      ⚡ PRO
-                    </Link>
-                  )}
-                  <button
-                    onClick={togglePush}
-                    disabled={pushBusy || pushPerm === "unsupported"}
-                    title={pushPerm === "unsupported" ? "Push not supported here. Publish + add to home screen on iPhone." : pushPerm === "granted" ? "Tap to disable push" : "Tap to enable push"}
-                    style={{ background: pushPerm === "granted" ? "#1f3d2a" : "#0d1117", border: `1px solid ${pushPerm === "granted" ? "#39d353" : "#21262d"}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, cursor: pushBusy || pushPerm === "unsupported" ? "not-allowed" : "pointer", color: pushPerm === "granted" ? "#39d353" : "#8b949e", fontFamily: "inherit", lineHeight: 1, opacity: pushBusy ? 0.6 : 1 }}>
-                    {pushPerm === "granted" ? "🔔 ON" : pushPerm === "denied" ? "🔕 BLK" : pushPerm === "unsupported" ? "🔕 N/A" : "🔕 OFF"}
-                  </button>
-                  {pushPerm === "granted" && (
-                    <button onClick={sendTest} title="Send test push" style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 4, padding: "3px 6px", fontSize: 11, cursor: "pointer", color: "#8b949e", lineHeight: 1 }}>📨</button>
-                  )}
+                  <span
+                    title={`Day-trade signal (${intradayInterval} / ${intradayRange}): ${dayTrade.reason}\nRSI7 ${dayTrade.rsi ?? "—"} · VWAP ${dayTrade.vwap ?? "—"} · EMA9/21 ${dayTrade.emaFast ?? "—"}/${dayTrade.emaSlow ?? "—"}`}
+                    style={{ background: dtBg, border: `1.5px solid ${pink}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 900, color: pink, lineHeight: 1, boxShadow: dt !== "HOLD" ? `0 0 8px ${pink}55` : "none" }}>
+                    ⚡ {dt}
+                  </span>
                 </div>
                 {/* Mini stat strip */}
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 6, fontSize: 10, color: "#8b949e", lineHeight: 1.2 }}>
@@ -1388,75 +1393,8 @@ export default function TradingPlatform() {
             </div>
           </div>
 
-          {/* Active alerts */}
-          {alerts[selectedStock]?.length > 0 && (
-            <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 12, marginBottom: 12 }}>
-              <div style={{ fontSize: 10, color: "#8b949e", letterSpacing: 1.5, marginBottom: 8 }}>ACTIVE ALERTS — {selectedStock}</div>
-              {alerts[selectedStock].map((a, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 8px", background: "#010409", borderRadius: 4, marginBottom: 4, fontSize: 11 }}>
-                  <span>
-                    <span style={{ color: a.type === "above" ? "#39d353" : "#f85149" }}>{a.type === "above" ? "▲" : "▼"}</span>
-                    {" "}{selectedStock} {a.type} <span style={{ fontWeight: 600 }}>${a.price}</span>
-                    <span style={{ color: "#8b949e" }}> → 🔔 push</span>
-                  </span>
-                  <button onClick={() => setAlerts(prev => ({ ...prev, [selectedStock]: prev[selectedStock].filter((_, j) => j !== i) }))}
-                    style={{ background: "transparent", border: "none", color: "#f85149", cursor: "pointer", fontSize: 14 }}>✕</button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Push setup */}
-          <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 12 }}>
-            <div style={{ fontSize: 10, color: "#8b949e", letterSpacing: 1.5, marginBottom: 8 }}>🔔 PUSH NOTIFICATIONS</div>
-            <div style={{ fontSize: 11, color: "#8b949e", lineHeight: 1.7 }}>
-              BUY/SELL signals are pushed to every device where you tapped <b style={{ color: "#39d353" }}>PUSH ALERTS → ON</b>.<br />
-              <b>iPhone:</b> first add this app to your Home Screen (Safari → Share → Add to Home Screen), open it from the icon, then tap PUSH ALERTS.<br />
-              <b>Android/desktop:</b> just tap PUSH ALERTS in any browser tab.<br />
-              <span style={{ color: "#e3b341" }}>5-minute cooldown per symbol so you don't get spammed.</span>
-            </div>
-          </div>
         </div>
       </div>
-
-      {/* Alert Modal */}
-      {showAlertModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(1,4,9,0.8)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16 }}>
-          <div style={{ background: "#0d1117", border: "1px solid #30363d", borderRadius: 10, padding: 20, maxWidth: 380, width: "100%", animation: "slideIn 0.2s" }}>
-            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 14, color: "#e6edf3" }}>SET PRICE ALERT — {selectedStock}</div>
-
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1, marginBottom: 6 }}>ALERT TYPE</div>
-              <div style={{ display: "flex", gap: 6 }}>
-                {(["above", "below"] as const).map(t => (
-                  <button key={t} onClick={() => setAlertType(t)}
-                    style={{ flex: 1, background: alertType === t ? "#21262d" : "transparent", border: `1px solid ${alertType === t ? "#58a6ff" : "#21262d"}`, borderRadius: 6, padding: "8px", fontSize: 11, color: alertType === t ? "#58a6ff" : "#8b949e", cursor: "pointer", textTransform: "uppercase", fontFamily: mono }}>
-                    {t === "above" ? "▲ Price Above" : "▼ Price Below"}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1, marginBottom: 6 }}>TARGET PRICE (current: ${last.close?.toFixed(2)})</div>
-              <input value={alertPrice} onChange={e => setAlertPrice(e.target.value)} type="number" step="0.01"
-                placeholder={`e.g. ${(last.close * 1.05).toFixed(2)}`}
-                style={{ width: "100%", background: "#010409", border: "1px solid #21262d", borderRadius: 6, padding: "8px 10px", color: "#e6edf3", fontSize: 12, outline: "none", fontFamily: mono }} />
-            </div>
-
-            <div style={{ marginBottom: 16, fontSize: 10, color: "#8b949e" }}>
-              Alerts deliver via 🔔 push notifications on subscribed devices. SMS/text alerts have been removed.
-            </div>
-
-            <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => setShowAlertModal(false)}
-                style={{ flex: 1, background: "transparent", border: "1px solid #21262d", borderRadius: 6, padding: "10px", fontSize: 12, color: "#8b949e", cursor: "pointer", fontFamily: mono }}>Cancel</button>
-              <button onClick={addAlert} className="btn-primary"
-                style={{ flex: 1, background: "#238636", border: "1px solid #2ea043", borderRadius: 6, padding: "10px", fontSize: 12, color: "#fff", cursor: "pointer", fontWeight: 600, fontFamily: mono }}>Set Alert 🔔</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Notification */}
       {notification && (
