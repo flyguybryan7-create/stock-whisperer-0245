@@ -1494,18 +1494,19 @@ function ChartCard({ title, legend, titleRight, children }: { title: string; leg
 }
 
 function EstClock() {
-  const [now, setNow] = useState(() => new Date());
+  const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
+    setNow(new Date());
     const id = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
-  const time = now.toLocaleTimeString("en-US", {
+  const time = now ? now.toLocaleTimeString("en-US", {
     timeZone: "America/New_York",
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
     hour12: false,
-  });
+  }) : "--:--:--";
   return (
     <span
       title="Current Eastern Time"
