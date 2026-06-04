@@ -58,6 +58,7 @@ type YahooQuoteV7 = {
   fiftyTwoWeekLow?: number;
   regularMarketDayHigh?: number;
   regularMarketDayLow?: number;
+  regularMarketOpen?: number;
 };
 
 async function fetchYahooV7Quotes(symbols: string[]): Promise<Record<string, LiveQuote>> {
@@ -134,6 +135,7 @@ async function fetchYahooV7Quotes(symbols: string[]): Promise<Record<string, Liv
       fiftyTwoWeekLow: q.fiftyTwoWeekLow,
       dayHigh: q.regularMarketDayHigh,
       dayLow: q.regularMarketDayLow,
+      open: q.regularMarketOpen,
     };
   }
   return out;
@@ -280,6 +282,7 @@ export type LiveQuote = {
   fiftyTwoWeekLow?: number;
   dayHigh?: number;
   dayLow?: number;
+  open?: number;
 };
 
 // ============ Intraday 1-minute candles for day-trade signals ============
@@ -382,6 +385,7 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
                   fiftyTwoWeekLow?: number;
                   regularMarketDayHigh?: number;
                   regularMarketDayLow?: number;
+                  regularMarketOpen?: number;
                   currentTradingPeriod?: {
                     pre?: { start: number; end: number };
                     regular?: { start: number; end: number };
@@ -389,7 +393,7 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
                   };
                 };
                 timestamp?: number[];
-                indicators: { quote: Array<{ close: (number | null)[]; high?: (number | null)[]; low?: (number | null)[] }> };
+                indicators: { quote: Array<{ close: (number | null)[]; high?: (number | null)[]; low?: (number | null)[]; open?: (number | null)[] }> };
               }>;
             };
           };
@@ -506,6 +510,16 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
                 if (lo == null || lv < lo) lo = lv;
               }
               return lo;
+            })(),
+            open: meta.regularMarketOpen ?? (() => {
+              const reg = periods.regular;
+              const opens = r.indicators.quote[0]?.open ?? [];
+              for (let i = 0; i < opens.length; i++) {
+                const o = opens[i]; if (o == null) continue;
+                if (reg && (ts[i] < reg.start || ts[i] >= reg.end)) continue;
+                return o;
+              }
+              return undefined;
             })(),
           };
         } catch {
