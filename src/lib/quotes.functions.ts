@@ -3,6 +3,10 @@ import { createServerFn } from "@tanstack/react-start";
 // ============ Yahoo crumb+cookie cache (required for v7 quote endpoint) ============
 let yahooAuth: { cookie: string; crumb: string; at: number } | undefined;
 const YAHOO_AUTH_TTL_MS = 30 * 60 * 1000; // 30 min
+// Negative cache: when Yahoo rate-limits us (429), back off instead of
+// hammering on every poll.
+let yahooAuthCooldownUntil = 0;
+const YAHOO_AUTH_COOLDOWN_MS = 10 * 60 * 1000; // 10 min
 const YAHOO_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 
@@ -10,32 +14,51 @@ async function getYahooAuth(): Promise<{ cookie: string; crumb: string } | null>
   if (yahooAuth && Date.now() - yahooAuth.at < YAHOO_AUTH_TTL_MS) {
     return { cookie: yahooAuth.cookie, crumb: yahooAuth.crumb };
   }
-  try {
-    // Step 1: hit fc.yahoo.com to receive A1/A3 session cookies
-    const c = await fetch("https://fc.yahoo.com/", {
-      headers: { "User-Agent": YAHOO_UA },
-      redirect: "manual",
-    });
-    const setCookie = c.headers.get("set-cookie") ?? "";
-    // Reduce to "name=value" pairs joined with "; "
-    const cookie = setCookie
-      .split(/,(?=[^ ]+=)/)
-      .map((p) => p.split(";")[0].trim())
-      .filter(Boolean)
-      .join("; ");
-    if (!cookie) return null;
-    // Step 2: fetch the crumb using that cookie
-    const r = await fetch("https://query2.finance.yahoo.com/v1/test/getcrumb", {
-      headers: { "User-Agent": YAHOO_UA, Cookie: cookie },
-    });
-    if (!r.ok) return null;
-    const crumb = (await r.text()).trim();
-    if (!crumb || crumb.length < 4) return null;
-    yahooAuth = { cookie, crumb, at: Date.now() };
-    return { cookie, crumb };
-  } catch {
-    return null;
+  if (Date.now() < yahooAuthCooldownUntil) return null;
+  // Try multiple cookie sources — workerd's fetch sometimes drops Set-Cookie
+  // from fc.yahoo.com's 302; finance.yahoo.com is more reliable.
+  const cookieSources = [
+    "https://finance.yahoo.com/quote/AAPL/",
+    "https://fc.yahoo.com/",
+  ];
+  for (const src of cookieSources) {
+    try {
+      const c = await fetch(src, {
+        headers: { "User-Agent": YAHOO_UA, Accept: "text/html,*/*" },
+        redirect: "manual",
+      });
+      // workerd exposes Set-Cookie via getSetCookie() (Web standard) when available
+      const h = c.headers as Headers & { getSetCookie?: () => string[] };
+      const setCookies: string[] =
+        typeof h.getSetCookie === "function"
+          ? h.getSetCookie()
+          : (c.headers.get("set-cookie") ?? "").split(/,(?=[^ ]+=)/);
+      const cookie = setCookies
+        .map((p) => p.split(";")[0].trim())
+        .filter((p) => p && /^[A-Za-z0-9_]+=/.test(p))
+        .join("; ");
+      if (!cookie) continue;
+      // Try crumb on both query1 and query2 — sometimes one is blocked
+      for (const host of ["query2.finance.yahoo.com", "query1.finance.yahoo.com"]) {
+        const r = await fetch(`https://${host}/v1/test/getcrumb`, {
+          headers: { "User-Agent": YAHOO_UA, Cookie: cookie, Accept: "*/*" },
+        });
+        const crumb = r.ok ? (await r.text()).trim() : "";
+        if (r.ok && crumb && crumb.length >= 4 && !crumb.startsWith("<")) {
+          yahooAuth = { cookie, crumb, at: Date.now() };
+          return { cookie, crumb };
+        }
+        if (r.status === 429) {
+          yahooAuthCooldownUntil = Date.now() + YAHOO_AUTH_COOLDOWN_MS;
+          return null;
+        }
+      }
+    } catch {
+      /* try next source */
+    }
   }
+  yahooAuthCooldownUntil = Date.now() + 60_000;
+  return null;
 }
 
 type YahooQuoteV7 = {
@@ -370,10 +393,9 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
       Object.assign(out, v7);
       remaining = data.symbols.filter((s) => !v7[s]);
       if (remaining.length === 0) return out;
-    } catch (e) {
-      console.error("[getLiveQuotes] v7 path failed:", e);
+    } catch {
+      /* fall through to chart for all symbols */
     }
-    console.log(`[getLiveQuotes] v7 returned ${data.symbols.length - remaining.length}/${data.symbols.length}; falling back to v8 chart for ${remaining.length}`);
     // Fallback: v8 chart endpoint per-symbol with includePrePost=true.
     // This returns the latest tick across PRE, REGULAR, and POST sessions
     // (v7 quote often returns stale postMarketPrice or requires a crumb).
