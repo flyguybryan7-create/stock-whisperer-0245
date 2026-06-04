@@ -27,7 +27,7 @@ import {
 } from "recharts";
 
 const DEFAULT_STOCKS = [
-  "NVDA","MRVL","SMTC","TSEM","CRDO","INTC","QBTS","INFQ","HUT","ALAB","SNOW","NVTS","MCHP","ANET",
+  "NVDA","MRVL","SMTC","TSEM","CRDO","INTC","QBTS","INFQ","HUT","ALAB","AAOI","SNOW","NVTS","MCHP","ANET",
   "CRWV","CBRS","RMBS","LSCC","MXL","AMBA","PLAB","ASYS","COHU","NLST","ACLS","STM","SATS","WDC",
   "MU","AMD","PLTR","GOOG","APLD","ARM","TSM","OKLO","NTAP","AMZN","GSAT","NXPI","ORCL","SMCI",
   "CDNS","INOD","ACVA","AAL","JBLU","FHN","FRST","HBAN","RF","RRC","MJNA","NAK","BCTX","CMCSA",
