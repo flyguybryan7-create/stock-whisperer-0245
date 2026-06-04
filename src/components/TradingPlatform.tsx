@@ -657,6 +657,23 @@ export default function TradingPlatform() {
     return out;
   }, [watchlistIntradayData]);
 
+  // Per-symbol intraday VWAP for the watchlist (typical-price * volume / volume).
+  const watchlistVwap = useMemo(() => {
+    const out: Record<string, number> = {};
+    const batch = (watchlistIntradayData ?? {}) as Record<string, IntradayBar[]>;
+    for (const sym of Object.keys(batch)) {
+      const bars = batch[sym] ?? [];
+      let pv = 0, vv = 0;
+      for (const b of bars) {
+        const typical = (b.high + b.low + b.close) / 3;
+        pv += typical * b.volume;
+        vv += b.volume;
+      }
+      if (vv > 0) out[sym] = +(pv / vv).toFixed(2);
+    }
+    return out;
+  }, [watchlistIntradayData]);
+
   // AI sentiment based on headlines
   const { data: sentimentData } = useQuery({
     queryKey: ["sentiment", selectedStock, newsItems.map((n) => n.title).join("|")],
