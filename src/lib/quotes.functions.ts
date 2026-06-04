@@ -511,6 +511,16 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
               }
               return lo;
             })(),
+            open: meta.regularMarketOpen ?? (() => {
+              const reg = periods.regular;
+              const opens = r.indicators.quote[0]?.open ?? [];
+              for (let i = 0; i < opens.length; i++) {
+                const o = opens[i]; if (o == null) continue;
+                if (reg && (ts[i] < reg.start || ts[i] >= reg.end)) continue;
+                return o;
+              }
+              return undefined;
+            })(),
           };
         } catch {
           /* skip */
