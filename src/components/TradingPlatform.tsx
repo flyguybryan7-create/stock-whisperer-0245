@@ -27,7 +27,7 @@ import {
 } from "recharts";
 
 const DEFAULT_STOCKS = [
-  "NVDA","MRVL","SMTC","TSEM","CRDO","INTC","QBTS","INFQ","HUT","ALAB","SNOW","NVTS","MCHP","ANET",
+  "NVDA","MRVL","SMTC","TSEM","CRDO","INTC","QBTS","INFQ","HUT","ALAB","AAOI","SNOW","NVTS","MCHP","ANET",
   "CRWV","CBRS","RMBS","LSCC","MXL","AMBA","PLAB","ASYS","COHU","NLST","ACLS","STM","SATS","WDC",
   "MU","AMD","PLTR","GOOG","APLD","ARM","TSM","OKLO","NTAP","AMZN","GSAT","NXPI","ORCL","SMCI",
   "CDNS","INOD","ACVA","AAL","JBLU","FHN","FRST","HBAN","RF","RRC","MJNA","NAK","BCTX","CMCSA",
@@ -40,7 +40,7 @@ const WATCHLIST_KEY = "bryantrade.watchlist.v1";
 const STOCK_NAMES: Record<string, string> = {
   NVDA:"NVIDIA Corp",MRVL:"Marvell Technology",SMTC:"Semtech Corp",TSEM:"Tower Semiconductor",
   INTC:"Intel Corp",QBTS:"D-Wave Quantum",INFQ:"Infleqtion Inc",HUT:"Hut 8 Corp",
-  CRDO:"Credo Technology",ALAB:"Astera Labs",SNOW:"Snowflake Inc",NVTS:"Navitas Semi",
+  CRDO:"Credo Technology",ALAB:"Astera Labs",AAOI:"Applied Optoelectronics",SNOW:"Snowflake Inc",NVTS:"Navitas Semi",
   MCHP:"Microchip Tech",ANET:"Arista Networks",MU:"Micron Technology",AMD:"Advanced Micro",
   PLTR:"Palantir Tech",GOOG:"Alphabet Inc",APLD:"Applied Digital",ARM:"ARM Holdings",
   TSM:"Taiwan Semi",OKLO:"Oklo Inc",NTAP:"NetApp Inc",AMZN:"Amazon.com",
@@ -1481,6 +1481,7 @@ function ChartCard({ title, legend, titleRight, children }: { title: string; leg
     <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: "6px 8px 4px", marginBottom: 6 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <EstClock />
           <div style={{ fontSize: 10, color: "#8b949e", letterSpacing: 1.5 }}>{title}</div>
           {titleRight}
         </div>
@@ -1497,6 +1498,39 @@ function ChartCard({ title, legend, titleRight, children }: { title: string; leg
       </div>
       {children}
     </div>
+  );
+}
+
+function EstClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const time = now.toLocaleTimeString("en-US", {
+    timeZone: "America/New_York",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+  return (
+    <span
+      title="Current Eastern Time"
+      style={{
+        fontSize: 10,
+        fontWeight: 700,
+        color: "#58a6ff",
+        background: "#0d1117",
+        border: "1px solid #21262d",
+        borderRadius: 4,
+        padding: "2px 6px",
+        letterSpacing: 1,
+        fontVariantNumeric: "tabular-nums",
+      }}
+    >
+      {time} ET
+    </span>
   );
 }
 
