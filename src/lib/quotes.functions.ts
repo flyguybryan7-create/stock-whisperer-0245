@@ -140,6 +140,10 @@ async function fetchYahooV7Quotes(symbols: string[]): Promise<Record<string, Liv
       dayHigh: q.regularMarketDayHigh,
       dayLow: q.regularMarketDayLow,
       open: q.regularMarketOpen,
+      bid: q.bid,
+      ask: q.ask,
+      bidSize: q.bidSize,
+      askSize: q.askSize,
     };
   }
   return out;
