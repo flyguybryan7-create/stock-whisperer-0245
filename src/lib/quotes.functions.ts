@@ -59,6 +59,10 @@ type YahooQuoteV7 = {
   regularMarketDayHigh?: number;
   regularMarketDayLow?: number;
   regularMarketOpen?: number;
+  bid?: number;
+  ask?: number;
+  bidSize?: number;
+  askSize?: number;
 };
 
 async function fetchYahooV7Quotes(symbols: string[]): Promise<Record<string, LiveQuote>> {
