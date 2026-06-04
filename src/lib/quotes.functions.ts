@@ -646,7 +646,7 @@ export const getIntradayBatch = createServerFn({ method: "POST" })
     symbols: (Array.isArray(input?.symbols) ? input.symbols : [])
       .filter((s) => typeof s === "string" && /^[A-Z.\-]{1,10}$/i.test(s))
       .map((s) => s.toUpperCase())
-      .slice(0, 50),
+      .slice(0, 200),
     interval: (["1m", "2m", "5m"] as const).includes(input?.interval as "1m" | "2m" | "5m")
       ? (input.interval as "1m" | "2m" | "5m")
       : "5m",
@@ -654,9 +654,12 @@ export const getIntradayBatch = createServerFn({ method: "POST" })
   }))
   .handler(async ({ data }): Promise<Record<string, IntradayBar[]>> => {
     if (data.symbols.length === 0) return {};
-    const out: Record<string, IntradayBar[]> = {};
-    await Promise.all(
-      data.symbols.map(async (sym) => {
+    const out: Record<string, IntradayBar[]> = Object.fromEntries(data.symbols.map((sym) => [sym, []]));
+    const chunkSize = 12;
+    for (let start = 0; start < data.symbols.length; start += chunkSize) {
+      const chunk = data.symbols.slice(start, start + chunkSize);
+      await Promise.all(
+        chunk.map(async (sym) => {
         const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=${data.interval}&range=${data.range}&includePrePost=true`;
         try {
           const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; BryanTrade/1.0)" } });
@@ -685,7 +688,8 @@ export const getIntradayBatch = createServerFn({ method: "POST" })
         } catch {
           out[sym] = [];
         }
-      })
-    );
+        })
+      );
+    }
     return out;
   });
