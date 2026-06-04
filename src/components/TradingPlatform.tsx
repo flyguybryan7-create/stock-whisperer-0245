@@ -40,7 +40,7 @@ const WATCHLIST_KEY = "bryantrade.watchlist.v1";
 const STOCK_NAMES: Record<string, string> = {
   NVDA:"NVIDIA Corp",MRVL:"Marvell Technology",SMTC:"Semtech Corp",TSEM:"Tower Semiconductor",
   INTC:"Intel Corp",QBTS:"D-Wave Quantum",INFQ:"Infleqtion Inc",HUT:"Hut 8 Corp",
-  CRDO:"Credo Technology",ALAB:"Astera Labs",SNOW:"Snowflake Inc",NVTS:"Navitas Semi",
+  CRDO:"Credo Technology",ALAB:"Astera Labs",AAOI:"Applied Optoelectronics",SNOW:"Snowflake Inc",NVTS:"Navitas Semi",
   MCHP:"Microchip Tech",ANET:"Arista Networks",MU:"Micron Technology",AMD:"Advanced Micro",
   PLTR:"Palantir Tech",GOOG:"Alphabet Inc",APLD:"Applied Digital",ARM:"ARM Holdings",
   TSM:"Taiwan Semi",OKLO:"Oklo Inc",NTAP:"NetApp Inc",AMZN:"Amazon.com",
