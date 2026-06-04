@@ -135,6 +135,7 @@ async function fetchYahooV7Quotes(symbols: string[]): Promise<Record<string, Liv
       fiftyTwoWeekLow: q.fiftyTwoWeekLow,
       dayHigh: q.regularMarketDayHigh,
       dayLow: q.regularMarketDayLow,
+      open: q.regularMarketOpen,
     };
   }
   return out;
