@@ -3,6 +3,10 @@ import { createServerFn } from "@tanstack/react-start";
 // ============ Yahoo crumb+cookie cache (required for v7 quote endpoint) ============
 let yahooAuth: { cookie: string; crumb: string; at: number } | undefined;
 const YAHOO_AUTH_TTL_MS = 30 * 60 * 1000; // 30 min
+// Negative cache: when Yahoo rate-limits us (429), back off instead of
+// hammering on every poll.
+let yahooAuthCooldownUntil = 0;
+const YAHOO_AUTH_COOLDOWN_MS = 10 * 60 * 1000; // 10 min
 const YAHOO_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 
@@ -10,6 +14,7 @@ async function getYahooAuth(): Promise<{ cookie: string; crumb: string } | null>
   if (yahooAuth && Date.now() - yahooAuth.at < YAHOO_AUTH_TTL_MS) {
     return { cookie: yahooAuth.cookie, crumb: yahooAuth.crumb };
   }
+  if (Date.now() < yahooAuthCooldownUntil) return null;
   // Try multiple cookie sources — workerd's fetch sometimes drops Set-Cookie
   // from fc.yahoo.com's 302; finance.yahoo.com is more reliable.
   const cookieSources = [
@@ -32,7 +37,6 @@ async function getYahooAuth(): Promise<{ cookie: string; crumb: string } | null>
         .map((p) => p.split(";")[0].trim())
         .filter((p) => p && /^[A-Za-z0-9_]+=/.test(p))
         .join("; ");
-      console.log(`[yahooAuth] ${src} -> status=${c.status} cookies=${setCookies.length} parsed="${cookie.slice(0, 80)}"`);
       if (!cookie) continue;
       // Try crumb on both query1 and query2 — sometimes one is blocked
       for (const host of ["query2.finance.yahoo.com", "query1.finance.yahoo.com"]) {
@@ -40,16 +44,20 @@ async function getYahooAuth(): Promise<{ cookie: string; crumb: string } | null>
           headers: { "User-Agent": YAHOO_UA, Cookie: cookie, Accept: "*/*" },
         });
         const crumb = r.ok ? (await r.text()).trim() : "";
-        console.log(`[yahooAuth] getcrumb@${host} status=${r.status} crumb="${crumb.slice(0, 16)}"`);
         if (r.ok && crumb && crumb.length >= 4 && !crumb.startsWith("<")) {
           yahooAuth = { cookie, crumb, at: Date.now() };
           return { cookie, crumb };
         }
+        if (r.status === 429) {
+          yahooAuthCooldownUntil = Date.now() + YAHOO_AUTH_COOLDOWN_MS;
+          return null;
+        }
       }
-    } catch (e) {
-      console.error(`[yahooAuth] ${src} failed:`, e);
+    } catch {
+      /* try next source */
     }
   }
+  yahooAuthCooldownUntil = Date.now() + 60_000;
   return null;
 }
 
@@ -385,10 +393,9 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
       Object.assign(out, v7);
       remaining = data.symbols.filter((s) => !v7[s]);
       if (remaining.length === 0) return out;
-    } catch (e) {
-      console.error("[getLiveQuotes] v7 path failed:", e);
+    } catch {
+      /* fall through to chart for all symbols */
     }
-    console.log(`[getLiveQuotes] v7 returned ${data.symbols.length - remaining.length}/${data.symbols.length}; falling back to v8 chart for ${remaining.length}`);
     // Fallback: v8 chart endpoint per-symbol with includePrePost=true.
     // This returns the latest tick across PRE, REGULAR, and POST sessions
     // (v7 quote often returns stale postMarketPrice or requires a crumb).
