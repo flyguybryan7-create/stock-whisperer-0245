@@ -385,6 +385,7 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
                   fiftyTwoWeekLow?: number;
                   regularMarketDayHigh?: number;
                   regularMarketDayLow?: number;
+                  regularMarketOpen?: number;
                   currentTradingPeriod?: {
                     pre?: { start: number; end: number };
                     regular?: { start: number; end: number };
@@ -392,7 +393,7 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
                   };
                 };
                 timestamp?: number[];
-                indicators: { quote: Array<{ close: (number | null)[]; high?: (number | null)[]; low?: (number | null)[] }> };
+                indicators: { quote: Array<{ close: (number | null)[]; high?: (number | null)[]; low?: (number | null)[]; open?: (number | null)[] }> };
               }>;
             };
           };
