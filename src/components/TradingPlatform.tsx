@@ -1152,7 +1152,15 @@ export default function TradingPlatform() {
                         title="Remove"
                         style={{ background: "transparent", border: "none", color: "#6e7681", cursor: "pointer", fontSize: 11, padding: 0, lineHeight: 1, width: 12 }}
                       >✕</button>
-                      {sym}
+                      {(() => {
+                        const flow = flowSignals[sym];
+                        if (!flow) return <span>{sym}</span>;
+                        const cls = flow.kind === "BUY_SURGE" ? "flow-flash-buy" : "flow-flash-sell";
+                        const tip = flow.kind === "BUY_SURGE"
+                          ? `MASSIVE BUYING — ${flow.volRatio.toFixed(1)}× avg minute volume, +${flow.pricePct.toFixed(2)}% on the bar`
+                          : `MASSIVE SELLING — ${flow.volRatio.toFixed(1)}× avg minute volume, ${flow.pricePct.toFixed(2)}% on the bar`;
+                        return <span className={cls} title={tip}>{sym}</span>;
+                      })()}
                       <span style={{ fontSize: 9, color: sigC, fontWeight: 800 }}>{sig}</span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
