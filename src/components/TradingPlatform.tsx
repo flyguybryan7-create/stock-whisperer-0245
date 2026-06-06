@@ -626,17 +626,35 @@ export default function TradingPlatform() {
     refetchInterval: 5 * 60_000,
   });
 
-  // US market pulse (futures, VIX, semis ETFs, semis breadth, semis risk gauge).
-  // Polled aggressively (5s) so header risk/breadth tracks live tape. The
-  // per-symbol quote stream below still runs at 1s and the watchlist intraday
+  // Split market pulse into two lanes so each can refresh at max safe speed:
+  //   • fastPulse  = futures (ES/NQ/YM/RTY) + VIX  → 5 symbols → 2s
+  //   • semisPulse = SOXX + SMH + 12-name basket + risk gauge → 15 symbols → 3s
+  // The per-symbol quote stream still runs at 1s and the watchlist intraday
   // batch at 3s — those drive the flash alerts.
-  const { data: marketPulse } = useQuery({
-    queryKey: ["marketPulse"],
-    queryFn: () => fetchMarketPulseFn(),
-    staleTime: 4_000,
-    refetchInterval: 5_000,
+  const { data: fastPulse } = useQuery({
+    queryKey: ["fastPulse"],
+    queryFn: () => fetchFastPulseFn(),
+    staleTime: 1_500,
+    refetchInterval: 2_000,
     refetchIntervalInBackground: true,
   });
+  const { data: semisPulse } = useQuery({
+    queryKey: ["semisPulse"],
+    queryFn: () => fetchSemisPulseFn(),
+    staleTime: 2_500,
+    refetchInterval: 3_000,
+    refetchIntervalInBackground: true,
+  });
+  const marketPulse = useMemo(() => {
+    if (!fastPulse && !semisPulse) return undefined;
+    return {
+      futures: fastPulse?.futures ?? [],
+      vix: fastPulse?.vix ?? null,
+      semisEtfs: semisPulse?.semisEtfs ?? [],
+      semisBreadth: semisPulse?.semisBreadth ?? { advancers: 0, decliners: 0, unchanged: 0, avgChangePct: null, components: [] as QuoteSnap[] },
+      semisRisk: semisPulse?.semisRisk ?? null,
+    };
+  }, [fastPulse, semisPulse]);
 
   // News for selected stock
   const { data: newsData } = useQuery({
