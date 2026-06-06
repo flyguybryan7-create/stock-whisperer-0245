@@ -17,7 +17,8 @@ import {
   type PushPermission,
 } from "@/lib/push-client";
 import { getShortInterest, type ShortInterest } from "@/lib/shortinterest.functions";
-import { fetchAsiaSemis, fetchMacroNews, fetchMarketPulse } from "@/lib/market-pulse.functions";
+import { fetchAsiaSemis, fetchFastPulse, fetchMacroNews, fetchSemisPulse } from "@/lib/market-pulse.functions";
+import type { QuoteSnap } from "@/lib/market-pulse.server";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { useSubscription } from "@/hooks/useSubscription";
 import { supabase } from "@/integrations/supabase/client";
@@ -494,7 +495,8 @@ export default function TradingPlatform() {
   const fetchShort = useServerFn(getShortInterest);
   const fetchAsiaSemisFn = useServerFn(fetchAsiaSemis);
   const fetchMacroNewsFn = useServerFn(fetchMacroNews);
-  const fetchMarketPulseFn = useServerFn(fetchMarketPulse);
+  const fetchFastPulseFn = useServerFn(fetchFastPulse);
+  const fetchSemisPulseFn = useServerFn(fetchSemisPulse);
 
   // Reflect current notification permission + existing subscription.
   useEffect(() => {
@@ -609,12 +611,14 @@ export default function TradingPlatform() {
   });
   const shorts = (shortData as Record<string, ShortInterest> | undefined) ?? {};
 
-  // Asia semiconductor sector pulse — refresh every 5 minutes.
+  // Asia semiconductor sector pulse — 5 ADRs, refresh every 15s so the badge
+  // in the main price header tracks pre/after-hours moves quickly.
   const { data: asiaSemis } = useQuery({
     queryKey: ["asiaSemis"],
     queryFn: () => fetchAsiaSemisFn(),
-    staleTime: 5 * 60_000,
-    refetchInterval: 5 * 60_000,
+    staleTime: 12_000,
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: true,
   });
 
   // Macro market-moving news (CNBC / MarketWatch / WSJ) — refresh every 5 minutes.
@@ -625,17 +629,35 @@ export default function TradingPlatform() {
     refetchInterval: 5 * 60_000,
   });
 
-  // US market pulse (futures, VIX, semis ETFs, semis breadth, semis risk gauge).
-  // Polled aggressively (5s) so header risk/breadth tracks live tape. The
-  // per-symbol quote stream below still runs at 1s and the watchlist intraday
+  // Split market pulse into two lanes so each can refresh at max safe speed:
+  //   • fastPulse  = futures (ES/NQ/YM/RTY) + VIX  → 5 symbols → 2s
+  //   • semisPulse = SOXX + SMH + 12-name basket + risk gauge → 15 symbols → 3s
+  // The per-symbol quote stream still runs at 1s and the watchlist intraday
   // batch at 3s — those drive the flash alerts.
-  const { data: marketPulse } = useQuery({
-    queryKey: ["marketPulse"],
-    queryFn: () => fetchMarketPulseFn(),
-    staleTime: 4_000,
-    refetchInterval: 5_000,
+  const { data: fastPulse } = useQuery({
+    queryKey: ["fastPulse"],
+    queryFn: () => fetchFastPulseFn(),
+    staleTime: 1_500,
+    refetchInterval: 2_000,
     refetchIntervalInBackground: true,
   });
+  const { data: semisPulse } = useQuery({
+    queryKey: ["semisPulse"],
+    queryFn: () => fetchSemisPulseFn(),
+    staleTime: 2_500,
+    refetchInterval: 3_000,
+    refetchIntervalInBackground: true,
+  });
+  const marketPulse = useMemo(() => {
+    if (!fastPulse && !semisPulse) return undefined;
+    return {
+      futures: fastPulse?.futures ?? [],
+      vix: fastPulse?.vix ?? null,
+      semisEtfs: semisPulse?.semisEtfs ?? [],
+      semisBreadth: semisPulse?.semisBreadth ?? { advancers: 0, decliners: 0, unchanged: 0, avgChangePct: null, components: [] as QuoteSnap[] },
+      semisRisk: semisPulse?.semisRisk ?? null,
+    };
+  }, [fastPulse, semisPulse]);
 
   // News for selected stock
   const { data: newsData } = useQuery({
@@ -1093,7 +1115,7 @@ export default function TradingPlatform() {
           {marketPulse?.futures && marketPulse.futures.length > 0 && (
             <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 10, fontWeight: 700, border: "1px solid #21262d", borderRadius: 4, padding: "2px 6px" }}>
               <span style={{ color: "#8b949e", fontWeight: 800 }}>FUT</span>
-              {marketPulse.futures.map((f) => {
+              {marketPulse.futures.map((f: QuoteSnap) => {
                 const pct = f.changePct ?? 0;
                 const color = pct >= 0 ? "#39d353" : "#f85149";
                 const label = f.symbol === "ES=F" ? "ES" : f.symbol === "NQ=F" ? "NQ" : f.symbol === "YM=F" ? "YM" : "RTY";
@@ -1108,7 +1130,7 @@ export default function TradingPlatform() {
           {marketPulse?.semisBreadth && marketPulse.semisBreadth.components.length > 0 && (() => {
             const b = marketPulse.semisBreadth;
             const total = b.advancers + b.decliners + b.unchanged;
-            const tip = b.components.map((c) => `${c.symbol}: ${c.changePct == null ? "—" : (c.changePct >= 0 ? "+" : "") + c.changePct.toFixed(2) + "%"}`).join("\n");
+            const tip = b.components.map((c: QuoteSnap) => `${c.symbol}: ${c.changePct == null ? "—" : (c.changePct >= 0 ? "+" : "") + c.changePct.toFixed(2) + "%"}`).join("\n");
             return (
               <span title={`US semis breadth (12-name basket)\n${tip}`}
                 style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, border: "1px solid #21262d", borderRadius: 4, padding: "2px 6px" }}>
@@ -1116,23 +1138,6 @@ export default function TradingPlatform() {
                 <span style={{ color: "#39d353" }}>{b.advancers}↑</span>
                 <span style={{ color: "#f85149" }}>{b.decliners}↓</span>
                 <span style={{ color: "#8b949e" }}>/ {total}</span>
-              </span>
-            );
-          })()}
-          {asiaSemis?.avgChangePct != null && (() => {
-            const pct = asiaSemis.avgChangePct;
-            const up = pct >= 0;
-            const color = up ? "#39d353" : "#f85149";
-            const tip = (asiaSemis.components ?? [])
-              .map((c: { name: string; symbol: string; changePct: number | null }) =>
-                `${c.name} (${c.symbol}): ${c.changePct == null ? "—" : (c.changePct >= 0 ? "+" : "") + c.changePct.toFixed(2) + "%"}`)
-              .join("\n");
-            return (
-              <span
-                title={`Asia semiconductor sector (avg of TSMC, Samsung, SK Hynix, Tokyo Electron, Advantest)\n\n${tip}`}
-                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 700, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px", letterSpacing: 0.5 }}>
-                <span style={{ color: "#8b949e", fontWeight: 800 }}>ASIA SEMIS</span>
-                {up ? "▲" : "▼"}{up ? "+" : ""}{pct.toFixed(2)}%
               </span>
             );
           })()}

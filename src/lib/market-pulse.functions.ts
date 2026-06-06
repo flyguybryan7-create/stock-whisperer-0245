@@ -1,8 +1,10 @@
 import { createServerFn } from "@tanstack/react-start";
 import {
   fetchAsiaSemisSnapshot,
+  fetchFastPulseSnapshot,
   fetchMacroNewsSnapshot,
   fetchMarketPulseSnapshot,
+  fetchSemisPulseSnapshot,
 } from "./market-pulse.server";
 
 export const fetchAsiaSemis = createServerFn({ method: "GET" }).handler(async () => {
@@ -15,4 +17,12 @@ export const fetchMacroNews = createServerFn({ method: "GET" }).handler(async ()
 
 export const fetchMarketPulse = createServerFn({ method: "GET" }).handler(async () => {
   return fetchMarketPulseSnapshot();
+});
+
+export const fetchFastPulse = createServerFn({ method: "GET" }).handler(async () => {
+  return fetchFastPulseSnapshot();
+});
+
+export const fetchSemisPulse = createServerFn({ method: "GET" }).handler(async () => {
+  return fetchSemisPulseSnapshot();
 });
