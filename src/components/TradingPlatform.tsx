@@ -1032,6 +1032,58 @@ export default function TradingPlatform() {
           <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 2 }}>PRO TERMINAL</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {marketPulse?.semisRisk && (() => {
+            const r = marketPulse.semisRisk;
+            const color = r.level === "EXTREME" ? "#f85149" : r.level === "HIGH" ? "#ff7b29" : r.level === "ELEVATED" ? "#e3b341" : "#39d353";
+            return (
+              <span title={`Semis sector risk gauge — ${r.level} (${r.score}/100)\n${r.reason}`}
+                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px", letterSpacing: 0.5 }}>
+                <span style={{ color: "#8b949e", fontWeight: 800 }}>SEMI RISK</span>
+                {r.level} <span style={{ opacity: 0.7 }}>{r.score}</span>
+              </span>
+            );
+          })()}
+          {marketPulse?.vix?.price != null && (() => {
+            const v = marketPulse.vix;
+            const pct = v.changePct ?? 0;
+            const color = (v.price ?? 0) >= 22 ? "#f85149" : (v.price ?? 0) >= 18 ? "#e3b341" : "#39d353";
+            return (
+              <span title={`CBOE Volatility Index (fear gauge)`}
+                style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px" }}>
+                <span style={{ color: "#8b949e", fontWeight: 800 }}>VIX</span>
+                {v.price!.toFixed(2)} <span style={{ opacity: 0.7 }}>{pct >= 0 ? "+" : ""}{pct.toFixed(2)}%</span>
+              </span>
+            );
+          })()}
+          {marketPulse?.futures && marketPulse.futures.length > 0 && (
+            <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 10, fontWeight: 700, border: "1px solid #21262d", borderRadius: 4, padding: "2px 6px" }}>
+              <span style={{ color: "#8b949e", fontWeight: 800 }}>FUT</span>
+              {marketPulse.futures.map((f) => {
+                const pct = f.changePct ?? 0;
+                const color = pct >= 0 ? "#39d353" : "#f85149";
+                const label = f.symbol === "ES=F" ? "ES" : f.symbol === "NQ=F" ? "NQ" : f.symbol === "YM=F" ? "YM" : "RTY";
+                return (
+                  <span key={f.symbol} title={`${f.name} futures: ${f.price?.toFixed(2) ?? "—"}`} style={{ color }}>
+                    {label} {pct >= 0 ? "+" : ""}{pct.toFixed(2)}%
+                  </span>
+                );
+              })}
+            </span>
+          )}
+          {marketPulse?.semisBreadth && marketPulse.semisBreadth.components.length > 0 && (() => {
+            const b = marketPulse.semisBreadth;
+            const total = b.advancers + b.decliners + b.unchanged;
+            const tip = b.components.map((c) => `${c.symbol}: ${c.changePct == null ? "—" : (c.changePct >= 0 ? "+" : "") + c.changePct.toFixed(2) + "%"}`).join("\n");
+            return (
+              <span title={`US semis breadth (12-name basket)\n${tip}`}
+                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, border: "1px solid #21262d", borderRadius: 4, padding: "2px 6px" }}>
+                <span style={{ color: "#8b949e" }}>US SEMIS</span>
+                <span style={{ color: "#39d353" }}>{b.advancers}↑</span>
+                <span style={{ color: "#f85149" }}>{b.decliners}↓</span>
+                <span style={{ color: "#8b949e" }}>/ {total}</span>
+              </span>
+            );
+          })()}
           {asiaSemis?.avgChangePct != null && (() => {
             const pct = asiaSemis.avgChangePct;
             const up = pct >= 0;
