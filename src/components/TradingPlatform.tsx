@@ -977,6 +977,23 @@ export default function TradingPlatform() {
           <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 2 }}>PRO TERMINAL</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {asiaSemis?.avgChangePct != null && (() => {
+            const pct = asiaSemis.avgChangePct;
+            const up = pct >= 0;
+            const color = up ? "#39d353" : "#f85149";
+            const tip = (asiaSemis.components ?? [])
+              .map((c: { name: string; symbol: string; changePct: number | null }) =>
+                `${c.name} (${c.symbol}): ${c.changePct == null ? "—" : (c.changePct >= 0 ? "+" : "") + c.changePct.toFixed(2) + "%"}`)
+              .join("\n");
+            return (
+              <span
+                title={`Asia semiconductor sector (avg of TSMC, Samsung, SK Hynix, Tokyo Electron, Advantest)\n\n${tip}`}
+                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 700, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px", letterSpacing: 0.5 }}>
+                <span style={{ color: "#8b949e", fontWeight: 800 }}>ASIA SEMIS</span>
+                {up ? "▲" : "▼"}{up ? "+" : ""}{pct.toFixed(2)}%
+              </span>
+            );
+          })()}
           <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "#39d353" }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#39d353", animation: "pulse 2s infinite" }} />
             LIVE
