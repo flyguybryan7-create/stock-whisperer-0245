@@ -17,6 +17,7 @@ import {
   type PushPermission,
 } from "@/lib/push-client";
 import { getShortInterest, type ShortInterest } from "@/lib/shortinterest.functions";
+import { fetchAsiaSemis, fetchMacroNews } from "@/lib/market-pulse.functions";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { useSubscription } from "@/hooks/useSubscription";
 import { supabase } from "@/integrations/supabase/client";
@@ -488,6 +489,8 @@ export default function TradingPlatform() {
   const callSubscribe = useServerFn(subscribeToPush);
   const callUnsubscribe = useServerFn(unsubscribeFromPush);
   const fetchShort = useServerFn(getShortInterest);
+  const fetchAsiaSemisFn = useServerFn(fetchAsiaSemis);
+  const fetchMacroNewsFn = useServerFn(fetchMacroNews);
 
   // Reflect current notification permission + existing subscription.
   useEffect(() => {
@@ -601,6 +604,22 @@ export default function TradingPlatform() {
     enabled: watchlist.length > 0,
   });
   const shorts = (shortData as Record<string, ShortInterest> | undefined) ?? {};
+
+  // Asia semiconductor sector pulse — refresh every 5 minutes.
+  const { data: asiaSemis } = useQuery({
+    queryKey: ["asiaSemis"],
+    queryFn: () => fetchAsiaSemisFn(),
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
+  });
+
+  // Macro market-moving news (CNBC / MarketWatch / WSJ) — refresh every 5 minutes.
+  const { data: macroNews } = useQuery({
+    queryKey: ["macroNews"],
+    queryFn: () => fetchMacroNewsFn(),
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
+  });
 
   // News for selected stock
   const { data: newsData } = useQuery({
@@ -958,6 +977,23 @@ export default function TradingPlatform() {
           <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 2 }}>PRO TERMINAL</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {asiaSemis?.avgChangePct != null && (() => {
+            const pct = asiaSemis.avgChangePct;
+            const up = pct >= 0;
+            const color = up ? "#39d353" : "#f85149";
+            const tip = (asiaSemis.components ?? [])
+              .map((c: { name: string; symbol: string; changePct: number | null }) =>
+                `${c.name} (${c.symbol}): ${c.changePct == null ? "—" : (c.changePct >= 0 ? "+" : "") + c.changePct.toFixed(2) + "%"}`)
+              .join("\n");
+            return (
+              <span
+                title={`Asia semiconductor sector (avg of TSMC, Samsung, SK Hynix, Tokyo Electron, Advantest)\n\n${tip}`}
+                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 700, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px", letterSpacing: 0.5 }}>
+                <span style={{ color: "#8b949e", fontWeight: 800 }}>ASIA SEMIS</span>
+                {up ? "▲" : "▼"}{up ? "+" : ""}{pct.toFixed(2)}%
+              </span>
+            );
+          })()}
           <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "#39d353" }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#39d353", animation: "pulse 2s infinite" }} />
             LIVE
@@ -1356,6 +1392,35 @@ export default function TradingPlatform() {
               </ComposedChart>
             </ResponsiveContainer>
           </ChartCard>
+
+          {/* Macro market-moving news (CNBC / MarketWatch / WSJ) */}
+          <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 12, marginBottom: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+              <div style={{ fontSize: 10, color: "#8b949e", letterSpacing: 1.5 }}>
+                🌐 MACRO NEWS · NASDAQ / S&amp;P 500 / DOW
+              </div>
+              <span style={{ fontSize: 9, color: "#8b949e" }}>CNBC · MarketWatch · WSJ</span>
+            </div>
+            <div style={{ display: "grid", gap: 6 }}>
+              {(!macroNews || macroNews.items.length === 0) && (
+                <div style={{ fontSize: 10, color: "#8b949e" }}>Loading market news…</div>
+              )}
+              {macroNews?.items.slice(0, 10).map((n, i) => (
+                <a key={i} href={n.link} target="_blank" rel="noreferrer"
+                  style={{ display: "flex", gap: 8, padding: "6px 8px", background: "#010409", borderRadius: 4, textDecoration: "none", color: "#e6edf3", fontSize: 11, lineHeight: 1.4, border: "1px solid #161b22" }}>
+                  <span style={{ fontSize: 8, fontWeight: 700, color: "#ffa657", letterSpacing: 1, minWidth: 70, paddingTop: 2 }}>
+                    {n.publisher.toUpperCase()}
+                  </span>
+                  <span style={{ flex: 1 }}>
+                    {n.title}
+                    <span style={{ display: "block", fontSize: 9, color: "#8b949e", marginTop: 2 }}>
+                      {n.publishedAt ? new Date(n.publishedAt * 1000).toLocaleString() : ""}
+                    </span>
+                  </span>
+                </a>
+              ))}
+            </div>
+          </div>
 
           {/* News + AI Sentiment */}
           <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 12, marginBottom: 12 }}>
