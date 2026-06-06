@@ -1013,6 +1013,16 @@ export default function TradingPlatform() {
         .btn-primary:hover { filter: brightness(1.2); }
         @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
         @keyframes slideIn { from { transform: translateY(-20px); opacity:0; } to { transform: translateY(0); opacity:1; } }
+        @keyframes flashBuy {
+          0%,100% { background: rgba(57,211,83,0.85); box-shadow: 0 0 12px rgba(57,211,83,0.9), 0 0 22px rgba(57,211,83,0.55); color: #03110a; }
+          50%     { background: rgba(57,211,83,0.25); box-shadow: 0 0 4px rgba(57,211,83,0.4); color: #39d353; }
+        }
+        @keyframes flashSell {
+          0%,100% { background: rgba(248,81,73,0.9); box-shadow: 0 0 12px rgba(248,81,73,0.95), 0 0 22px rgba(248,81,73,0.6); color: #1a0303; }
+          50%     { background: rgba(248,81,73,0.25); box-shadow: 0 0 4px rgba(248,81,73,0.45); color: #f85149; }
+        }
+        .flow-flash-buy  { animation: flashBuy 0.7s ease-in-out infinite; padding: 0 4px; border-radius: 3px; font-weight: 900 !important; }
+        .flow-flash-sell { animation: flashSell 0.7s ease-in-out infinite; padding: 0 4px; border-radius: 3px; font-weight: 900 !important; }
       `}</style>
 
       {/* Header */}
