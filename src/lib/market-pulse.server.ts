@@ -207,3 +207,81 @@ export async function fetchMacroNewsSnapshot(): Promise<MacroNewsResponse> {
     return { items: [], asOf: Date.now(), error: "SERVICE_UNAVAILABLE" };
   }
 }
+async function snap(symbol: string, name: string): Promise<QuoteSnap> {
+  const { price, prev } = await fetchYahooSnap(symbol);
+  const changePct = price != null && prev != null && prev > 0 ? ((price - prev) / prev) * 100 : null;
+  return { symbol, name, price, changePct };
+}
+
+export async function fetchMarketPulseSnapshot(): Promise<MarketPulseResponse> {
+  try {
+    const [futures, vix, soxx, smh, basket] = await Promise.all([
+      Promise.all(US_FUTURES.map((f) => snap(f.symbol, f.name))),
+      snap("^VIX", "VIX"),
+      snap("SOXX", "SOXX"),
+      snap("SMH", "SMH"),
+      Promise.all(SEMIS_BASKET.map((s) => snap(s.symbol, s.name))),
+    ]);
+
+    const valid = basket.filter((b) => b.changePct != null) as Array<QuoteSnap & { changePct: number }>;
+    const advancers = valid.filter((b) => b.changePct > 0.1).length;
+    const decliners = valid.filter((b) => b.changePct < -0.1).length;
+    const unchanged = valid.length - advancers - decliners;
+    const avgChangePct = valid.length ? valid.reduce((s, b) => s + b.changePct, 0) / valid.length : null;
+
+    // Semis composite risk: blend of VIX level, semis basket move, SOXX/SMH move.
+    const vixLevel = vix.price ?? 0;
+    const soxxPct = soxx.changePct ?? 0;
+    const smhPct = smh.changePct ?? 0;
+    const semisPct = avgChangePct ?? 0;
+    // Score 0..100. Higher = more risk.
+    let score = 0;
+    // VIX contribution
+    if (vixLevel >= 30) score += 40;
+    else if (vixLevel >= 22) score += 28;
+    else if (vixLevel >= 18) score += 18;
+    else if (vixLevel >= 14) score += 8;
+    // Semis weakness contribution (negative moves add risk)
+    const worstSemis = Math.min(soxxPct, smhPct, semisPct);
+    if (worstSemis <= -3) score += 35;
+    else if (worstSemis <= -2) score += 25;
+    else if (worstSemis <= -1) score += 15;
+    else if (worstSemis <= -0.3) score += 8;
+    // Breadth contribution
+    if (valid.length) {
+      const ratio = advancers / valid.length;
+      if (ratio <= 0.2) score += 20;
+      else if (ratio <= 0.35) score += 12;
+      else if (ratio <= 0.5) score += 6;
+    }
+    score = Math.max(0, Math.min(100, score));
+
+    const level: MarketPulseResponse["semisRisk"]["level"] =
+      score >= 70 ? "EXTREME" : score >= 45 ? "HIGH" : score >= 22 ? "ELEVATED" : "LOW";
+
+    const reason =
+      `VIX ${vixLevel ? vixLevel.toFixed(1) : "—"} · SOXX ${soxxPct >= 0 ? "+" : ""}${soxxPct.toFixed(2)}% · ` +
+      `SMH ${smhPct >= 0 ? "+" : ""}${smhPct.toFixed(2)}% · semis basket avg ${semisPct >= 0 ? "+" : ""}${semisPct.toFixed(2)}% ` +
+      `(${advancers}↑ / ${decliners}↓ of ${valid.length})`;
+
+    return {
+      futures,
+      vix,
+      semisEtfs: [soxx, smh],
+      semisBreadth: { advancers, decliners, unchanged, avgChangePct, components: basket },
+      semisRisk: { level, score, reason },
+      asOf: Date.now(),
+    };
+  } catch (error) {
+    console.error("[market-pulse] snapshot failed", error);
+    return {
+      futures: [],
+      vix: null,
+      semisEtfs: [],
+      semisBreadth: { advancers: 0, decliners: 0, unchanged: 0, avgChangePct: null, components: [] },
+      semisRisk: { level: "LOW", score: 0, reason: "unavailable" },
+      asOf: Date.now(),
+      error: "SERVICE_UNAVAILABLE",
+    };
+  }
+}
