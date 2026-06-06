@@ -409,6 +409,9 @@ export default function TradingPlatform() {
   // Tracks the last big-move direction we alerted for, so we don't spam
   // notifications for the same symbol while it stays above the ±5% threshold.
   const lastBigMove = useRef<Record<string, "UP" | "DOWN" | null>>({});
+  // Flow-surge dedupe: only fire one push per symbol per direction until it
+  // falls back to neutral.
+  const lastFlowSurge = useRef<Record<string, "BUY_SURGE" | "SELL_SURGE" | null>>({});
 
   // Load persisted watchlist from localStorage on first mount (fast path / signed-out users)
   const hydratedFromCloud = useRef(false);
