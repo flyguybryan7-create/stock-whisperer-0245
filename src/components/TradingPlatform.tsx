@@ -17,7 +17,7 @@ import {
   type PushPermission,
 } from "@/lib/push-client";
 import { getShortInterest, type ShortInterest } from "@/lib/shortinterest.functions";
-import { fetchAsiaSemis, fetchMacroNews, fetchMarketPulse } from "@/lib/market-pulse.functions";
+import { fetchAsiaSemis, fetchFastPulse, fetchMacroNews, fetchSemisPulse } from "@/lib/market-pulse.functions";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { useSubscription } from "@/hooks/useSubscription";
 import { supabase } from "@/integrations/supabase/client";
@@ -494,7 +494,8 @@ export default function TradingPlatform() {
   const fetchShort = useServerFn(getShortInterest);
   const fetchAsiaSemisFn = useServerFn(fetchAsiaSemis);
   const fetchMacroNewsFn = useServerFn(fetchMacroNews);
-  const fetchMarketPulseFn = useServerFn(fetchMarketPulse);
+  const fetchFastPulseFn = useServerFn(fetchFastPulse);
+  const fetchSemisPulseFn = useServerFn(fetchSemisPulse);
 
   // Reflect current notification permission + existing subscription.
   useEffect(() => {
