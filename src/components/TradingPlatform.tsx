@@ -17,7 +17,7 @@ import {
   type PushPermission,
 } from "@/lib/push-client";
 import { getShortInterest, type ShortInterest } from "@/lib/shortinterest.functions";
-import { fetchAsiaSemis, fetchMacroNews } from "@/lib/market-pulse.functions";
+import { fetchAsiaSemis, fetchMacroNews, fetchMarketPulse } from "@/lib/market-pulse.functions";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { useSubscription } from "@/hooks/useSubscription";
 import { supabase } from "@/integrations/supabase/client";
@@ -409,6 +409,9 @@ export default function TradingPlatform() {
   // Tracks the last big-move direction we alerted for, so we don't spam
   // notifications for the same symbol while it stays above the ±5% threshold.
   const lastBigMove = useRef<Record<string, "UP" | "DOWN" | null>>({});
+  // Flow-surge dedupe: only fire one push per symbol per direction until it
+  // falls back to neutral.
+  const lastFlowSurge = useRef<Record<string, "BUY_SURGE" | "SELL_SURGE" | null>>({});
 
   // Load persisted watchlist from localStorage on first mount (fast path / signed-out users)
   const hydratedFromCloud = useRef(false);
@@ -491,6 +494,7 @@ export default function TradingPlatform() {
   const fetchShort = useServerFn(getShortInterest);
   const fetchAsiaSemisFn = useServerFn(fetchAsiaSemis);
   const fetchMacroNewsFn = useServerFn(fetchMacroNews);
+  const fetchMarketPulseFn = useServerFn(fetchMarketPulse);
 
   // Reflect current notification permission + existing subscription.
   useEffect(() => {
@@ -621,6 +625,15 @@ export default function TradingPlatform() {
     refetchInterval: 5 * 60_000,
   });
 
+  // US market pulse (futures, VIX, semis ETFs, semis breadth, semis risk gauge)
+  // Refresh every 60s so the header reflects regular-session action.
+  const { data: marketPulse } = useQuery({
+    queryKey: ["marketPulse"],
+    queryFn: () => fetchMarketPulseFn(),
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  });
+
   // News for selected stock
   const { data: newsData } = useQuery({
     queryKey: ["news", selectedStock, stockNames[selectedStock] || ""],
@@ -695,6 +708,41 @@ export default function TradingPlatform() {
         vv += b.volume;
       }
       if (vv > 0) out[sym] = +(pv / vv).toFixed(2);
+    }
+    return out;
+  }, [watchlistIntradayData]);
+
+  // Real-time order-flow pressure detector. For each watchlist symbol we look
+  // at the most recent 1-minute bar versus the prior 20-bar average volume.
+  // A "surge" fires when current-minute volume is ≥3× the 20-bar mean AND the
+  // bar moved ≥0.25% in the same direction — i.e. aggressive buying or
+  // aggressive selling, distinct from a slower MACD buy/sell crossover.
+  type FlowSignal = { kind: "BUY_SURGE" | "SELL_SURGE"; volRatio: number; pricePct: number } | null;
+  const flowSignals = useMemo(() => {
+    const out: Record<string, FlowSignal> = {};
+    const batch = (watchlistIntradayData ?? {}) as Record<string, IntradayBar[]>;
+    for (const sym of Object.keys(batch)) {
+      const bars = batch[sym] ?? [];
+      if (bars.length < 22) { out[sym] = null; continue; }
+      // Only consider today's bars so yesterday's open doesn't pollute.
+      const lastTs = bars[bars.length - 1].t;
+      const lastDay = new Date(lastTs * 1000).toDateString();
+      const today = bars.filter((b) => new Date(b.t * 1000).toDateString() === lastDay);
+      if (today.length < 5) { out[sym] = null; continue; }
+      const cur = today[today.length - 1];
+      const prior = today.slice(Math.max(0, today.length - 21), today.length - 1);
+      if (prior.length < 5) { out[sym] = null; continue; }
+      const avgVol = prior.reduce((s, b) => s + (b.volume || 0), 0) / prior.length;
+      if (avgVol <= 0 || !cur.volume) { out[sym] = null; continue; }
+      const volRatio = cur.volume / avgVol;
+      const pricePct = cur.open > 0 ? ((cur.close - cur.open) / cur.open) * 100 : 0;
+      if (volRatio >= 3 && pricePct >= 0.25) {
+        out[sym] = { kind: "BUY_SURGE", volRatio, pricePct };
+      } else if (volRatio >= 3 && pricePct <= -0.25) {
+        out[sym] = { kind: "SELL_SURGE", volRatio, pricePct };
+      } else {
+        out[sym] = null;
+      }
     }
     return out;
   }, [watchlistIntradayData]);
@@ -857,6 +905,35 @@ export default function TradingPlatform() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveQuotes, pushPerm, watchlist]);
 
+  // Order-flow surge alert: when a watchlist symbol shows MASSIVE BUYING or
+  // MASSIVE SELLING on the current minute (≥3× avg minute volume, ≥0.25%
+  // move on the bar), fire a push so the user gets pinged in addition to
+  // the on-screen flashing ticker.
+  useEffect(() => {
+    if (pushPerm !== "granted") return;
+    if (!isUsMarketOpen()) return;
+    for (const sym of Object.keys(flowSignals)) {
+      const flow = flowSignals[sym];
+      if (!flow) { lastFlowSurge.current[sym] = null; continue; }
+      if (lastFlowSurge.current[sym] === flow.kind) continue;
+      lastFlowSurge.current[sym] = flow.kind;
+      const lq = live[sym];
+      const px = lq?.price;
+      if (px == null) continue;
+      firePush({
+        data: {
+          symbol: sym,
+          signal: flow.kind === "BUY_SURGE" ? "BUY" : "SELL",
+          price: px,
+          reason:
+            (flow.kind === "BUY_SURGE" ? "MASSIVE BUYING " : "MASSIVE SELLING ") +
+            `· ${flow.volRatio.toFixed(1)}× avg minute volume · ${flow.pricePct >= 0 ? "+" : ""}${flow.pricePct.toFixed(2)}% on the bar`,
+        },
+      }).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flowSignals, pushPerm]);
+
   const filteredStocks = useMemo(() => {
     const q = search.toLowerCase();
     return watchlist.filter((s) =>
@@ -968,6 +1045,16 @@ export default function TradingPlatform() {
         .btn-primary:hover { filter: brightness(1.2); }
         @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
         @keyframes slideIn { from { transform: translateY(-20px); opacity:0; } to { transform: translateY(0); opacity:1; } }
+        @keyframes flashBuy {
+          0%,100% { background: rgba(57,211,83,0.85); box-shadow: 0 0 12px rgba(57,211,83,0.9), 0 0 22px rgba(57,211,83,0.55); color: #03110a; }
+          50%     { background: rgba(57,211,83,0.25); box-shadow: 0 0 4px rgba(57,211,83,0.4); color: #39d353; }
+        }
+        @keyframes flashSell {
+          0%,100% { background: rgba(248,81,73,0.9); box-shadow: 0 0 12px rgba(248,81,73,0.95), 0 0 22px rgba(248,81,73,0.6); color: #1a0303; }
+          50%     { background: rgba(248,81,73,0.25); box-shadow: 0 0 4px rgba(248,81,73,0.45); color: #f85149; }
+        }
+        .flow-flash-buy  { animation: flashBuy 0.7s ease-in-out infinite; padding: 0 4px; border-radius: 3px; font-weight: 900 !important; }
+        .flow-flash-sell { animation: flashSell 0.7s ease-in-out infinite; padding: 0 4px; border-radius: 3px; font-weight: 900 !important; }
       `}</style>
 
       {/* Header */}
@@ -977,6 +1064,58 @@ export default function TradingPlatform() {
           <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 2 }}>PRO TERMINAL</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {marketPulse?.semisRisk && (() => {
+            const r = marketPulse.semisRisk;
+            const color = r.level === "EXTREME" ? "#f85149" : r.level === "HIGH" ? "#ff7b29" : r.level === "ELEVATED" ? "#e3b341" : "#39d353";
+            return (
+              <span title={`Semis sector risk gauge — ${r.level} (${r.score}/100)\n${r.reason}`}
+                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px", letterSpacing: 0.5 }}>
+                <span style={{ color: "#8b949e", fontWeight: 800 }}>SEMI RISK</span>
+                {r.level} <span style={{ opacity: 0.7 }}>{r.score}</span>
+              </span>
+            );
+          })()}
+          {marketPulse?.vix?.price != null && (() => {
+            const v = marketPulse.vix;
+            const pct = v.changePct ?? 0;
+            const color = (v.price ?? 0) >= 22 ? "#f85149" : (v.price ?? 0) >= 18 ? "#e3b341" : "#39d353";
+            return (
+              <span title={`CBOE Volatility Index (fear gauge)`}
+                style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px" }}>
+                <span style={{ color: "#8b949e", fontWeight: 800 }}>VIX</span>
+                {v.price!.toFixed(2)} <span style={{ opacity: 0.7 }}>{pct >= 0 ? "+" : ""}{pct.toFixed(2)}%</span>
+              </span>
+            );
+          })()}
+          {marketPulse?.futures && marketPulse.futures.length > 0 && (
+            <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 10, fontWeight: 700, border: "1px solid #21262d", borderRadius: 4, padding: "2px 6px" }}>
+              <span style={{ color: "#8b949e", fontWeight: 800 }}>FUT</span>
+              {marketPulse.futures.map((f) => {
+                const pct = f.changePct ?? 0;
+                const color = pct >= 0 ? "#39d353" : "#f85149";
+                const label = f.symbol === "ES=F" ? "ES" : f.symbol === "NQ=F" ? "NQ" : f.symbol === "YM=F" ? "YM" : "RTY";
+                return (
+                  <span key={f.symbol} title={`${f.name} futures: ${f.price?.toFixed(2) ?? "—"}`} style={{ color }}>
+                    {label} {pct >= 0 ? "+" : ""}{pct.toFixed(2)}%
+                  </span>
+                );
+              })}
+            </span>
+          )}
+          {marketPulse?.semisBreadth && marketPulse.semisBreadth.components.length > 0 && (() => {
+            const b = marketPulse.semisBreadth;
+            const total = b.advancers + b.decliners + b.unchanged;
+            const tip = b.components.map((c) => `${c.symbol}: ${c.changePct == null ? "—" : (c.changePct >= 0 ? "+" : "") + c.changePct.toFixed(2) + "%"}`).join("\n");
+            return (
+              <span title={`US semis breadth (12-name basket)\n${tip}`}
+                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, border: "1px solid #21262d", borderRadius: 4, padding: "2px 6px" }}>
+                <span style={{ color: "#8b949e" }}>US SEMIS</span>
+                <span style={{ color: "#39d353" }}>{b.advancers}↑</span>
+                <span style={{ color: "#f85149" }}>{b.decliners}↓</span>
+                <span style={{ color: "#8b949e" }}>/ {total}</span>
+              </span>
+            );
+          })()}
           {asiaSemis?.avgChangePct != null && (() => {
             const pct = asiaSemis.avgChangePct;
             const up = pct >= 0;
@@ -1097,7 +1236,15 @@ export default function TradingPlatform() {
                         title="Remove"
                         style={{ background: "transparent", border: "none", color: "#6e7681", cursor: "pointer", fontSize: 11, padding: 0, lineHeight: 1, width: 12 }}
                       >✕</button>
-                      {sym}
+                      {(() => {
+                        const flow = flowSignals[sym];
+                        if (!flow) return <span>{sym}</span>;
+                        const cls = flow.kind === "BUY_SURGE" ? "flow-flash-buy" : "flow-flash-sell";
+                        const tip = flow.kind === "BUY_SURGE"
+                          ? `MASSIVE BUYING — ${flow.volRatio.toFixed(1)}× avg minute volume, +${flow.pricePct.toFixed(2)}% on the bar`
+                          : `MASSIVE SELLING — ${flow.volRatio.toFixed(1)}× avg minute volume, ${flow.pricePct.toFixed(2)}% on the bar`;
+                        return <span className={cls} title={tip}>{sym}</span>;
+                      })()}
                       <span style={{ fontSize: 9, color: sigC, fontWeight: 800 }}>{sig}</span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
