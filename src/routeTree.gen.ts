@@ -15,6 +15,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as CheckoutReturnRouteImport } from './routes/checkout.return'
 import { Route as AuthSchwabCallbackRouteImport } from './routes/auth.schwab.callback'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
+import { Route as ApiPublicHooksPushoverAlertsRouteImport } from './routes/api/public/hooks/pushover-alerts'
 
 const PricingRoute = PricingRouteImport.update({
   id: '/pricing',
@@ -47,6 +48,12 @@ const ApiPublicPaymentsWebhookRoute =
     path: '/api/public/payments/webhook',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksPushoverAlertsRoute =
+  ApiPublicHooksPushoverAlertsRouteImport.update({
+    id: '/api/public/hooks/pushover-alerts',
+    path: '/api/public/hooks/pushover-alerts',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -54,6 +61,7 @@ export interface FileRoutesByFullPath {
   '/pricing': typeof PricingRoute
   '/checkout/return': typeof CheckoutReturnRoute
   '/auth/schwab/callback': typeof AuthSchwabCallbackRoute
+  '/api/public/hooks/pushover-alerts': typeof ApiPublicHooksPushoverAlertsRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
 export interface FileRoutesByTo {
@@ -62,6 +70,7 @@ export interface FileRoutesByTo {
   '/pricing': typeof PricingRoute
   '/checkout/return': typeof CheckoutReturnRoute
   '/auth/schwab/callback': typeof AuthSchwabCallbackRoute
+  '/api/public/hooks/pushover-alerts': typeof ApiPublicHooksPushoverAlertsRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
 export interface FileRoutesById {
@@ -71,6 +80,7 @@ export interface FileRoutesById {
   '/pricing': typeof PricingRoute
   '/checkout/return': typeof CheckoutReturnRoute
   '/auth/schwab/callback': typeof AuthSchwabCallbackRoute
+  '/api/public/hooks/pushover-alerts': typeof ApiPublicHooksPushoverAlertsRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
 export interface FileRouteTypes {
@@ -81,6 +91,7 @@ export interface FileRouteTypes {
     | '/pricing'
     | '/checkout/return'
     | '/auth/schwab/callback'
+    | '/api/public/hooks/pushover-alerts'
     | '/api/public/payments/webhook'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -89,6 +100,7 @@ export interface FileRouteTypes {
     | '/pricing'
     | '/checkout/return'
     | '/auth/schwab/callback'
+    | '/api/public/hooks/pushover-alerts'
     | '/api/public/payments/webhook'
   id:
     | '__root__'
@@ -97,6 +109,7 @@ export interface FileRouteTypes {
     | '/pricing'
     | '/checkout/return'
     | '/auth/schwab/callback'
+    | '/api/public/hooks/pushover-alerts'
     | '/api/public/payments/webhook'
   fileRoutesById: FileRoutesById
 }
@@ -105,6 +118,7 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRouteWithChildren
   PricingRoute: typeof PricingRoute
   CheckoutReturnRoute: typeof CheckoutReturnRoute
+  ApiPublicHooksPushoverAlertsRoute: typeof ApiPublicHooksPushoverAlertsRoute
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
 }
 
@@ -152,6 +166,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicPaymentsWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/pushover-alerts': {
+      id: '/api/public/hooks/pushover-alerts'
+      path: '/api/public/hooks/pushover-alerts'
+      fullPath: '/api/public/hooks/pushover-alerts'
+      preLoaderRoute: typeof ApiPublicHooksPushoverAlertsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -170,6 +191,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRouteWithChildren,
   PricingRoute: PricingRoute,
   CheckoutReturnRoute: CheckoutReturnRoute,
+  ApiPublicHooksPushoverAlertsRoute: ApiPublicHooksPushoverAlertsRoute,
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
 }
 export const routeTree = rootRouteImport
