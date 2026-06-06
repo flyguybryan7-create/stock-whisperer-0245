@@ -625,13 +625,16 @@ export default function TradingPlatform() {
     refetchInterval: 5 * 60_000,
   });
 
-  // US market pulse (futures, VIX, semis ETFs, semis breadth, semis risk gauge)
-  // Refresh every 60s so the header reflects regular-session action.
+  // US market pulse (futures, VIX, semis ETFs, semis breadth, semis risk gauge).
+  // Polled aggressively (5s) so header risk/breadth tracks live tape. The
+  // per-symbol quote stream below still runs at 1s and the watchlist intraday
+  // batch at 3s — those drive the flash alerts.
   const { data: marketPulse } = useQuery({
     queryKey: ["marketPulse"],
     queryFn: () => fetchMarketPulseFn(),
-    staleTime: 60_000,
-    refetchInterval: 60_000,
+    staleTime: 4_000,
+    refetchInterval: 5_000,
+    refetchIntervalInBackground: true,
   });
 
   // News for selected stock
