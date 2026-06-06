@@ -905,6 +905,35 @@ export default function TradingPlatform() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveQuotes, pushPerm, watchlist]);
 
+  // Order-flow surge alert: when a watchlist symbol shows MASSIVE BUYING or
+  // MASSIVE SELLING on the current minute (≥3× avg minute volume, ≥0.25%
+  // move on the bar), fire a push so the user gets pinged in addition to
+  // the on-screen flashing ticker.
+  useEffect(() => {
+    if (pushPerm !== "granted") return;
+    if (!isUsMarketOpen()) return;
+    for (const sym of Object.keys(flowSignals)) {
+      const flow = flowSignals[sym];
+      if (!flow) { lastFlowSurge.current[sym] = null; continue; }
+      if (lastFlowSurge.current[sym] === flow.kind) continue;
+      lastFlowSurge.current[sym] = flow.kind;
+      const lq = live[sym];
+      const px = lq?.price;
+      if (px == null) continue;
+      firePush({
+        data: {
+          symbol: sym,
+          signal: flow.kind === "BUY_SURGE" ? "BUY" : "SELL",
+          price: px,
+          reason:
+            (flow.kind === "BUY_SURGE" ? "MASSIVE BUYING " : "MASSIVE SELLING ") +
+            `· ${flow.volRatio.toFixed(1)}× avg minute volume · ${flow.pricePct >= 0 ? "+" : ""}${flow.pricePct.toFixed(2)}% on the bar`,
+        },
+      }).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flowSignals, pushPerm]);
+
   const filteredStocks = useMemo(() => {
     const q = search.toLowerCase();
     return watchlist.filter((s) =>
