@@ -65,6 +65,21 @@ export type MarketPulseResponse = {
   error?: string;
 };
 
+export type FastPulseResponse = {
+  futures: QuoteSnap[];
+  vix: QuoteSnap | null;
+  asOf: number;
+  error?: string;
+};
+
+export type SemisPulseResponse = {
+  semisEtfs: QuoteSnap[];
+  semisBreadth: MarketPulseResponse["semisBreadth"];
+  semisRisk: MarketPulseResponse["semisRisk"];
+  asOf: number;
+  error?: string;
+};
+
 export type NewsItem = {
   title: string;
   link: string;
