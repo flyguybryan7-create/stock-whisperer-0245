@@ -18,6 +18,7 @@ import {
 } from "@/lib/push-client";
 import { getShortInterest, type ShortInterest } from "@/lib/shortinterest.functions";
 import { fetchAsiaSemis, fetchFastPulse, fetchMacroNews, fetchSemisPulse } from "@/lib/market-pulse.functions";
+import type { QuoteSnap } from "@/lib/market-pulse.server";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { useSubscription } from "@/hooks/useSubscription";
 import { supabase } from "@/integrations/supabase/client";
