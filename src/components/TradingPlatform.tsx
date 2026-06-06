@@ -1393,6 +1393,35 @@ export default function TradingPlatform() {
             </ResponsiveContainer>
           </ChartCard>
 
+          {/* Macro market-moving news (CNBC / MarketWatch / WSJ) */}
+          <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 12, marginBottom: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+              <div style={{ fontSize: 10, color: "#8b949e", letterSpacing: 1.5 }}>
+                🌐 MACRO NEWS · NASDAQ / S&amp;P 500 / DOW
+              </div>
+              <span style={{ fontSize: 9, color: "#8b949e" }}>CNBC · MarketWatch · WSJ</span>
+            </div>
+            <div style={{ display: "grid", gap: 6 }}>
+              {(!macroNews || macroNews.items.length === 0) && (
+                <div style={{ fontSize: 10, color: "#8b949e" }}>Loading market news…</div>
+              )}
+              {macroNews?.items.slice(0, 10).map((n, i) => (
+                <a key={i} href={n.link} target="_blank" rel="noreferrer"
+                  style={{ display: "flex", gap: 8, padding: "6px 8px", background: "#010409", borderRadius: 4, textDecoration: "none", color: "#e6edf3", fontSize: 11, lineHeight: 1.4, border: "1px solid #161b22" }}>
+                  <span style={{ fontSize: 8, fontWeight: 700, color: "#ffa657", letterSpacing: 1, minWidth: 70, paddingTop: 2 }}>
+                    {n.publisher.toUpperCase()}
+                  </span>
+                  <span style={{ flex: 1 }}>
+                    {n.title}
+                    <span style={{ display: "block", fontSize: 9, color: "#8b949e", marginTop: 2 }}>
+                      {n.publishedAt ? new Date(n.publishedAt * 1000).toLocaleString() : ""}
+                    </span>
+                  </span>
+                </a>
+              ))}
+            </div>
+          </div>
+
           {/* News + AI Sentiment */}
           <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 12, marginBottom: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
