@@ -44,6 +44,30 @@ export type Database = {
         }
         Relationships: []
       }
+      pushover_alert_state: {
+        Row: {
+          last_news_guid: string | null
+          last_news_pubdate: string | null
+          last_price_alert_bucket: string | null
+          symbol: string
+          updated_at: string
+        }
+        Insert: {
+          last_news_guid?: string | null
+          last_news_pubdate?: string | null
+          last_price_alert_bucket?: string | null
+          symbol: string
+          updated_at?: string
+        }
+        Update: {
+          last_news_guid?: string | null
+          last_news_pubdate?: string | null
+          last_price_alert_bucket?: string | null
+          symbol?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       subscriptions: {
         Row: {
           cancel_at_period_end: boolean | null
