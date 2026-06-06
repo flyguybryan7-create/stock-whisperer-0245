@@ -611,12 +611,14 @@ export default function TradingPlatform() {
   });
   const shorts = (shortData as Record<string, ShortInterest> | undefined) ?? {};
 
-  // Asia semiconductor sector pulse — refresh every 5 minutes.
+  // Asia semiconductor sector pulse — 5 ADRs, refresh every 15s so the badge
+  // in the main price header tracks pre/after-hours moves quickly.
   const { data: asiaSemis } = useQuery({
     queryKey: ["asiaSemis"],
     queryFn: () => fetchAsiaSemisFn(),
-    staleTime: 5 * 60_000,
-    refetchInterval: 5 * 60_000,
+    staleTime: 12_000,
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: true,
   });
 
   // Macro market-moving news (CNBC / MarketWatch / WSJ) — refresh every 5 minutes.
