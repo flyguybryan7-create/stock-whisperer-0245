@@ -709,6 +709,41 @@ export default function TradingPlatform() {
     return out;
   }, [watchlistIntradayData]);
 
+  // Real-time order-flow pressure detector. For each watchlist symbol we look
+  // at the most recent 1-minute bar versus the prior 20-bar average volume.
+  // A "surge" fires when current-minute volume is ≥3× the 20-bar mean AND the
+  // bar moved ≥0.25% in the same direction — i.e. aggressive buying or
+  // aggressive selling, distinct from a slower MACD buy/sell crossover.
+  type FlowSignal = { kind: "BUY_SURGE" | "SELL_SURGE"; volRatio: number; pricePct: number } | null;
+  const flowSignals = useMemo(() => {
+    const out: Record<string, FlowSignal> = {};
+    const batch = (watchlistIntradayData ?? {}) as Record<string, IntradayBar[]>;
+    for (const sym of Object.keys(batch)) {
+      const bars = batch[sym] ?? [];
+      if (bars.length < 22) { out[sym] = null; continue; }
+      // Only consider today's bars so yesterday's open doesn't pollute.
+      const lastTs = bars[bars.length - 1].t;
+      const lastDay = new Date(lastTs * 1000).toDateString();
+      const today = bars.filter((b) => new Date(b.t * 1000).toDateString() === lastDay);
+      if (today.length < 5) { out[sym] = null; continue; }
+      const cur = today[today.length - 1];
+      const prior = today.slice(Math.max(0, today.length - 21), today.length - 1);
+      if (prior.length < 5) { out[sym] = null; continue; }
+      const avgVol = prior.reduce((s, b) => s + (b.volume || 0), 0) / prior.length;
+      if (avgVol <= 0 || !cur.volume) { out[sym] = null; continue; }
+      const volRatio = cur.volume / avgVol;
+      const pricePct = cur.open > 0 ? ((cur.close - cur.open) / cur.open) * 100 : 0;
+      if (volRatio >= 3 && pricePct >= 0.25) {
+        out[sym] = { kind: "BUY_SURGE", volRatio, pricePct };
+      } else if (volRatio >= 3 && pricePct <= -0.25) {
+        out[sym] = { kind: "SELL_SURGE", volRatio, pricePct };
+      } else {
+        out[sym] = null;
+      }
+    }
+    return out;
+  }, [watchlistIntradayData]);
+
   // AI sentiment based on headlines
   const { data: sentimentData } = useQuery({
     queryKey: ["sentiment", selectedStock, newsItems.map((n) => n.title).join("|")],
