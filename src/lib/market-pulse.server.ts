@@ -8,10 +8,59 @@ const ASIA_SEMIS: { symbol: string; name: string }[] = [
   { symbol: "6857.T", name: "Advantest" },
 ];
 
+const US_FUTURES: { symbol: string; name: string }[] = [
+  { symbol: "ES=F", name: "S&P 500" },
+  { symbol: "NQ=F", name: "Nasdaq 100" },
+  { symbol: "YM=F", name: "Dow" },
+  { symbol: "RTY=F", name: "Russell 2K" },
+];
+
+const SEMIS_BASKET: { symbol: string; name: string }[] = [
+  { symbol: "NVDA", name: "NVIDIA" },
+  { symbol: "AMD", name: "AMD" },
+  { symbol: "AVGO", name: "Broadcom" },
+  { symbol: "TSM", name: "TSMC ADR" },
+  { symbol: "MU", name: "Micron" },
+  { symbol: "INTC", name: "Intel" },
+  { symbol: "QCOM", name: "Qualcomm" },
+  { symbol: "ASML", name: "ASML" },
+  { symbol: "LRCX", name: "Lam Research" },
+  { symbol: "AMAT", name: "Applied Materials" },
+  { symbol: "KLAC", name: "KLA" },
+  { symbol: "MRVL", name: "Marvell" },
+];
+
 export type AsiaSemiComponent = { symbol: string; name: string; changePct: number | null };
 export type AsiaSemisResponse = {
   avgChangePct: number | null;
   components: AsiaSemiComponent[];
+  asOf: number;
+  error?: string;
+};
+
+export type QuoteSnap = {
+  symbol: string;
+  name: string;
+  price: number | null;
+  changePct: number | null;
+};
+
+export type MarketPulseResponse = {
+  futures: QuoteSnap[];
+  vix: QuoteSnap | null;
+  semisEtfs: QuoteSnap[]; // SOXX, SMH
+  semisBreadth: {
+    advancers: number;
+    decliners: number;
+    unchanged: number;
+    avgChangePct: number | null;
+    components: QuoteSnap[];
+  };
+  semisRisk: {
+    level: "LOW" | "ELEVATED" | "HIGH" | "EXTREME";
+    score: number; // 0..100
+    reason: string;
+  };
   asOf: number;
   error?: string;
 };
@@ -42,7 +91,7 @@ const MARKET_KEYWORDS = [
   "semiconductor", "chip", "nvidia", "apple", "microsoft", "tesla", "ai",
 ];
 
-async function fetchAsiaSemiChange(symbol: string): Promise<number | null> {
+async function fetchYahooSnap(symbol: string): Promise<{ price: number | null; prev: number | null }> {
   for (const host of ["query1.finance.yahoo.com", "query2.finance.yahoo.com"]) {
     try {
       const response = await fetch(
@@ -51,7 +100,7 @@ async function fetchAsiaSemiChange(symbol: string): Promise<number | null> {
       );
 
       if (!response.ok) {
-        console.error("[asia-semis] fetch failed", symbol, host, response.status);
+        console.error("[market-pulse] fetch failed", symbol, host, response.status);
         continue;
       }
 
@@ -60,13 +109,18 @@ async function fetchAsiaSemiChange(symbol: string): Promise<number | null> {
       const price = Number(meta?.regularMarketPrice);
       const prev = Number(meta?.chartPreviousClose ?? meta?.previousClose);
       if (!Number.isFinite(price) || !Number.isFinite(prev) || prev <= 0) continue;
-      return ((price - prev) / prev) * 100;
+      return { price, prev };
     } catch (error) {
-      console.error("[asia-semis] error", symbol, host, error);
+      console.error("[market-pulse] error", symbol, host, error);
     }
   }
+  return { price: null, prev: null };
+}
 
-  return null;
+async function fetchAsiaSemiChange(symbol: string): Promise<number | null> {
+  const { price, prev } = await fetchYahooSnap(symbol);
+  if (price == null || prev == null) return null;
+  return ((price - prev) / prev) * 100;
 }
 
 function parseRss(xml: string, publisher: string): NewsItem[] {
