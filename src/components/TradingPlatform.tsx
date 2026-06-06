@@ -489,6 +489,8 @@ export default function TradingPlatform() {
   const callSubscribe = useServerFn(subscribeToPush);
   const callUnsubscribe = useServerFn(unsubscribeFromPush);
   const fetchShort = useServerFn(getShortInterest);
+  const fetchAsiaSemisFn = useServerFn(fetchAsiaSemis);
+  const fetchMacroNewsFn = useServerFn(fetchMacroNews);
 
   // Reflect current notification permission + existing subscription.
   useEffect(() => {
