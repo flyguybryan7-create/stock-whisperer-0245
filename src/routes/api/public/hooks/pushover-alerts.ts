@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
@@ -104,6 +103,7 @@ function bucketFor(pct: number): string | null {
 }
 
 async function runAlerts() {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   // Collect first 20 unique symbols across all user watchlists (deterministic order).
   const { data: lists, error } = await supabaseAdmin
     .from("watchlists")
