@@ -605,6 +605,22 @@ export default function TradingPlatform() {
   });
   const shorts = (shortData as Record<string, ShortInterest> | undefined) ?? {};
 
+  // Asia semiconductor sector pulse — refresh every 5 minutes.
+  const { data: asiaSemis } = useQuery({
+    queryKey: ["asiaSemis"],
+    queryFn: () => fetchAsiaSemisFn(),
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
+  });
+
+  // Macro market-moving news (CNBC / MarketWatch / WSJ) — refresh every 5 minutes.
+  const { data: macroNews } = useQuery({
+    queryKey: ["macroNews"],
+    queryFn: () => fetchMacroNewsFn(),
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
+  });
+
   // News for selected stock
   const { data: newsData } = useQuery({
     queryKey: ["news", selectedStock, stockNames[selectedStock] || ""],
