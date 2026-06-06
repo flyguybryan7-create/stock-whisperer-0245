@@ -622,6 +622,15 @@ export default function TradingPlatform() {
     refetchInterval: 5 * 60_000,
   });
 
+  // US market pulse (futures, VIX, semis ETFs, semis breadth, semis risk gauge)
+  // Refresh every 60s so the header reflects regular-session action.
+  const { data: marketPulse } = useQuery({
+    queryKey: ["marketPulse"],
+    queryFn: () => fetchMarketPulseFn(),
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  });
+
   // News for selected stock
   const { data: newsData } = useQuery({
     queryKey: ["news", selectedStock, stockNames[selectedStock] || ""],
