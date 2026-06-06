@@ -1,7 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 
-const UA =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+const UA = "Mozilla/5.0 (compatible; BryanTrade/1.0)";
 
 // Asia-listed semiconductor leaders (Yahoo symbols).
 const ASIA_SEMIS: { symbol: string; name: string }[] = [
@@ -15,21 +14,28 @@ const ASIA_SEMIS: { symbol: string; name: string }[] = [
 type Component = { symbol: string; name: string; changePct: number | null };
 
 async function fetchOne(symbol: string): Promise<number | null> {
-  try {
-    const r = await fetch(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d`,
-      { headers: { "User-Agent": UA, Accept: "application/json" } },
-    );
-    if (!r.ok) return null;
-    const j: any = await r.json();
-    const meta = j?.chart?.result?.[0]?.meta;
-    const price = Number(meta?.regularMarketPrice);
-    const prev = Number(meta?.chartPreviousClose ?? meta?.previousClose);
-    if (!Number.isFinite(price) || !Number.isFinite(prev) || prev <= 0) return null;
-    return ((price - prev) / prev) * 100;
-  } catch {
-    return null;
+  // Try query1 then query2 (one is sometimes blocked).
+  for (const host of ["query1.finance.yahoo.com", "query2.finance.yahoo.com"]) {
+    try {
+      const r = await fetch(
+        `https://${host}/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d`,
+        { headers: { "User-Agent": UA, Accept: "application/json" } },
+      );
+      if (!r.ok) {
+        console.error("[asia-semis] fetch failed", symbol, host, r.status);
+        continue;
+      }
+      const j: any = await r.json();
+      const meta = j?.chart?.result?.[0]?.meta;
+      const price = Number(meta?.regularMarketPrice);
+      const prev = Number(meta?.chartPreviousClose ?? meta?.previousClose);
+      if (!Number.isFinite(price) || !Number.isFinite(prev) || prev <= 0) continue;
+      return ((price - prev) / prev) * 100;
+    } catch (e) {
+      console.error("[asia-semis] error", symbol, host, e);
+    }
   }
+  return null;
 }
 
 export const fetchAsiaSemis = createServerFn({ method: "GET" }).handler(async () => {
