@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as PricingRouteImport } from './routes/pricing'
+import { Route as InterpolatorRouteImport } from './routes/interpolator'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CheckoutReturnRouteImport } from './routes/checkout.return'
@@ -20,6 +21,11 @@ import { Route as ApiPublicHooksPushoverAlertsRouteImport } from './routes/api/p
 const PricingRoute = PricingRouteImport.update({
   id: '/pricing',
   path: '/pricing',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InterpolatorRoute = InterpolatorRouteImport.update({
+  id: '/interpolator',
+  path: '/interpolator',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthRoute = AuthRouteImport.update({
@@ -58,6 +64,7 @@ const ApiPublicHooksPushoverAlertsRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRouteWithChildren
+  '/interpolator': typeof InterpolatorRoute
   '/pricing': typeof PricingRoute
   '/checkout/return': typeof CheckoutReturnRoute
   '/auth/schwab/callback': typeof AuthSchwabCallbackRoute
@@ -67,6 +74,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRouteWithChildren
+  '/interpolator': typeof InterpolatorRoute
   '/pricing': typeof PricingRoute
   '/checkout/return': typeof CheckoutReturnRoute
   '/auth/schwab/callback': typeof AuthSchwabCallbackRoute
@@ -77,6 +85,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/auth': typeof AuthRouteWithChildren
+  '/interpolator': typeof InterpolatorRoute
   '/pricing': typeof PricingRoute
   '/checkout/return': typeof CheckoutReturnRoute
   '/auth/schwab/callback': typeof AuthSchwabCallbackRoute
@@ -88,6 +97,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/interpolator'
     | '/pricing'
     | '/checkout/return'
     | '/auth/schwab/callback'
@@ -97,6 +107,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/interpolator'
     | '/pricing'
     | '/checkout/return'
     | '/auth/schwab/callback'
@@ -106,6 +117,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/auth'
+    | '/interpolator'
     | '/pricing'
     | '/checkout/return'
     | '/auth/schwab/callback'
@@ -116,6 +128,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthRoute: typeof AuthRouteWithChildren
+  InterpolatorRoute: typeof InterpolatorRoute
   PricingRoute: typeof PricingRoute
   CheckoutReturnRoute: typeof CheckoutReturnRoute
   ApiPublicHooksPushoverAlertsRoute: typeof ApiPublicHooksPushoverAlertsRoute
@@ -129,6 +142,13 @@ declare module '@tanstack/react-router' {
       path: '/pricing'
       fullPath: '/pricing'
       preLoaderRoute: typeof PricingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/interpolator': {
+      id: '/interpolator'
+      path: '/interpolator'
+      fullPath: '/interpolator'
+      preLoaderRoute: typeof InterpolatorRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth': {
@@ -189,6 +209,7 @@ const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRouteWithChildren,
+  InterpolatorRoute: InterpolatorRoute,
   PricingRoute: PricingRoute,
   CheckoutReturnRoute: CheckoutReturnRoute,
   ApiPublicHooksPushoverAlertsRoute: ApiPublicHooksPushoverAlertsRoute,
