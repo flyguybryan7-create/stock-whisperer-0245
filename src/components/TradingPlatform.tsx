@@ -1307,6 +1307,21 @@ export default function TradingPlatform() {
                         return <span className={cls} title={tip}>{sym}</span>;
                       })()}
                       <span style={{ fontSize: 9, color: sigC, fontWeight: 800 }}>{sig}</span>
+                      {(() => {
+                        const of = optionsFlow[sym];
+                        if (!of || of.side === "NEUTRAL") return null;
+                        const color = of.side === "BUY" ? "#39d353" : "#f85149";
+                        const arrow = of.side === "BUY" ? "▲" : "▼";
+                        const fmt = (n: number) => n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : (n / 1e3).toFixed(0) + "K";
+                        const tip = `Options flow ${of.side === "BUY" ? "BULLISH (calls)" : "BEARISH (puts)"}${of.unusual ? " · UNUSUAL VOLUME" : ""}\nCalls $${fmt(of.callDollar)} (${of.callVol.toLocaleString()} contracts)\nPuts $${fmt(of.putDollar)} (${of.putVol.toLocaleString()} contracts)`;
+                        return (
+                          <span title={tip} style={{
+                            fontSize: 9, fontWeight: 900, color,
+                            border: `1px solid ${color}`, padding: "0 3px", borderRadius: 3,
+                            background: of.unusual ? `${color}22` : "transparent",
+                          }}>OPT{arrow}</span>
+                        );
+                      })()}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                       {reorderModeSym && reorderModeSym !== sym ? (
