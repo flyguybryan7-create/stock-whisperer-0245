@@ -370,8 +370,8 @@ function computeSemisRisk(
 export async function fetchFastPulseSnapshot(): Promise<FastPulseResponse> {
   try {
     const [futures, vix] = await Promise.all([
-      Promise.all(US_FUTURES.map((f) => snap(f.symbol, f.name))),
-      snap("^VIX", "VIX"),
+      Promise.all(US_FUTURES.map((f) => snapFast(f.symbol, f.name))),
+      snapFast("^VIX", "VIX"),
     ]);
     return { futures, vix, asOf: Date.now() };
   } catch (error) {
