@@ -701,6 +701,20 @@ export default function TradingPlatform() {
     staleTime: 2_000,
     enabled: watchlist.length > 0,
   });
+
+  // Unusual options activity — top-20 watchlist names, refresh every 10s.
+  // Calls/puts volume from Yahoo's nearest-expiry options chain. Used to
+  // colour each ticker (green = bullish call flow, red = bearish put flow).
+  const { data: optionsActivityData } = useQuery({
+    queryKey: ["optionsActivity", [...watchlist].sort().slice(0, 20).join(",")],
+    queryFn: () => fetchOptionsActivity({ data: { symbols: watchlist.slice(0, 20) } }),
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: true,
+    staleTime: 8_000,
+    enabled: watchlist.length > 0,
+  });
+  const optionsActivity = (optionsActivityData?.items ?? {}) as Record<string, OptionsActivity>;
+  });
   const watchlistMacdSignals = useMemo(() => {
     const out: Record<string, "BUY" | "SELL" | "HOLD"> = {};
     const batch = (watchlistIntradayData ?? {}) as Record<string, IntradayBar[]>;
