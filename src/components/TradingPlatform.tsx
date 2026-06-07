@@ -703,12 +703,23 @@ export default function TradingPlatform() {
     enabled: watchlist.length > 0,
   });
 
-  // Unusual options activity — top-20 watchlist names, refresh every 10s.
-  // Calls/puts volume from Yahoo's nearest-expiry options chain. Used to
-  // colour each ticker (green = bullish call flow, red = bearish put flow).
+  // Unusual options activity — every watchlist name, refresh every 10s.
+  // Calls/puts volume from Nasdaq's option chain. Used to colour each ticker
+  // (green = bullish call flow, red = bearish put flow). Chunked in batches
+  // of 20 on the server to keep latency low.
   const { data: optionsActivityData } = useQuery({
-    queryKey: ["optionsActivity", [...watchlist].sort().slice(0, 20).join(",")],
-    queryFn: () => fetchOptionsActivityFn({ data: { symbols: watchlist.slice(0, 20) } }),
+    queryKey: ["optionsActivity", [...watchlist].sort().join(",")],
+    queryFn: async () => {
+      const all = [...watchlist];
+      const chunks: string[][] = [];
+      for (let i = 0; i < all.length; i += 20) chunks.push(all.slice(i, i + 20));
+      const results = await Promise.all(
+        chunks.map((c) => fetchOptionsActivityFn({ data: { symbols: c } })),
+      );
+      const items: Record<string, OptionsActivity> = {};
+      for (const r of results) Object.assign(items, r?.items ?? {});
+      return { items, asOf: Date.now() };
+    },
     refetchInterval: 10_000,
     refetchIntervalInBackground: true,
     staleTime: 8_000,
