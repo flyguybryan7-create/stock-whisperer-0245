@@ -1156,6 +1156,44 @@ export default function TradingPlatform() {
               </span>
             );
           })()}
+          {Object.keys(optionsFlow).length > 0 && (() => {
+            const flows = Object.values(optionsFlow);
+            const bulls = flows.filter((f) => f.side === "BUY").length;
+            const bears = flows.filter((f) => f.side === "SELL").length;
+            const unusual = flows
+              .filter((f) => f.unusual && f.side !== "NEUTRAL")
+              .sort((a, b) => b.score - a.score)
+              .slice(0, 3);
+            const tip =
+              "Unusual options activity on your top 20 (call vs put dollar volume):\n" +
+              flows
+                .sort((a, b) => b.score - a.score)
+                .map((f) => {
+                  const arrow = f.side === "BUY" ? "▲ CALLS" : f.side === "SELL" ? "▼ PUTS" : "—";
+                  const dollars = (n: number) => n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : (n / 1e3).toFixed(0) + "K";
+                  return `${f.symbol}: ${arrow} · C$${dollars(f.callDollar)} / P$${dollars(f.putDollar)}${f.unusual ? " · UNUSUAL" : ""}`;
+                })
+                .join("\n");
+            return (
+              <span title={tip}
+                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, border: "1px solid #21262d", borderRadius: 4, padding: "2px 6px" }}>
+                <span style={{ color: "#8b949e" }}>OPT FLOW</span>
+                <span style={{ color: "#39d353" }}>{bulls}▲</span>
+                <span style={{ color: "#f85149" }}>{bears}▼</span>
+                {unusual.length > 0 && (
+                  <span style={{ display: "flex", gap: 4, marginLeft: 4 }}>
+                    {unusual.map((f) => (
+                      <span key={f.symbol} style={{
+                        color: f.side === "BUY" ? "#39d353" : "#f85149",
+                        border: `1px solid ${f.side === "BUY" ? "#39d353" : "#f85149"}`,
+                        padding: "0 4px", borderRadius: 3, fontWeight: 900,
+                      }}>{f.symbol}</span>
+                    ))}
+                  </span>
+                )}
+              </span>
+            );
+          })()}
           <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "#39d353" }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#39d353", animation: "pulse 2s infinite" }} />
             LIVE
