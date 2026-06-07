@@ -708,7 +708,7 @@ export default function TradingPlatform() {
   // colour each ticker (green = bullish call flow, red = bearish put flow).
   const { data: optionsActivityData } = useQuery({
     queryKey: ["optionsActivity", [...watchlist].sort().slice(0, 20).join(",")],
-    queryFn: () => fetchOptionsActivity({ data: { symbols: watchlist.slice(0, 20) } }),
+    queryFn: () => fetchOptionsActivityFn({ data: { symbols: watchlist.slice(0, 20) } }),
     refetchInterval: 10_000,
     refetchIntervalInBackground: true,
     staleTime: 8_000,
