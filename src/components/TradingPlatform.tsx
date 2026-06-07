@@ -1147,7 +1147,12 @@ export default function TradingPlatform() {
                 const color = pct >= 0 ? "#39d353" : "#f85149";
                 const label = f.symbol === "ES=F" ? "ES" : f.symbol === "NQ=F" ? "NQ" : f.symbol === "YM=F" ? "YM" : "RTY";
                 return (
-                  <span key={f.symbol} title={`${f.name} futures: ${f.price?.toFixed(2) ?? "—"}`} style={{ color }}>
+                  <span
+                    key={f.symbol}
+                    title={`${f.name} futures: ${f.price?.toFixed(2) ?? "—"}`}
+                    className={pct >= 0 ? "flow-flash-buy" : "flow-flash-sell"}
+                    style={{ color }}
+                  >
                     {label} {pct >= 0 ? "+" : ""}{pct.toFixed(2)}%
                   </span>
                 );
