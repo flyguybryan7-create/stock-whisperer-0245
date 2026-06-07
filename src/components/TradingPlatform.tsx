@@ -19,6 +19,8 @@ import {
 import { getShortInterest, type ShortInterest } from "@/lib/shortinterest.functions";
 import { fetchAsiaSemis, fetchFastPulse, fetchMacroNews, fetchSemisPulse } from "@/lib/market-pulse.functions";
 import type { QuoteSnap } from "@/lib/market-pulse.server";
+import { fetchOptionsActivity } from "@/lib/options.functions";
+import type { OptionsActivity } from "@/lib/options.server";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { useSubscription } from "@/hooks/useSubscription";
 import { supabase } from "@/integrations/supabase/client";
@@ -497,6 +499,7 @@ export default function TradingPlatform() {
   const fetchMacroNewsFn = useServerFn(fetchMacroNews);
   const fetchFastPulseFn = useServerFn(fetchFastPulse);
   const fetchSemisPulseFn = useServerFn(fetchSemisPulse);
+  const fetchOptionsActivityFn = useServerFn(fetchOptionsActivity);
 
   // Reflect current notification permission + existing subscription.
   useEffect(() => {
@@ -699,6 +702,19 @@ export default function TradingPlatform() {
     staleTime: 2_000,
     enabled: watchlist.length > 0,
   });
+
+  // Unusual options activity — top-20 watchlist names, refresh every 10s.
+  // Calls/puts volume from Yahoo's nearest-expiry options chain. Used to
+  // colour each ticker (green = bullish call flow, red = bearish put flow).
+  const { data: optionsActivityData } = useQuery({
+    queryKey: ["optionsActivity", [...watchlist].sort().slice(0, 20).join(",")],
+    queryFn: () => fetchOptionsActivityFn({ data: { symbols: watchlist.slice(0, 20) } }),
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: true,
+    staleTime: 8_000,
+    enabled: watchlist.length > 0,
+  });
+  const optionsActivity = (optionsActivityData?.items ?? {}) as Record<string, OptionsActivity>;
   const watchlistMacdSignals = useMemo(() => {
     const out: Record<string, "BUY" | "SELL" | "HOLD"> = {};
     const batch = (watchlistIntradayData ?? {}) as Record<string, IntradayBar[]>;
@@ -1254,6 +1270,38 @@ export default function TradingPlatform() {
                         return <span className={cls} title={tip}>{sym}</span>;
                       })()}
                       <span style={{ fontSize: 9, color: sigC, fontWeight: 800 }}>{sig}</span>
+                      {(() => {
+                        const oa = optionsActivity[sym];
+                        if (!oa || (oa.callVolume + oa.putVolume) < 50) return null;
+                        const isBull = oa.bias === "BULL";
+                        const isBear = oa.bias === "BEAR";
+                        if (!isBull && !isBear && !oa.unusual) return null;
+                        const color = isBull ? "#39d353" : isBear ? "#f85149" : "#d29922";
+                        const label = isBull ? "C↑" : isBear ? "P↓" : "UNU";
+                        const pc = oa.pcRatio == null ? "—" : oa.pcRatio.toFixed(2);
+                        const tip =
+                          `Options flow ${oa.bias}${oa.unusual ? " · UNUSUAL" : ""}\n` +
+                          `Calls ${oa.callVolume.toLocaleString()} vol / ${oa.callOi.toLocaleString()} OI\n` +
+                          `Puts  ${oa.putVolume.toLocaleString()} vol / ${oa.putOi.toLocaleString()} OI\n` +
+                          `P/C ${pc}${oa.expiry ? ` · exp ${oa.expiry}` : ""}`;
+                        return (
+                          <span
+                            title={tip}
+                            style={{
+                              fontSize: 8,
+                              fontWeight: 900,
+                              color,
+                              border: `1px solid ${color}`,
+                              borderRadius: 2,
+                              padding: "0 3px",
+                              animation: oa.unusual ? "flashBuy 1.1s ease-in-out infinite" : undefined,
+                              opacity: isBull || isBear ? 1 : 0.85,
+                            }}
+                          >
+                            {label}
+                          </span>
+                        );
+                      })()}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                       {reorderModeSym && reorderModeSym !== sym ? (
