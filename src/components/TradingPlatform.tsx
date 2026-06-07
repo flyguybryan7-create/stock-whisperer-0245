@@ -498,6 +498,7 @@ export default function TradingPlatform() {
   const fetchMacroNewsFn = useServerFn(fetchMacroNews);
   const fetchFastPulseFn = useServerFn(fetchFastPulse);
   const fetchSemisPulseFn = useServerFn(fetchSemisPulse);
+  const fetchOptionsFlowFn = useServerFn(fetchOptionsFlow);
 
   // Reflect current notification permission + existing subscription.
   useEffect(() => {
