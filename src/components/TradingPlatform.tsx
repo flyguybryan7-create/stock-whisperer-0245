@@ -640,8 +640,8 @@ export default function TradingPlatform() {
   const { data: fastPulse } = useQuery({
     queryKey: ["fastPulse"],
     queryFn: () => fetchFastPulseFn(),
-    staleTime: 1_500,
-    refetchInterval: 2_000,
+    staleTime: 0,
+    refetchInterval: 1_000,
     refetchIntervalInBackground: true,
   });
   const { data: semisPulse } = useQuery({

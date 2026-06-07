@@ -106,11 +106,16 @@ const MARKET_KEYWORDS = [
   "semiconductor", "chip", "nvidia", "apple", "microsoft", "tesla", "ai",
 ];
 
-async function fetchYahooSnap(symbol: string): Promise<{ price: number | null; prev: number | null }> {
+async function fetchYahooSnap(
+  symbol: string,
+  opts: { interval?: string; range?: string } = {},
+): Promise<{ price: number | null; prev: number | null }> {
+  const interval = opts.interval ?? "1d";
+  const range = opts.range ?? "5d";
   for (const host of ["query1.finance.yahoo.com", "query2.finance.yahoo.com"]) {
     try {
       const response = await fetch(
-        `https://${host}/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d`,
+        `https://${host}/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${interval}&range=${range}&includePrePost=true`,
         { headers: { "User-Agent": UA, Accept: "application/json" } },
       );
 
@@ -120,9 +125,24 @@ async function fetchYahooSnap(symbol: string): Promise<{ price: number | null; p
       }
 
       const json: any = await response.json();
-      const meta = json?.chart?.result?.[0]?.meta;
-      const price = Number(meta?.regularMarketPrice);
-      const prev = Number(meta?.chartPreviousClose ?? meta?.previousClose);
+      const result = json?.chart?.result?.[0];
+      const meta = result?.meta;
+      // For futures the correct % reference is the prior settlement
+      // (previousClose). chartPreviousClose can equal the start-of-range bar
+      // and skew the percent on multi-day ranges.
+      const prev = Number(meta?.previousClose ?? meta?.chartPreviousClose);
+      // Prefer the freshest tick available: last non-null 1m bar > meta price.
+      let price = Number(meta?.regularMarketPrice);
+      const closes: Array<number | null> | undefined = result?.indicators?.quote?.[0]?.close;
+      if (Array.isArray(closes)) {
+        for (let i = closes.length - 1; i >= 0; i--) {
+          const v = closes[i];
+          if (v != null && Number.isFinite(v)) {
+            if (!Number.isFinite(price) || v !== price) price = Number(v);
+            break;
+          }
+        }
+      }
       if (!Number.isFinite(price) || !Number.isFinite(prev) || prev <= 0) continue;
       return { price, prev };
     } catch (error) {
@@ -130,6 +150,12 @@ async function fetchYahooSnap(symbol: string): Promise<{ price: number | null; p
     }
   }
   return { price: null, prev: null };
+}
+
+async function snapFast(symbol: string, name: string): Promise<QuoteSnap> {
+  const { price, prev } = await fetchYahooSnap(symbol, { interval: "1m", range: "1d" });
+  const changePct = price != null && prev != null && prev > 0 ? ((price - prev) / prev) * 100 : null;
+  return { symbol, name, price, changePct };
 }
 
 async function fetchAsiaSemiChange(symbol: string): Promise<number | null> {
@@ -344,8 +370,8 @@ function computeSemisRisk(
 export async function fetchFastPulseSnapshot(): Promise<FastPulseResponse> {
   try {
     const [futures, vix] = await Promise.all([
-      Promise.all(US_FUTURES.map((f) => snap(f.symbol, f.name))),
-      snap("^VIX", "VIX"),
+      Promise.all(US_FUTURES.map((f) => snapFast(f.symbol, f.name))),
+      snapFast("^VIX", "VIX"),
     ]);
     return { futures, vix, asOf: Date.now() };
   } catch (error) {
