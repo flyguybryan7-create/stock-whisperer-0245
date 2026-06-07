@@ -662,6 +662,40 @@ export default function TradingPlatform() {
     };
   }, [fastPulse, semisPulse]);
 
+  // Futures momentum tracker — flash only when there's directional momentum
+  // over the last ~10s, not just because the day's change is +/-. Keeps a
+  // rolling 30s sample buffer per symbol and computes short-window slope.
+  const futuresHistoryRef = useRef<Record<string, Array<{ t: number; p: number }>>>({});
+  const [futuresMomentum, setFuturesMomentum] = useState<Record<string, "BUY" | "SELL" | null>>({});
+  useEffect(() => {
+    if (!fastPulse?.futures?.length) return;
+    const now = Date.now();
+    const hist = futuresHistoryRef.current;
+    const next: Record<string, "BUY" | "SELL" | null> = {};
+    for (const f of fastPulse.futures) {
+      if (f.price == null) { next[f.symbol] = null; continue; }
+      const arr = hist[f.symbol] ?? (hist[f.symbol] = []);
+      arr.push({ t: now, p: f.price });
+      // Keep last 30s
+      while (arr.length && now - arr[0].t > 30_000) arr.shift();
+      // Compare to the oldest sample within ~10s window (need >=4s of data)
+      const window = arr.filter((s) => now - s.t <= 10_000);
+      if (window.length < 2 || now - window[0].t < 4_000) { next[f.symbol] = null; continue; }
+      const base = window[0].p;
+      const deltaPct = ((f.price - base) / base) * 100;
+      // ~0.03% over 10s ≈ meaningful intraday futures momentum
+      if (deltaPct >= 0.03) next[f.symbol] = "BUY";
+      else if (deltaPct <= -0.03) next[f.symbol] = "SELL";
+      else next[f.symbol] = null;
+    }
+    setFuturesMomentum((prev) => {
+      // Avoid re-render if unchanged
+      const keys = Object.keys(next);
+      if (keys.every((k) => prev[k] === next[k]) && Object.keys(prev).length === keys.length) return prev;
+      return next;
+    });
+  }, [fastPulse]);
+
   // News for selected stock
   const { data: newsData } = useQuery({
     queryKey: ["news", selectedStock, stockNames[selectedStock] || ""],
