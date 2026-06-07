@@ -1107,21 +1107,10 @@ export default function TradingPlatform() {
         }
         .flow-flash-buy  { animation: flashBuy 0.7s ease-in-out infinite; padding: 0 4px; border-radius: 3px; font-weight: 900 !important; }
         .flow-flash-sell { animation: flashSell 0.7s ease-in-out infinite; padding: 0 4px; border-radius: 3px; font-weight: 900 !important; }
-        .bt-header { flex-wrap: wrap; row-gap: 6px; }
-        .bt-shell { display: grid; grid-template-columns: 138px minmax(0, 1fr); min-height: calc(100vh - 49px); }
-        .bt-watchlist { max-height: calc(100vh - 49px); }
-        .bt-main { max-height: calc(100vh - 49px); }
-        .bt-spacer { flex: 1; min-width: 12px; }
-        @media (max-width: 820px) {
-          .bt-shell { grid-template-columns: 1fr; }
-          .bt-watchlist { max-height: 38vh; border-right: none !important; border-bottom: 1px solid #21262d; }
-          .bt-main { max-height: none; }
-          .bt-spacer { flex: 0 0 auto; min-width: 0; }
-        }
       `}</style>
 
       {/* Header */}
-      <div className="bt-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid #21262d", background: "#0d1117", gap: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid #21262d", background: "#0d1117" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 16, color: "#58a6ff", letterSpacing: 1 }}>⬡ BRYANTRADE</div>
           <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 2 }}>PRO TERMINAL</div>
@@ -1186,9 +1175,9 @@ export default function TradingPlatform() {
         </div>
       </div>
 
-      <div className="bt-shell">
+      <div style={{ display: "grid", gridTemplateColumns: "138px 1fr", minHeight: "calc(100vh - 49px)" }}>
         {/* Watchlist */}
-        <div className="bt-watchlist" style={{ borderRight: "1px solid #21262d", background: "#0d1117", overflowY: "auto", minWidth: 0 }}>
+        <div style={{ borderRight: "1px solid #21262d", background: "#0d1117", overflowY: "auto", maxHeight: "calc(100vh - 49px)" }}>
           <div style={{ padding: "6px 6px", borderBottom: "1px solid #21262d", position: "relative" }}>
             <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1, marginBottom: 4 }}>WATCHLIST</div>
             <input
@@ -1411,7 +1400,7 @@ export default function TradingPlatform() {
         </div>
 
         {/* Main */}
-        <div className="bt-main" style={{ padding: "6px 10px", overflowY: "auto", minWidth: 0 }}>
+        <div style={{ padding: "6px 10px", overflowY: "auto", maxHeight: "calc(100vh - 49px)" }}>
           {/* Stock header — ultra-tight single row */}
           {(() => {
             // Header shows the regular-session (4pm) close even during after-hours.
@@ -1469,6 +1458,7 @@ export default function TradingPlatform() {
                   {sessLabel && (
                     <span style={{ fontSize: 8, fontWeight: 700, color: sessColor, border: `1px solid ${sessColor}`, borderRadius: 3, padding: "1px 4px", lineHeight: 1 }}>● {sessLabel}</span>
                   )}
+                  <span style={{ flex: 1 }} />
                   <span
                     title={`Signal (${intradayInterval} / ${intradayRange}): ${dayTrade.reason}\nRSI7 ${dayTrade.rsi ?? "—"} · VWAP ${dayTrade.vwap ?? "—"} · EMA9/21 ${dayTrade.emaFast ?? "—"}/${dayTrade.emaSlow ?? "—"}\nMACD (${signalFrameLabel}): ${signal} — ${liveMacdSignal.reason}`}
                     style={{ background: dtBg, border: `1.5px solid ${pink}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 900, color: pink, lineHeight: 1, boxShadow: dt !== "HOLD" ? `0 0 8px ${pink}55` : "none" }}>
