@@ -1180,11 +1180,14 @@ export default function TradingPlatform() {
                 const pct = f.changePct ?? 0;
                 const color = pct >= 0 ? "#39d353" : "#f85149";
                 const label = f.symbol === "ES=F" ? "ES" : f.symbol === "NQ=F" ? "NQ" : f.symbol === "YM=F" ? "YM" : "RTY";
+                const mom = futuresMomentum[f.symbol];
+                const flashClass = mom === "BUY" ? "flow-flash-buy" : mom === "SELL" ? "flow-flash-sell" : undefined;
+                const momTip = mom ? `  ·  momentum: ${mom} (last 10s)` : "";
                 return (
                   <span
                     key={f.symbol}
-                    title={`${f.name} futures: ${f.price?.toFixed(2) ?? "—"}`}
-                    className={pct >= 0 ? "flow-flash-buy" : "flow-flash-sell"}
+                    title={`${f.name} futures: ${f.price?.toFixed(2) ?? "—"}${momTip}`}
+                    className={flashClass}
                     style={{ color }}
                   >
                     {label} {pct >= 0 ? "+" : ""}{pct.toFixed(2)}%
