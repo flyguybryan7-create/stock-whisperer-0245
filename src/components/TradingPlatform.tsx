@@ -1108,23 +1108,15 @@ export default function TradingPlatform() {
         .flow-flash-buy  { animation: flashBuy 0.7s ease-in-out infinite; padding: 0 4px; border-radius: 3px; font-weight: 900 !important; }
         .flow-flash-sell { animation: flashSell 0.7s ease-in-out infinite; padding: 0 4px; border-radius: 3px; font-weight: 900 !important; }
         .bt-header { flex-wrap: wrap; row-gap: 6px; }
-        .bt-shell {
-          display: grid;
-          grid-template-columns: clamp(172px, 24vw, 260px) minmax(0, 1fr);
-          min-height: calc(100vh - 49px);
-        }
-        .bt-watchlist {
-          height: calc(100vh - 49px);
-          min-width: 0;
-        }
-        .bt-main {
-          height: calc(100vh - 49px);
-          min-width: 0;
-        }
+        .bt-shell { display: grid; grid-template-columns: 138px minmax(0, 1fr); min-height: calc(100vh - 49px); }
+        .bt-watchlist { max-height: calc(100vh - 49px); }
+        .bt-main { max-height: calc(100vh - 49px); }
+        .bt-spacer { flex: 1; min-width: 12px; }
         @media (max-width: 820px) {
-          .bt-shell {
-            grid-template-columns: minmax(156px, 42vw) minmax(0, 1fr);
-          }
+          .bt-shell { grid-template-columns: 1fr; }
+          .bt-watchlist { max-height: 38vh; border-right: none !important; border-bottom: 1px solid #21262d; }
+          .bt-main { max-height: none; }
+          .bt-spacer { flex: 0 0 auto; min-width: 0; }
         }
       `}</style>
 
@@ -1196,7 +1188,7 @@ export default function TradingPlatform() {
 
       <div className="bt-shell">
         {/* Watchlist */}
-        <div className="bt-watchlist" style={{ borderRight: "1px solid #21262d", background: "#0d1117", overflowY: "auto" }}>
+        <div className="bt-watchlist" style={{ borderRight: "1px solid #21262d", background: "#0d1117", overflowY: "auto", minWidth: 0 }}>
           <div style={{ padding: "6px 6px", borderBottom: "1px solid #21262d", position: "relative" }}>
             <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1, marginBottom: 4 }}>WATCHLIST</div>
             <input
@@ -1419,7 +1411,7 @@ export default function TradingPlatform() {
         </div>
 
         {/* Main */}
-        <div className="bt-main" style={{ padding: "6px 10px", overflowY: "auto" }}>
+        <div className="bt-main" style={{ padding: "6px 10px", overflowY: "auto", minWidth: 0 }}>
           {/* Stock header — ultra-tight single row */}
           {(() => {
             // Header shows the regular-session (4pm) close even during after-hours.
