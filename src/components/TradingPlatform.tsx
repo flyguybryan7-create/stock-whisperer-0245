@@ -703,12 +703,23 @@ export default function TradingPlatform() {
     enabled: watchlist.length > 0,
   });
 
-  // Unusual options activity — top-20 watchlist names, refresh every 10s.
-  // Calls/puts volume from Yahoo's nearest-expiry options chain. Used to
-  // colour each ticker (green = bullish call flow, red = bearish put flow).
+  // Unusual options activity — every watchlist name, refresh every 10s.
+  // Calls/puts volume from Nasdaq's option chain. Used to colour each ticker
+  // (green = bullish call flow, red = bearish put flow). Chunked in batches
+  // of 20 on the server to keep latency low.
   const { data: optionsActivityData } = useQuery({
-    queryKey: ["optionsActivity", [...watchlist].sort().slice(0, 20).join(",")],
-    queryFn: () => fetchOptionsActivityFn({ data: { symbols: watchlist.slice(0, 20) } }),
+    queryKey: ["optionsActivity", [...watchlist].sort().join(",")],
+    queryFn: async () => {
+      const all = [...watchlist];
+      const chunks: string[][] = [];
+      for (let i = 0; i < all.length; i += 20) chunks.push(all.slice(i, i + 20));
+      const results = await Promise.all(
+        chunks.map((c) => fetchOptionsActivityFn({ data: { symbols: c } })),
+      );
+      const items: Record<string, OptionsActivity> = {};
+      for (const r of results) Object.assign(items, r?.items ?? {});
+      return { items, asOf: Date.now() };
+    },
     refetchInterval: 10_000,
     refetchIntervalInBackground: true,
     staleTime: 8_000,
@@ -1448,11 +1459,8 @@ export default function TradingPlatform() {
                     <span style={{ fontSize: 8, fontWeight: 700, color: sessColor, border: `1px solid ${sessColor}`, borderRadius: 3, padding: "1px 4px", lineHeight: 1 }}>● {sessLabel}</span>
                   )}
                   <span style={{ flex: 1 }} />
-                  <span style={{ background: signalBg, border: `1px solid ${signalColor}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 800, color: signalColor, lineHeight: 1 }} title={`${signalFrameLabel} · ${liveMacdSignal.reason}`}>
-                    MACD {signal}
-                  </span>
                   <span
-                    title={`Day-trade signal (${intradayInterval} / ${intradayRange}): ${dayTrade.reason}\nRSI7 ${dayTrade.rsi ?? "—"} · VWAP ${dayTrade.vwap ?? "—"} · EMA9/21 ${dayTrade.emaFast ?? "—"}/${dayTrade.emaSlow ?? "—"}`}
+                    title={`Signal (${intradayInterval} / ${intradayRange}): ${dayTrade.reason}\nRSI7 ${dayTrade.rsi ?? "—"} · VWAP ${dayTrade.vwap ?? "—"} · EMA9/21 ${dayTrade.emaFast ?? "—"}/${dayTrade.emaSlow ?? "—"}\nMACD (${signalFrameLabel}): ${signal} — ${liveMacdSignal.reason}`}
                     style={{ background: dtBg, border: `1.5px solid ${pink}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 900, color: pink, lineHeight: 1, boxShadow: dt !== "HOLD" ? `0 0 8px ${pink}55` : "none" }}>
                     ⚡ {dt}
                   </span>
