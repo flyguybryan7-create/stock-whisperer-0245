@@ -1186,9 +1186,9 @@ export default function TradingPlatform() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "138px 1fr", minHeight: "calc(100vh - 49px)" }}>
+      <div className="bt-shell">
         {/* Watchlist */}
-        <div style={{ borderRight: "1px solid #21262d", background: "#0d1117", overflowY: "auto", maxHeight: "calc(100vh - 49px)" }}>
+        <div className="bt-watchlist" style={{ borderRight: "1px solid #21262d", background: "#0d1117", overflowY: "auto", minWidth: 0 }}>
           <div style={{ padding: "6px 6px", borderBottom: "1px solid #21262d", position: "relative" }}>
             <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1, marginBottom: 4 }}>WATCHLIST</div>
             <input
@@ -1411,7 +1411,7 @@ export default function TradingPlatform() {
         </div>
 
         {/* Main */}
-        <div style={{ padding: "6px 10px", overflowY: "auto", maxHeight: "calc(100vh - 49px)" }}>
+        <div className="bt-main" style={{ padding: "6px 10px", overflowY: "auto", minWidth: 0 }}>
           {/* Stock header — ultra-tight single row */}
           {(() => {
             // Header shows the regular-session (4pm) close even during after-hours.
