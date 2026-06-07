@@ -1114,7 +1114,7 @@ export default function TradingPlatform() {
         .bt-spacer { flex: 1; min-width: 12px; }
         @media (max-width: 820px) {
           .bt-shell { grid-template-columns: 1fr; }
-          .bt-watchlist { max-height: 38vh; border-right: none !important; border-bottom: 1px solid #21262d; }
+          .bt-watchlist { max-height: 60vh; border-right: none !important; border-bottom: 1px solid #21262d; }
           .bt-main { max-height: none; }
           .bt-spacer { flex: 0 0 auto; min-width: 0; }
         }
