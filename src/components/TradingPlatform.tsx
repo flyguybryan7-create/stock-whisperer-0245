@@ -661,6 +661,19 @@ export default function TradingPlatform() {
     };
   }, [fastPulse, semisPulse]);
 
+  // Top-20 unusual options activity — green = call dollar dominant (bullish),
+  // red = put dollar dominant (bearish). Polled every 8s.
+  const top20 = useMemo(() => watchlist.slice(0, 20), [watchlist]);
+  const { data: optionsFlowData } = useQuery({
+    queryKey: ["optionsFlow", top20.join(",")],
+    queryFn: () => fetchOptionsFlowFn({ data: { symbols: top20 } }),
+    enabled: top20.length > 0,
+    staleTime: 6_000,
+    refetchInterval: 8_000,
+    refetchIntervalInBackground: true,
+  });
+  const optionsFlow = optionsFlowData?.flows ?? {};
+
   // News for selected stock
   const { data: newsData } = useQuery({
     queryKey: ["news", selectedStock, stockNames[selectedStock] || ""],
