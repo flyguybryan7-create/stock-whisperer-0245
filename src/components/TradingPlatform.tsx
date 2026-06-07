@@ -1275,7 +1275,6 @@ export default function TradingPlatform() {
                         if (!oa || (oa.callVolume + oa.putVolume) < 50) return null;
                         const isBull = oa.bias === "BULL";
                         const isBear = oa.bias === "BEAR";
-                        if (!isBull && !isBear && !oa.unusual) return null;
                         const color = isBull ? "#39d353" : isBear ? "#f85149" : "#d29922";
                         const label = isBull ? "C↑" : isBear ? "P↓" : "UNU";
                         const pc = oa.pcRatio == null ? "—" : oa.pcRatio.toFixed(2);
