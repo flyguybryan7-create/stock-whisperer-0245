@@ -1269,6 +1269,38 @@ export default function TradingPlatform() {
                         return <span className={cls} title={tip}>{sym}</span>;
                       })()}
                       <span style={{ fontSize: 9, color: sigC, fontWeight: 800 }}>{sig}</span>
+                      {(() => {
+                        const oa = optionsActivity[sym];
+                        if (!oa || (oa.callVolume + oa.putVolume) < 50) return null;
+                        const isBull = oa.bias === "BULL";
+                        const isBear = oa.bias === "BEAR";
+                        if (!isBull && !isBear && !oa.unusual) return null;
+                        const color = isBull ? "#39d353" : isBear ? "#f85149" : "#d29922";
+                        const label = isBull ? "C↑" : isBear ? "P↓" : "UNU";
+                        const pc = oa.pcRatio == null ? "—" : oa.pcRatio.toFixed(2);
+                        const tip =
+                          `Options flow ${oa.bias}${oa.unusual ? " · UNUSUAL" : ""}\n` +
+                          `Calls ${oa.callVolume.toLocaleString()} vol / ${oa.callOi.toLocaleString()} OI\n` +
+                          `Puts  ${oa.putVolume.toLocaleString()} vol / ${oa.putOi.toLocaleString()} OI\n` +
+                          `P/C ${pc}${oa.expiry ? ` · exp ${oa.expiry}` : ""}`;
+                        return (
+                          <span
+                            title={tip}
+                            style={{
+                              fontSize: 8,
+                              fontWeight: 900,
+                              color,
+                              border: `1px solid ${color}`,
+                              borderRadius: 2,
+                              padding: "0 3px",
+                              animation: oa.unusual ? "flashBuy 1.1s ease-in-out infinite" : undefined,
+                              opacity: isBull || isBear ? 1 : 0.85,
+                            }}
+                          >
+                            {label}
+                          </span>
+                        );
+                      })()}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                       {reorderModeSym && reorderModeSym !== sym ? (
