@@ -1107,10 +1107,21 @@ export default function TradingPlatform() {
         }
         .flow-flash-buy  { animation: flashBuy 0.7s ease-in-out infinite; padding: 0 4px; border-radius: 3px; font-weight: 900 !important; }
         .flow-flash-sell { animation: flashSell 0.7s ease-in-out infinite; padding: 0 4px; border-radius: 3px; font-weight: 900 !important; }
+        .bt-header { flex-wrap: wrap; row-gap: 6px; }
+        .bt-shell { display: grid; grid-template-columns: 138px minmax(0, 1fr); min-height: calc(100vh - 49px); }
+        .bt-watchlist { max-height: calc(100vh - 49px); }
+        .bt-main { max-height: calc(100vh - 49px); }
+        .bt-spacer { flex: 1; min-width: 12px; }
+        @media (max-width: 820px) {
+          .bt-shell { grid-template-columns: 1fr; }
+          .bt-watchlist { max-height: 38vh; border-right: none !important; border-bottom: 1px solid #21262d; }
+          .bt-main { max-height: none; }
+          .bt-spacer { flex: 0 0 auto; min-width: 0; }
+        }
       `}</style>
 
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid #21262d", background: "#0d1117" }}>
+      <div className="bt-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid #21262d", background: "#0d1117", gap: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 16, color: "#58a6ff", letterSpacing: 1 }}>⬡ BRYANTRADE</div>
           <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 2 }}>PRO TERMINAL</div>
