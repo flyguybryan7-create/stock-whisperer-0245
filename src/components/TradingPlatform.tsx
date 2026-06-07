@@ -714,7 +714,6 @@ export default function TradingPlatform() {
     enabled: watchlist.length > 0,
   });
   const optionsActivity = (optionsActivityData?.items ?? {}) as Record<string, OptionsActivity>;
-  });
   const watchlistMacdSignals = useMemo(() => {
     const out: Record<string, "BUY" | "SELL" | "HOLD"> = {};
     const batch = (watchlistIntradayData ?? {}) as Record<string, IntradayBar[]>;
