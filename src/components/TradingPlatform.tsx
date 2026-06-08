@@ -1194,6 +1194,25 @@ export default function TradingPlatform() {
                   </span>
                 );
               })}
+              <Link
+                to="/interpolator"
+                style={{
+                  fontSize: 9,
+                  fontWeight: 800,
+                  letterSpacing: "0.12em",
+                  padding: "2px 6px",
+                  borderRadius: 3,
+                  border: "1px solid #cc884455",
+                  background: "#cc884418",
+                  color: "#cc8844",
+                  textDecoration: "none",
+                  lineHeight: 1,
+                  fontFamily: "'Courier New', monospace",
+                }}
+                title="Open Futures Signal Interpolator"
+              >
+                ◈ INTERP
+              </Link>
             </span>
           )}
           {marketPulse?.semisBreadth && marketPulse.semisBreadth.components.length > 0 && (() => {
