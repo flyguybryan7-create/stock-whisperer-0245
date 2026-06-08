@@ -1429,11 +1429,11 @@ export default function TradingPlatform() {
                     </div>
                   </div>
                   {stockNames[sym] && (
-                    <div style={{ fontSize: 9, color: "#8b949e", marginTop: 1, marginLeft: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <div style={{ fontSize: 9, color: "#8b949e", marginLeft: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.1 }}>
                       {stockNames[sym]}
                     </div>
                   )}
-                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 1, fontSize: 9 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2, fontSize: 9, lineHeight: 1.1 }}>
                     <span style={{ color: "#8b949e" }}>
                       {livePrice != null ? `$${livePrice.toFixed(2)}` : <span style={{ opacity: 0.6 }}>Loading…</span>}
                     </span>
@@ -1453,22 +1453,80 @@ export default function TradingPlatform() {
                       ) : (
                         <span style={{ color: "#484f58" }}>—</span>
                       )}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const existing = positions[sym];
+                          setEditingPos((cur) => (cur === sym ? null : sym));
+                          setPosDraft({
+                            shares: existing ? String(existing.shares) : "",
+                            entry: existing ? String(existing.entry) : "",
+                          });
+                        }}
+                        title={positions[sym] ? "Edit position" : "Add position"}
+                        style={{ background: "transparent", border: "1px solid #30363d", color: positions[sym] ? "#e3b341" : "#6e7681", cursor: "pointer", fontSize: 8, fontWeight: 800, padding: "0 4px", borderRadius: 3, lineHeight: 1.4 }}
+                      >$</button>
                     </span>
                   </div>
-                  <div style={{ marginTop: 1, fontSize: 9, color: "#8b949e" }}>
-                    VWAP{" "}
-                    <span
-                      title="Intraday volume-weighted average price"
-                      style={{
-                        color: vwap == null || livePrice == null
-                          ? "#8b949e"
-                          : livePrice >= vwap ? "#39d353" : "#f85149",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {vwap != null ? `$${vwap.toFixed(2)}` : "—"}
+                  {(() => {
+                    const pos = positions[sym];
+                    if (!pos || livePrice == null) return null;
+                    const pl = (livePrice - pos.entry) * pos.shares;
+                    const plPct = pos.entry > 0 ? ((livePrice - pos.entry) / pos.entry) * 100 : 0;
+                    const color = pl >= 0 ? "#39d353" : "#f85149";
+                    return (
+                      <div style={{ marginTop: 1, fontSize: 9, color: "#8b949e", lineHeight: 1.1, display: "flex", justifyContent: "space-between" }}>
+                        <span>POS {pos.shares}@${pos.entry.toFixed(2)}</span>
+                        <span style={{ color, fontWeight: 700 }}>
+                          {pl >= 0 ? "+" : "−"}${Math.abs(pl).toFixed(2)} ({plPct >= 0 ? "+" : ""}{plPct.toFixed(2)}%)
+                        </span>
+                      </div>
+                    );
+                  })()}
+                  {editingPos === sym && (
+                    <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 3, display: "flex", gap: 3, alignItems: "center" }}>
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        placeholder="shares"
+                        value={posDraft.shares}
+                        onChange={(e) => setPosDraft((d) => ({ ...d, shares: e.target.value }))}
+                        style={{ flex: 1, minWidth: 0, background: "#010409", border: "1px solid #21262d", borderRadius: 3, padding: "2px 4px", color: "#e6edf3", fontSize: 10, fontFamily: mono }}
+                      />
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        placeholder="cost $"
+                        value={posDraft.entry}
+                        onChange={(e) => setPosDraft((d) => ({ ...d, entry: e.target.value }))}
+                        style={{ flex: 1, minWidth: 0, background: "#010409", border: "1px solid #21262d", borderRadius: 3, padding: "2px 4px", color: "#e6edf3", fontSize: 10, fontFamily: mono }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const s = parseFloat(posDraft.shares);
+                          const e = parseFloat(posDraft.entry);
+                          if (Number.isFinite(s) && s > 0 && Number.isFinite(e) && e > 0) {
+                            setPositions((p) => ({ ...p, [sym]: { shares: s, entry: e } }));
+                          }
+                          setEditingPos(null);
+                        }}
+                        style={{ background: "#238636", border: "none", color: "#fff", fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3, cursor: "pointer" }}
+                      >Save</button>
+                      {positions[sym] && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPositions((p) => { const n = { ...p }; delete n[sym]; return n; });
+                            setEditingPos(null);
+                          }}
+                          style={{ background: "transparent", border: "1px solid #30363d", color: "#f85149", fontSize: 9, padding: "2px 4px", borderRadius: 3, cursor: "pointer" }}
+                        >✕</button>
+                      )}
                     </span>
                   </div>
+                  )}
                 </div>
               );
             })}
