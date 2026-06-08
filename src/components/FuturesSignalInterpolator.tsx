@@ -149,19 +149,31 @@ function TickerPanel({ ticker, basePrice, weights, threshold }: { ticker: string
   );
 }
 
-const TICKERS = [
+const FUTURES_TICKERS = [
   { ticker: "ES", label: "S&P 500 Futures", basePrice: 5310.25 },
   { ticker: "NQ", label: "Nasdaq Futures", basePrice: 18742.5 },
-  { ticker: "CRDO", label: "Credo Tech", basePrice: 68.42 },
-  { ticker: "MRVL", label: "Marvell Tech", basePrice: 91.15 },
-  { ticker: "RGTI", label: "Rigetti QC", basePrice: 12.38 },
-  { ticker: "QBTS", label: "D-Wave Quantum", basePrice: 8.91 },
+  { ticker: "YM", label: "Dow Futures", basePrice: 39250.0 },
+  { ticker: "RTY", label: "Russell 2K Futures", basePrice: 2080.0 },
 ];
 
-export default function FuturesSignalInterpolator() {
+export type InterpolatorTicker = { ticker: string; label?: string; basePrice: number };
+
+export function SignalInterpolator({
+  tickers,
+  title = "SIGNAL INTERPOLATOR",
+  subtitle = "BRYANTRADE · INTERPOLATOR MODULE",
+  defaultActive,
+}: {
+  tickers: InterpolatorTicker[];
+  title?: string;
+  subtitle?: string;
+  defaultActive?: string[];
+}) {
   const [weights, setWeights] = useState({ prev: 0.25, current: 0.5, next: 0.25 });
   const [threshold, setThreshold] = useState(0.002);
-  const [activeTickers, setActiveTickers] = useState<string[]>(["ES", "NQ", "CRDO"]);
+  const [activeTickers, setActiveTickers] = useState<string[]>(
+    defaultActive ?? tickers.slice(0, Math.min(6, tickers.length)).map((t) => t.ticker),
+  );
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
@@ -188,8 +200,8 @@ export default function FuturesSignalInterpolator() {
       <div style={{ marginBottom: 20, borderBottom: "1px solid #1a2535", paddingBottom: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <div style={{ fontSize: 11, letterSpacing: "0.3em", color: "#445566", marginBottom: 2 }}>BRYANTRADE · FUTURES MODULE</div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: "#eef", letterSpacing: "0.15em" }}>SIGNAL INTERPOLATOR <span style={{ color: "#44aaff", fontSize: 12 }}>v2.1</span></div>
+            <div style={{ fontSize: 11, letterSpacing: "0.3em", color: "#445566", marginBottom: 2 }}>{subtitle}</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: "#eef", letterSpacing: "0.15em" }}>{title} <span style={{ color: "#44aaff", fontSize: 12 }}>v2.1</span></div>
           </div>
           <div style={{ textAlign: "right", fontSize: 10, color: "#334455" }}>
             <div style={{ color: "#00ff9d", fontSize: 11 }}>● LIVE</div>
@@ -221,7 +233,7 @@ export default function FuturesSignalInterpolator() {
       </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
-        {TICKERS.map(({ ticker }) => {
+        {tickers.map(({ ticker }) => {
           const active = activeTickers.includes(ticker);
           return (
             <button key={ticker} onClick={() => toggleTicker(ticker)} style={{ padding: "4px 12px", fontSize: 9, letterSpacing: "0.15em", background: active ? "#44aaff22" : "#0a1018", border: `1px solid ${active ? "#44aaff55" : "#1a2535"}`, borderRadius: 4, color: active ? "#44aaff" : "#445566", cursor: "pointer", transition: "all 0.2s", fontFamily: "'Courier New', monospace" }}>
@@ -231,7 +243,7 @@ export default function FuturesSignalInterpolator() {
         })}
       </div>
 
-      {TICKERS.filter((t) => activeTickers.includes(t.ticker)).map(({ ticker, basePrice }) => (
+      {tickers.filter((t) => activeTickers.includes(t.ticker)).map(({ ticker, basePrice }) => (
         <TickerPanel key={ticker} ticker={ticker} basePrice={basePrice} weights={weights} threshold={threshold} />
       ))}
 
@@ -246,5 +258,16 @@ export default function FuturesSignalInterpolator() {
         <div>SIGNAL fires when Δ blended/prev {">"} ±{(threshold * 100).toFixed(3)}%</div>
       </div>
     </div>
+  );
+}
+
+export default function FuturesSignalInterpolator() {
+  return (
+    <SignalInterpolator
+      tickers={FUTURES_TICKERS}
+      title="FUTURES INTERPOLATOR"
+      subtitle="BRYANTRADE · FUTURES MODULE"
+      defaultActive={FUTURES_TICKERS.map((t) => t.ticker)}
+    />
   );
 }
