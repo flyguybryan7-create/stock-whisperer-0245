@@ -489,6 +489,20 @@ export default function TradingPlatform() {
     return () => clearTimeout(t);
   }, [watchlist, stockNames, user?.id]);
 
+  // Load/persist positions (shares + entry price) — localStorage only
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(POSITIONS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, Position>;
+        if (parsed && typeof parsed === "object") setPositions(parsed);
+      }
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem(POSITIONS_KEY, JSON.stringify(positions)); } catch {}
+  }, [positions]);
+
   const fetchQuotes = useServerFn(getQuotes);
   const fetchSearch = useServerFn(searchSymbols);
   const fetchLive = useServerFn(getLiveQuotes);
