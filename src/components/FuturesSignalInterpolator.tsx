@@ -100,9 +100,8 @@ function SignalBadge({ signal, changePct }: { signal: "BUY" | "SELL" | "NEUTRAL"
   );
 }
 
-function TickerPanel({ ticker, basePrice, weights, threshold }: { ticker: string; basePrice: number; weights: { prev: number; current: number; next: number }; threshold: number }) {
-  const { price } = useSimulatedFutures(ticker, basePrice);
-  const { signal, smoothed, changePct, components, history } = useInterpolatedSignal(price, { wPrev: weights.prev, wCurrent: weights.current, wNext: weights.next, threshold });
+function TickerPanel({ ticker, price, weights, threshold }: { ticker: string; price: number | null; weights: { prev: number; current: number; next: number }; threshold: number }) {
+  const { signal, smoothed, changePct, components, history } = useInterpolatedSignal(price ?? 0, { wPrev: weights.prev, wCurrent: weights.current, wNext: weights.next, threshold });
   const signalColor = signal === "BUY" ? "#00ff9d" : signal === "SELL" ? "#ff3366" : "#44aaff";
   return (
     <div style={{ background: "linear-gradient(135deg, #0a1018 0%, #0d1520 100%)", border: `1px solid ${signalColor}22`, borderTop: `2px solid ${signalColor}66`, borderRadius: 8, padding: "16px 18px", marginBottom: 12, boxShadow: `0 4px 24px #00000066, inset 0 1px 0 ${signalColor}11`, transition: "border-color 0.6s ease", position: "relative", overflow: "hidden" }}>
@@ -111,8 +110,8 @@ function TickerPanel({ ticker, basePrice, weights, threshold }: { ticker: string
         <div>
           <div style={{ fontSize: 13, fontWeight: 700, color: "#ccd", letterSpacing: "0.2em", fontFamily: "'Courier New', monospace" }}>{ticker}</div>
           <div style={{ fontSize: 22, fontWeight: 800, color: "#eef", fontFamily: "'Courier New', monospace", lineHeight: 1.1 }}>
-            ${price.toFixed(2)}
-            <span style={{ fontSize: 11, color: signalColor, marginLeft: 8, fontWeight: 400 }}>→ {smoothed.toFixed(2)}</span>
+            {price == null ? <span style={{ color: "#445566" }}>—</span> : <>${price.toFixed(2)}</>}
+            {price != null && <span style={{ fontSize: 11, color: signalColor, marginLeft: 8, fontWeight: 400 }}>→ {smoothed.toFixed(2)}</span>}
           </div>
         </div>
         <Sparkline data={history} signal={signal} />
