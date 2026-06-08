@@ -396,6 +396,9 @@ export default function TradingPlatform() {
   const { tier } = useSubscription(user?.id);
   const isPro = tier === "pro";
   const [stockNames, setStockNames] = useState<Record<string, string>>(STOCK_NAMES);
+  const [positions, setPositions] = useState<Record<string, Position>>({});
+  const [editingPos, setEditingPos] = useState<string | null>(null);
+  const [posDraft, setPosDraft] = useState<{ shares: string; entry: string }>({ shares: "", entry: "" });
   const [selectedStock, setSelectedStock] = useState("MRVL");
   const [search, setSearch] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
