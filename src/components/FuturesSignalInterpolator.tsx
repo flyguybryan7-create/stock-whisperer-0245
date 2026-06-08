@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { getLiveQuotes } from "@/lib/quotes.functions";
 
 function useInterpolatedSignal(
   rawValue: number,
@@ -36,31 +39,6 @@ function useInterpolatedSignal(
   return { signal, smoothed, changePct, components, history: historyRef.current };
 }
 
-function useSimulatedFutures(_ticker: string, basePrice: number) {
-  const [price, setPrice] = useState(basePrice);
-  const trendRef = useRef(0);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setPrice((p) => {
-        trendRef.current += (Math.random() - 0.48) * 0.3;
-        trendRef.current *= 0.92;
-        const delta = trendRef.current + (Math.random() - 0.5) * 0.8;
-        return Math.max(p * 0.97, p + delta);
-      });
-    }, 10000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    const fast = setInterval(() => {
-      setPrice((p) => +(p + (Math.random() - 0.495) * 0.3).toFixed(2));
-    }, 500);
-    return () => clearInterval(fast);
-  }, []);
-
-  return { price };
-}
 
 function Sparkline({ data, signal, width = 220, height = 48 }: { data: number[]; signal: string; width?: number; height?: number }) {
   if (data.length < 2) return null;
