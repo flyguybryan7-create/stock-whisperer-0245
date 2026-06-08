@@ -40,6 +40,9 @@ const DEFAULT_STOCKS = [
   "QUIK","PKE","INTT","IREN",
 ];
 const WATCHLIST_KEY = "bryantrade.watchlist.v1";
+const POSITIONS_KEY = "bryantrade.positions.v1";
+
+type Position = { shares: number; entry: number };
 
 const STOCK_NAMES: Record<string, string> = {
   NVDA:"NVIDIA Corp",MRVL:"Marvell Technology",SMTC:"Semtech Corp",TSEM:"Tower Semiconductor",
