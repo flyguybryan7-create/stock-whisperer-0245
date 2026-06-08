@@ -1597,12 +1597,39 @@ export default function TradingPlatform() {
                       <span style={{ fontSize: 11, fontWeight: 600, color: headChange >= 0 ? "#39d353" : "#f85149", lineHeight: 1 }}>
                         {headChange >= 0 ? "▲" : "▼"}{headChange >= 0 ? "+" : ""}${Math.abs(headChange).toFixed(2)} ({headChangePct >= 0 ? "+" : ""}{headChangePct.toFixed(2)}%)
                       </span>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Bid${liveSel?.bidSize != null ? ` × ${liveSel.bidSize}` : ""}`}>
-                        BID <span style={{ color: "#f85149" }}>{liveSel?.bid != null && liveSel.bid > 0 ? `$${liveSel.bid.toFixed(2)}` : "—"}</span>
-                      </span>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Ask${liveSel?.askSize != null ? ` × ${liveSel.askSize}` : ""}`}>
-                        ASK <span style={{ color: "#39d353" }}>{liveSel?.ask != null && liveSel.ask > 0 ? `$${liveSel.ask.toFixed(2)}` : "—"}</span>
-                      </span>
+                      {(() => {
+                        // Yahoo's bid/ask is unreliable outside the regular session and
+                        // sometimes returns stale values that are far from the actual print.
+                        // Only show when the quote is live (REGULAR) AND within 5% of the
+                        // current price — otherwise the field reads "—".
+                        const sess = liveSel?.session;
+                        const isLive = sess === "REGULAR";
+                        const within = (v?: number) =>
+                          v != null && v > 0 && headPrice != null && Math.abs(v - headPrice) / headPrice <= 0.05;
+                        const bidOk = isLive && within(liveSel?.bid);
+                        const askOk = isLive && within(liveSel?.ask);
+                        return (
+                          <>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Bid${liveSel?.bidSize != null ? ` × ${liveSel.bidSize}` : ""}${!isLive ? " — only shown during regular session" : ""}`}>
+                              BID <span style={{ color: bidOk ? "#f85149" : "#484f58" }}>{bidOk ? `$${liveSel!.bid!.toFixed(2)}` : "—"}</span>
+                            </span>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Ask${liveSel?.askSize != null ? ` × ${liveSel.askSize}` : ""}${!isLive ? " — only shown during regular session" : ""}`}>
+                              ASK <span style={{ color: askOk ? "#39d353" : "#484f58" }}>{askOk ? `$${liveSel!.ask!.toFixed(2)}` : "—"}</span>
+                            </span>
+                            {(() => {
+                              const vwap = watchlistVwap[selectedStock];
+                              const vColor = vwap == null || headPrice == null
+                                ? "#484f58"
+                                : headPrice >= vwap ? "#39d353" : "#f85149";
+                              return (
+                                <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title="Intraday volume-weighted average price">
+                                  VWAP <span style={{ color: vColor }}>{vwap != null ? `$${vwap.toFixed(2)}` : "—"}</span>
+                                </span>
+                              );
+                            })()}
+                          </>
+                        );
+                      })()}
                       {asiaSemis?.avgChangePct != null && (() => {
                         const pct = asiaSemis.avgChangePct;
                         const up = pct >= 0;
