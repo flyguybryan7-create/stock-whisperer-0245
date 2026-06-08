@@ -128,13 +128,13 @@ function TickerPanel({ ticker, price, weights, threshold }: { ticker: string; pr
 }
 
 const FUTURES_TICKERS = [
-  { ticker: "ES", label: "S&P 500 Futures", basePrice: 5310.25 },
-  { ticker: "NQ", label: "Nasdaq Futures", basePrice: 18742.5 },
-  { ticker: "YM", label: "Dow Futures", basePrice: 39250.0 },
-  { ticker: "RTY", label: "Russell 2K Futures", basePrice: 2080.0 },
+  { ticker: "ES", label: "S&P 500 Futures", quoteSymbol: "ES=F" },
+  { ticker: "NQ", label: "Nasdaq Futures", quoteSymbol: "NQ=F" },
+  { ticker: "YM", label: "Dow Futures", quoteSymbol: "YM=F" },
+  { ticker: "RTY", label: "Russell 2K Futures", quoteSymbol: "RTY=F" },
 ];
 
-export type InterpolatorTicker = { ticker: string; label?: string; basePrice: number };
+export type InterpolatorTicker = { ticker: string; label?: string; quoteSymbol?: string };
 
 export function SignalInterpolator({
   tickers,
@@ -172,6 +172,19 @@ export function SignalInterpolator({
   };
 
   const toggleTicker = (t: string) => setActiveTickers((a) => (a.includes(t) ? a.filter((x) => x !== t) : [...a, t]));
+
+  const activeList = tickers.filter((t) => activeTickers.includes(t.ticker));
+  const quoteSymbols = activeList.map((t) => (t.quoteSymbol ?? t.ticker).toUpperCase());
+  const quoteKey = [...quoteSymbols].sort().join(",");
+  const fetchQuotes = useServerFn(getLiveQuotes);
+  const { data: liveQuotes } = useQuery({
+    queryKey: ["interpolator-live", quoteKey],
+    queryFn: () => fetchQuotes({ data: { symbols: quoteSymbols } }),
+    enabled: quoteSymbols.length > 0,
+    refetchInterval: 5000,
+    refetchIntervalInBackground: true,
+    staleTime: 0,
+  });
 
   return (
     <div style={{ minHeight: "100vh", background: "#070c12", fontFamily: "'Courier New', Courier, monospace", color: "#ccd", padding: "20px 16px" }}>
@@ -237,9 +250,19 @@ export function SignalInterpolator({
         })}
       </div>
 
-      {tickers.filter((t) => activeTickers.includes(t.ticker)).map(({ ticker, basePrice }) => (
-        <TickerPanel key={ticker} ticker={ticker} basePrice={basePrice} weights={weights} threshold={threshold} />
-      ))}
+      {activeList.map(({ ticker, quoteSymbol }) => {
+        const sym = (quoteSymbol ?? ticker).toUpperCase();
+        const q = liveQuotes?.[sym];
+        return (
+          <TickerPanel
+            key={ticker}
+            ticker={ticker}
+            price={q?.price ?? null}
+            weights={weights}
+            threshold={threshold}
+          />
+        );
+      })}
 
       {activeTickers.length === 0 && (
         <div style={{ textAlign: "center", color: "#334455", padding: "40px 0", fontSize: 12, letterSpacing: "0.2em" }}>SELECT A TICKER ABOVE TO BEGIN</div>
