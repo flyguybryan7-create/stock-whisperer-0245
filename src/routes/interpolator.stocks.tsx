@@ -19,10 +19,14 @@ export const Route = createFileRoute("/interpolator/stocks")({
 
 function StocksInterpolatorPage() {
   const { symbols, prices } = Route.useSearch();
-  const symList = (symbols ?? "").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean).slice(0, 20);
-  const priceList = (prices ?? "").split(",").map((p) => parseFloat(p));
+  const symList: string[] = (symbols ?? "")
+    .split(",")
+    .map((s: string) => s.trim().toUpperCase())
+    .filter(Boolean)
+    .slice(0, 20);
+  const priceList: number[] = (prices ?? "").split(",").map((p: string) => parseFloat(p));
   const tickers = symList.length
-    ? symList.map((ticker, i) => ({
+    ? symList.map((ticker: string, i: number) => ({
         ticker,
         basePrice: Number.isFinite(priceList[i]) && priceList[i] > 0 ? priceList[i] : 100,
       }))
@@ -32,7 +36,7 @@ function StocksInterpolatorPage() {
       tickers={tickers}
       title="STOCKS INTERPOLATOR"
       subtitle="BRYANTRADE · STOCKS MODULE"
-      defaultActive={tickers.map((t) => t.ticker)}
+      defaultActive={tickers.map((t: { ticker: string }) => t.ticker)}
     />
   );
 }
