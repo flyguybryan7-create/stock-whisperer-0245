@@ -1466,6 +1466,25 @@ export default function TradingPlatform() {
               <>
                 <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, marginBottom: 4 }}>
                   <span style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 18, color: "#e6edf3", lineHeight: 1 }}>{selectedStock}</span>
+                  <Link
+                    to="/interpolator"
+                    style={{
+                      fontSize: 9,
+                      fontWeight: 700,
+                      letterSpacing: "0.15em",
+                      padding: "3px 8px",
+                      borderRadius: 4,
+                      border: "1px solid #44aaff55",
+                      background: "#44aaff18",
+                      color: "#44aaff",
+                      textDecoration: "none",
+                      lineHeight: 1,
+                      fontFamily: "'Courier New', monospace",
+                    }}
+                    title="Open Futures Signal Interpolator"
+                  >
+                    ◈ INTERPOLATOR
+                  </Link>
                   {headPrice != null ? (
                     <>
                       <span style={{ fontSize: 18, fontWeight: 700, color: "#e6edf3", lineHeight: 1 }}>${headPrice.toFixed(2)}</span>
