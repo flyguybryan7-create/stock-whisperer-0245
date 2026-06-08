@@ -378,7 +378,7 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
   .inputValidator((input: { symbols: string[] }) => {
     if (!input || !Array.isArray(input.symbols)) throw new Error("symbols required");
     const symbols = input.symbols
-      .filter((s) => typeof s === "string" && /^[A-Z.\-]{1,10}$/i.test(s))
+      .filter((s) => typeof s === "string" && /^[A-Z0-9.\-=^]{1,12}$/i.test(s))
       .slice(0, 200);
     return { symbols };
   })
