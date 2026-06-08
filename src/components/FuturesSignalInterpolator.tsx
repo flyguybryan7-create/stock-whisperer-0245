@@ -213,7 +213,7 @@ export function SignalInterpolator({
           <div style={{ textAlign: "right", fontSize: 10, color: "#334455" }}>
             <div style={{ color: "#00ff9d", fontSize: 11 }}>● LIVE</div>
             <div>T+{elapsed}s</div>
-            <div>10s POLL</div>
+            <div>5s POLL</div>
           </div>
         </div>
       </div>
