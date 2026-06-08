@@ -1524,8 +1524,7 @@ export default function TradingPlatform() {
                           style={{ background: "transparent", border: "1px solid #30363d", color: "#f85149", fontSize: 9, padding: "2px 4px", borderRadius: 3, cursor: "pointer" }}
                         >✕</button>
                       )}
-                    </span>
-                  </div>
+                    </div>
                   )}
                 </div>
               );
