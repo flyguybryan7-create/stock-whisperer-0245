@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { Link } from "@tanstack/react-router";
 
 function useInterpolatedSignal(
   rawValue: number,
@@ -198,6 +199,22 @@ export function SignalInterpolator({
   return (
     <div style={{ minHeight: "100vh", background: "#070c12", fontFamily: "'Courier New', Courier, monospace", color: "#ccd", padding: "20px 16px" }}>
       <div style={{ marginBottom: 20, borderBottom: "1px solid #1a2535", paddingBottom: 14 }}>
+        <Link
+          to="/"
+          style={{
+            display: "inline-block",
+            marginBottom: 12,
+            padding: "6px 12px",
+            border: "1px solid #1a2535",
+            borderRadius: 6,
+            color: "#44aaff",
+            textDecoration: "none",
+            fontSize: 11,
+            letterSpacing: "0.15em",
+          }}
+        >
+          ← BACK TO TERMINAL
+        </Link>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
             <div style={{ fontSize: 11, letterSpacing: "0.3em", color: "#445566", marginBottom: 2 }}>{subtitle}</div>
