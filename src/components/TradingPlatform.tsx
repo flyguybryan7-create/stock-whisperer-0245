@@ -1304,7 +1304,6 @@ export default function TradingPlatform() {
               const sig: "BUY" | "SELL" | "HOLD" =
                 watchlistMacdSignals[sym] ?? (d.length ? getMacdMomentumSignal(d).signal : "HOLD");
               const sigC = sig === "BUY" ? "#39d353" : sig === "SELL" ? "#f85149" : "#e3b341";
-              const vwap = watchlistVwap[sym];
               const lq = live[sym];
               const liveChg = lq ? lq.changePercent : chg;
               const livePrice = lq ? lq.price : l?.close;
