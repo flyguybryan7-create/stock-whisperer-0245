@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import FuturesSignalInterpolator from "@/components/FuturesSignalInterpolator";
 
-export const Route = createFileRoute("/interpolator")({
+export const Route = createFileRoute("/interpolator/")({
   head: () => ({
     meta: [
       { title: "BRYANTRADE Futures Signal Interpolator" },
