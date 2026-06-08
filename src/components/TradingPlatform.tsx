@@ -1467,7 +1467,17 @@ export default function TradingPlatform() {
                 <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, marginBottom: 4 }}>
                   <span style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 18, color: "#e6edf3", lineHeight: 1 }}>{selectedStock}</span>
                   <Link
-                    to="/interpolator"
+                    to="/interpolator/stocks"
+                    search={{
+                      symbols: watchlist.slice(0, 20).join(","),
+                      prices: watchlist
+                        .slice(0, 20)
+                        .map((s) => {
+                          const p = live[s]?.price ?? allData[s]?.[allData[s].length - 1]?.close;
+                          return p != null && Number.isFinite(p) ? p.toFixed(2) : "100";
+                        })
+                        .join(","),
+                    }}
                     style={{
                       fontSize: 9,
                       fontWeight: 700,
@@ -1481,9 +1491,9 @@ export default function TradingPlatform() {
                       lineHeight: 1,
                       fontFamily: "'Courier New', monospace",
                     }}
-                    title="Open Futures Signal Interpolator"
+                    title="Open Stocks Signal Interpolator (top 20 watchlist)"
                   >
-                    ◈ INTERPOLATOR
+                    ◈ STOCKS INTERPOLATOR
                   </Link>
                   {headPrice != null ? (
                     <>
