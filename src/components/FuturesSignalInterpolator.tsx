@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { getLiveQuotes } from "@/lib/quotes.functions";
 
 function useInterpolatedSignal(
   rawValue: number,
@@ -36,31 +39,6 @@ function useInterpolatedSignal(
   return { signal, smoothed, changePct, components, history: historyRef.current };
 }
 
-function useSimulatedFutures(_ticker: string, basePrice: number) {
-  const [price, setPrice] = useState(basePrice);
-  const trendRef = useRef(0);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setPrice((p) => {
-        trendRef.current += (Math.random() - 0.48) * 0.3;
-        trendRef.current *= 0.92;
-        const delta = trendRef.current + (Math.random() - 0.5) * 0.8;
-        return Math.max(p * 0.97, p + delta);
-      });
-    }, 10000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    const fast = setInterval(() => {
-      setPrice((p) => +(p + (Math.random() - 0.495) * 0.3).toFixed(2));
-    }, 500);
-    return () => clearInterval(fast);
-  }, []);
-
-  return { price };
-}
 
 function Sparkline({ data, signal, width = 220, height = 48 }: { data: number[]; signal: string; width?: number; height?: number }) {
   if (data.length < 2) return null;
@@ -122,9 +100,8 @@ function SignalBadge({ signal, changePct }: { signal: "BUY" | "SELL" | "NEUTRAL"
   );
 }
 
-function TickerPanel({ ticker, basePrice, weights, threshold }: { ticker: string; basePrice: number; weights: { prev: number; current: number; next: number }; threshold: number }) {
-  const { price } = useSimulatedFutures(ticker, basePrice);
-  const { signal, smoothed, changePct, components, history } = useInterpolatedSignal(price, { wPrev: weights.prev, wCurrent: weights.current, wNext: weights.next, threshold });
+function TickerPanel({ ticker, price, weights, threshold }: { ticker: string; price: number | null; weights: { prev: number; current: number; next: number }; threshold: number }) {
+  const { signal, smoothed, changePct, components, history } = useInterpolatedSignal(price ?? 0, { wPrev: weights.prev, wCurrent: weights.current, wNext: weights.next, threshold });
   const signalColor = signal === "BUY" ? "#00ff9d" : signal === "SELL" ? "#ff3366" : "#44aaff";
   return (
     <div style={{ background: "linear-gradient(135deg, #0a1018 0%, #0d1520 100%)", border: `1px solid ${signalColor}22`, borderTop: `2px solid ${signalColor}66`, borderRadius: 8, padding: "16px 18px", marginBottom: 12, boxShadow: `0 4px 24px #00000066, inset 0 1px 0 ${signalColor}11`, transition: "border-color 0.6s ease", position: "relative", overflow: "hidden" }}>
@@ -133,8 +110,8 @@ function TickerPanel({ ticker, basePrice, weights, threshold }: { ticker: string
         <div>
           <div style={{ fontSize: 13, fontWeight: 700, color: "#ccd", letterSpacing: "0.2em", fontFamily: "'Courier New', monospace" }}>{ticker}</div>
           <div style={{ fontSize: 22, fontWeight: 800, color: "#eef", fontFamily: "'Courier New', monospace", lineHeight: 1.1 }}>
-            ${price.toFixed(2)}
-            <span style={{ fontSize: 11, color: signalColor, marginLeft: 8, fontWeight: 400 }}>→ {smoothed.toFixed(2)}</span>
+            {price == null ? <span style={{ color: "#445566" }}>—</span> : <>${price.toFixed(2)}</>}
+            {price != null && <span style={{ fontSize: 11, color: signalColor, marginLeft: 8, fontWeight: 400 }}>→ {smoothed.toFixed(2)}</span>}
           </div>
         </div>
         <Sparkline data={history} signal={signal} />
@@ -151,13 +128,13 @@ function TickerPanel({ ticker, basePrice, weights, threshold }: { ticker: string
 }
 
 const FUTURES_TICKERS = [
-  { ticker: "ES", label: "S&P 500 Futures", basePrice: 5310.25 },
-  { ticker: "NQ", label: "Nasdaq Futures", basePrice: 18742.5 },
-  { ticker: "YM", label: "Dow Futures", basePrice: 39250.0 },
-  { ticker: "RTY", label: "Russell 2K Futures", basePrice: 2080.0 },
+  { ticker: "ES", label: "S&P 500 Futures", quoteSymbol: "ES=F" },
+  { ticker: "NQ", label: "Nasdaq Futures", quoteSymbol: "NQ=F" },
+  { ticker: "YM", label: "Dow Futures", quoteSymbol: "YM=F" },
+  { ticker: "RTY", label: "Russell 2K Futures", quoteSymbol: "RTY=F" },
 ];
 
-export type InterpolatorTicker = { ticker: string; label?: string; basePrice: number };
+export type InterpolatorTicker = { ticker: string; label?: string; quoteSymbol?: string };
 
 export function SignalInterpolator({
   tickers,
@@ -196,6 +173,19 @@ export function SignalInterpolator({
 
   const toggleTicker = (t: string) => setActiveTickers((a) => (a.includes(t) ? a.filter((x) => x !== t) : [...a, t]));
 
+  const activeList = tickers.filter((t) => activeTickers.includes(t.ticker));
+  const quoteSymbols = activeList.map((t) => (t.quoteSymbol ?? t.ticker).toUpperCase());
+  const quoteKey = [...quoteSymbols].sort().join(",");
+  const fetchQuotes = useServerFn(getLiveQuotes);
+  const { data: liveQuotes } = useQuery({
+    queryKey: ["interpolator-live", quoteKey],
+    queryFn: () => fetchQuotes({ data: { symbols: quoteSymbols } }),
+    enabled: quoteSymbols.length > 0,
+    refetchInterval: 5000,
+    refetchIntervalInBackground: true,
+    staleTime: 0,
+  });
+
   return (
     <div style={{ minHeight: "100vh", background: "#070c12", fontFamily: "'Courier New', Courier, monospace", color: "#ccd", padding: "20px 16px" }}>
       <div style={{ marginBottom: 20, borderBottom: "1px solid #1a2535", paddingBottom: 14 }}>
@@ -223,7 +213,7 @@ export function SignalInterpolator({
           <div style={{ textAlign: "right", fontSize: 10, color: "#334455" }}>
             <div style={{ color: "#00ff9d", fontSize: 11 }}>● LIVE</div>
             <div>T+{elapsed}s</div>
-            <div>10s POLL</div>
+            <div>5s POLL</div>
           </div>
         </div>
       </div>
@@ -260,9 +250,19 @@ export function SignalInterpolator({
         })}
       </div>
 
-      {tickers.filter((t) => activeTickers.includes(t.ticker)).map(({ ticker, basePrice }) => (
-        <TickerPanel key={ticker} ticker={ticker} basePrice={basePrice} weights={weights} threshold={threshold} />
-      ))}
+      {activeList.map(({ ticker, quoteSymbol }) => {
+        const sym = (quoteSymbol ?? ticker).toUpperCase();
+        const q = liveQuotes?.[sym];
+        return (
+          <TickerPanel
+            key={ticker}
+            ticker={ticker}
+            price={q?.price ?? null}
+            weights={weights}
+            threshold={threshold}
+          />
+        );
+      })}
 
       {activeTickers.length === 0 && (
         <div style={{ textAlign: "center", color: "#334455", padding: "40px 0", fontSize: 12, letterSpacing: "0.2em" }}>SELECT A TICKER ABOVE TO BEGIN</div>
