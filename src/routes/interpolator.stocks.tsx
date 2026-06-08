@@ -1,12 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { SignalInterpolator } from "@/components/FuturesSignalInterpolator";
 
-type Search = { symbols?: string; prices?: string };
+type Search = { symbols?: string };
 
 export const Route = createFileRoute("/interpolator/stocks")({
   validateSearch: (s: Record<string, unknown>): Search => ({
     symbols: typeof s.symbols === "string" ? s.symbols : undefined,
-    prices: typeof s.prices === "string" ? s.prices : undefined,
   }),
   head: () => ({
     meta: [
@@ -18,19 +17,15 @@ export const Route = createFileRoute("/interpolator/stocks")({
 });
 
 function StocksInterpolatorPage() {
-  const { symbols, prices } = Route.useSearch();
+  const { symbols } = Route.useSearch();
   const symList: string[] = (symbols ?? "")
     .split(",")
     .map((s: string) => s.trim().toUpperCase())
     .filter(Boolean)
     .slice(0, 20);
-  const priceList: number[] = (prices ?? "").split(",").map((p: string) => parseFloat(p));
   const tickers = symList.length
-    ? symList.map((ticker: string, i: number) => ({
-        ticker,
-        basePrice: Number.isFinite(priceList[i]) && priceList[i] > 0 ? priceList[i] : 100,
-      }))
-    : [{ ticker: "AAPL", basePrice: 100 }];
+    ? symList.map((ticker: string) => ({ ticker }))
+    : [{ ticker: "AAPL" }];
   return (
     <SignalInterpolator
       tickers={tickers}
