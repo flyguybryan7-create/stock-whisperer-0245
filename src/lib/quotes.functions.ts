@@ -742,3 +742,52 @@ export const getIntradayBatch = createServerFn({ method: "POST" })
     }
     return out;
   });
+
+// ============ Polygon NBBO bid/ask (real-time on paid plan; 15-min delayed on free) ============
+// Yahoo's v7 quote endpoint is rate-limited / unauthorized on Cloudflare Workers,
+// so bid/ask never come through. Polygon's last-NBBO is a reliable backup that
+// always returns a quote when one exists.
+export type BidAsk = {
+  bid?: number;
+  ask?: number;
+  bidSize?: number;
+  askSize?: number;
+  asOf?: number;
+};
+
+export const getBidAsk = createServerFn({ method: "POST" })
+  .inputValidator((input: { symbol: string }) => {
+    if (!input || typeof input.symbol !== "string") throw new Error("symbol required");
+    const symbol = input.symbol.toUpperCase().replace(/[^A-Z0-9.\-]/g, "").slice(0, 10);
+    if (!symbol) throw new Error("symbol required");
+    return { symbol };
+  })
+  .handler(async ({ data }): Promise<BidAsk> => {
+    const key = process.env.POLYGON_API_KEY;
+    if (!key) return {};
+    try {
+      const url = `https://api.polygon.io/v3/quotes/${encodeURIComponent(data.symbol)}?order=desc&limit=1&sort=timestamp&apiKey=${encodeURIComponent(key)}`;
+      const res = await fetch(url);
+      if (!res.ok) return {};
+      const json = (await res.json()) as {
+        results?: Array<{
+          bid_price?: number;
+          bid_size?: number;
+          ask_price?: number;
+          ask_size?: number;
+          sip_timestamp?: number;
+        }>;
+      };
+      const r = json.results?.[0];
+      if (!r) return {};
+      return {
+        bid: typeof r.bid_price === "number" && r.bid_price > 0 ? r.bid_price : undefined,
+        ask: typeof r.ask_price === "number" && r.ask_price > 0 ? r.ask_price : undefined,
+        bidSize: typeof r.bid_size === "number" ? r.bid_size : undefined,
+        askSize: typeof r.ask_size === "number" ? r.ask_size : undefined,
+        asOf: typeof r.sip_timestamp === "number" ? Math.floor(r.sip_timestamp / 1e6) : undefined,
+      };
+    } catch {
+      return {};
+    }
+  });

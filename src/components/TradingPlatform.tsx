@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
   getQuotes, searchSymbols, getLiveQuotes, getNews, analyzeNewsSentiment,
-  getIntraday, getIntradayBatch,
+  getIntraday, getIntradayBatch, getBidAsk,
   type Candle, type SymbolSearchResult, type LiveQuote, type NewsItem, type SentimentResult,
   type IntradayBar,
 } from "@/lib/quotes.functions";
@@ -509,6 +509,7 @@ export default function TradingPlatform() {
   const fetchSentiment = useServerFn(analyzeNewsSentiment);
   const fetchIntraday = useServerFn(getIntraday);
   const fetchIntradayBatch = useServerFn(getIntradayBatch);
+  const fetchBidAsk = useServerFn(getBidAsk);
   const firePush = useServerFn(sendAlert);
   const fireTestPush = useServerFn(sendTestPush);
   const callSubscribe = useServerFn(subscribeToPush);
@@ -622,6 +623,17 @@ export default function TradingPlatform() {
     enabled: watchlist.length > 0,
   });
   const live = (liveQuotes as Record<string, LiveQuote> | undefined) ?? {};
+
+  // Real-time bid/ask for the selected stock via Polygon NBBO.
+  // Yahoo's v7 quote (which carries bid/ask) is rate-limited on Workers and
+  // returns nothing most of the time, so we fetch NBBO directly for the
+  // single ticker the user is viewing — fast and reliable.
+  const { data: bidAskData } = useQuery({
+    queryKey: ["bidask", selectedStock],
+    queryFn: () => fetchBidAsk({ data: { symbol: selectedStock } }),
+    refetchInterval: 1000,
+    enabled: !!selectedStock,
+  });
 
   // Short interest / float — refresh every 30 min (Yahoo updates twice a month)
   const { data: shortData } = useQuery({
@@ -1538,15 +1550,20 @@ export default function TradingPlatform() {
                          // less liquid. Bogus stale ticks are filtered by the 10% band.
                          const within = (v?: number) =>
                            v != null && v > 0 && headPrice != null && Math.abs(v - headPrice) / headPrice <= 0.1;
-                         const bidOk = within(liveSel?.bid);
-                         const askOk = within(liveSel?.ask);
+                         // Prefer real-time Polygon NBBO; fall back to Yahoo v7 bid/ask.
+                         const bidVal = bidAskData?.bid ?? liveSel?.bid;
+                         const askVal = bidAskData?.ask ?? liveSel?.ask;
+                         const bidSz = bidAskData?.bidSize ?? liveSel?.bidSize;
+                         const askSz = bidAskData?.askSize ?? liveSel?.askSize;
+                         const bidOk = within(bidVal);
+                         const askOk = within(askVal);
                         return (
                           <>
-                             <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Bid${liveSel?.bidSize != null ? ` × ${liveSel.bidSize}` : ""}`}>
-                              BID <span style={{ color: bidOk ? "#f85149" : "#484f58" }}>{bidOk ? `$${liveSel!.bid!.toFixed(2)}` : "—"}</span>
+                             <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Bid${bidSz != null ? ` × ${bidSz}` : ""}`}>
+                              BID <span style={{ color: bidOk ? "#f85149" : "#484f58" }}>{bidOk ? `$${bidVal!.toFixed(2)}` : "—"}</span>
                             </span>
-                             <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Ask${liveSel?.askSize != null ? ` × ${liveSel.askSize}` : ""}`}>
-                              ASK <span style={{ color: askOk ? "#39d353" : "#484f58" }}>{askOk ? `$${liveSel!.ask!.toFixed(2)}` : "—"}</span>
+                             <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Ask${askSz != null ? ` × ${askSz}` : ""}`}>
+                              ASK <span style={{ color: askOk ? "#39d353" : "#484f58" }}>{askOk ? `$${askVal!.toFixed(2)}` : "—"}</span>
                             </span>
                             {(() => {
                               const vwap = watchlistVwap[selectedStock];
