@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
   getQuotes, searchSymbols, getLiveQuotes, getNews, analyzeNewsSentiment,
-  getIntraday, getIntradayBatch,
+  getIntraday, getIntradayBatch, getBidAsk,
   type Candle, type SymbolSearchResult, type LiveQuote, type NewsItem, type SentimentResult,
   type IntradayBar,
 } from "@/lib/quotes.functions";
@@ -509,6 +509,7 @@ export default function TradingPlatform() {
   const fetchSentiment = useServerFn(analyzeNewsSentiment);
   const fetchIntraday = useServerFn(getIntraday);
   const fetchIntradayBatch = useServerFn(getIntradayBatch);
+  const fetchBidAsk = useServerFn(getBidAsk);
   const firePush = useServerFn(sendAlert);
   const fireTestPush = useServerFn(sendTestPush);
   const callSubscribe = useServerFn(subscribeToPush);
