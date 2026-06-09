@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
   getQuotes, searchSymbols, getLiveQuotes, getNews, analyzeNewsSentiment,
-  getIntraday, getIntradayBatch, getBidAsk,
+  getIntraday, getIntradayBatch,
   type Candle, type SymbolSearchResult, type LiveQuote, type NewsItem, type SentimentResult,
   type IntradayBar,
 } from "@/lib/quotes.functions";
@@ -24,6 +24,7 @@ import type { OptionsActivity } from "@/lib/options.server";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { useSubscription } from "@/hooks/useSubscription";
 import { supabase } from "@/integrations/supabase/client";
+import { Link } from "@tanstack/react-router";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ReferenceLine, AreaChart, Area, ComposedChart, Bar, BarChart, Cell, Scatter,
@@ -39,9 +40,6 @@ const DEFAULT_STOCKS = [
   "QUIK","PKE","INTT","IREN",
 ];
 const WATCHLIST_KEY = "bryantrade.watchlist.v1";
-const POSITIONS_KEY = "bryantrade.positions.v1";
-
-type Position = { shares: number; entry: number };
 
 const STOCK_NAMES: Record<string, string> = {
   NVDA:"NVIDIA Corp",MRVL:"Marvell Technology",SMTC:"Semtech Corp",TSEM:"Tower Semiconductor",
@@ -395,9 +393,6 @@ export default function TradingPlatform() {
   const { tier } = useSubscription(user?.id);
   const isPro = tier === "pro";
   const [stockNames, setStockNames] = useState<Record<string, string>>(STOCK_NAMES);
-  const [positions, setPositions] = useState<Record<string, Position>>({});
-  const [editingPos, setEditingPos] = useState<string | null>(null);
-  const [posDraft, setPosDraft] = useState<{ shares: string; entry: string }>({ shares: "", entry: "" });
   const [selectedStock, setSelectedStock] = useState("MRVL");
   const [search, setSearch] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
@@ -488,20 +483,6 @@ export default function TradingPlatform() {
     return () => clearTimeout(t);
   }, [watchlist, stockNames, user?.id]);
 
-  // Load/persist positions (shares + entry price) — localStorage only
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(POSITIONS_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as Record<string, Position>;
-        if (parsed && typeof parsed === "object") setPositions(parsed);
-      }
-    } catch {}
-  }, []);
-  useEffect(() => {
-    try { localStorage.setItem(POSITIONS_KEY, JSON.stringify(positions)); } catch {}
-  }, [positions]);
-
   const fetchQuotes = useServerFn(getQuotes);
   const fetchSearch = useServerFn(searchSymbols);
   const fetchLive = useServerFn(getLiveQuotes);
@@ -509,7 +490,6 @@ export default function TradingPlatform() {
   const fetchSentiment = useServerFn(analyzeNewsSentiment);
   const fetchIntraday = useServerFn(getIntraday);
   const fetchIntradayBatch = useServerFn(getIntradayBatch);
-  const fetchBidAsk = useServerFn(getBidAsk);
   const firePush = useServerFn(sendAlert);
   const fireTestPush = useServerFn(sendTestPush);
   const callSubscribe = useServerFn(subscribeToPush);
@@ -623,17 +603,6 @@ export default function TradingPlatform() {
     enabled: watchlist.length > 0,
   });
   const live = (liveQuotes as Record<string, LiveQuote> | undefined) ?? {};
-
-  // Real-time bid/ask for the selected stock via Polygon NBBO.
-  // Yahoo's v7 quote (which carries bid/ask) is rate-limited on Workers and
-  // returns nothing most of the time, so we fetch NBBO directly for the
-  // single ticker the user is viewing — fast and reliable.
-  const { data: bidAskData } = useQuery({
-    queryKey: ["bidask", selectedStock],
-    queryFn: () => fetchBidAsk({ data: { symbol: selectedStock } }),
-    refetchInterval: 1000,
-    enabled: !!selectedStock,
-  });
 
   // Short interest / float — refresh every 30 min (Yahoo updates twice a month)
   const { data: shortData } = useQuery({
@@ -1296,16 +1265,25 @@ export default function TradingPlatform() {
               const sig: "BUY" | "SELL" | "HOLD" =
                 watchlistMacdSignals[sym] ?? (d.length ? getMacdMomentumSignal(d).signal : "HOLD");
               const sigC = sig === "BUY" ? "#39d353" : sig === "SELL" ? "#f85149" : "#e3b341";
+              const vwap = watchlistVwap[sym];
               const lq = live[sym];
               const liveChg = lq ? lq.changePercent : chg;
               const livePrice = lq ? lq.price : l?.close;
               const liveChgAbs = lq ? lq.change : (l && p ? l.close - p.close : 0);
+              const si = shorts[sym];
+              const siPct = si?.shortPercentOfFloat ?? null;
+              const siColor =
+                si?.risk === "EXTREME" ? "#f85149"
+                : si?.risk === "HIGH" ? "#ff7b29"
+                : si?.risk === "MODERATE" ? "#e3b341"
+                : si?.risk === "LOW" ? "#39d353"
+                : "#484f58";
               return (
                 <div key={sym} className="stock-row" onClick={() => onWatchlistRowClick(sym)}
                   data-stock-row={sym}
                   title={reorderModeSym && reorderModeSym !== sym ? `Move ${reorderModeSym} here` : "Select stock"}
-                   style={{
-                     padding: "7px 6px",
+                  style={{
+                    padding: "4px 5px",
                     borderBottom: "1px solid #161b22",
                     background:
                       reorderModeSym === sym
@@ -1329,7 +1307,7 @@ export default function TradingPlatform() {
                     WebkitTapHighlightColor: "transparent",
                   }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={{ fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}>
+                    <div style={{ fontWeight: 600, fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
                       <button
                         onClick={(e) => { e.stopPropagation(); removeStock(sym); }}
                         title="Remove"
@@ -1412,15 +1390,23 @@ export default function TradingPlatform() {
                     </div>
                   </div>
                   {stockNames[sym] && (
-                    <div style={{ fontSize: 10, color: "#8b949e", marginLeft: 16, marginTop: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1 }}>
+                    <div style={{ fontSize: 9, color: "#8b949e", marginTop: 1, marginLeft: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {stockNames[sym]}
                     </div>
                   )}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 3, fontSize: 11, lineHeight: 1.1 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 1, fontSize: 9 }}>
                     <span style={{ color: "#8b949e" }}>
                       {livePrice != null ? `$${livePrice.toFixed(2)}` : <span style={{ opacity: 0.6 }}>Loading…</span>}
                     </span>
                     <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                      {siPct != null && (
+                        <span
+                          title={`Short interest: ${siPct.toFixed(1)}% of float · ${si?.risk}${si?.shortRatio ? ` · ${si.shortRatio.toFixed(1)}d to cover` : ""}`}
+                          style={{ fontSize: 7, fontWeight: 700, color: siColor, border: `1px solid ${siColor}`, borderRadius: 2, padding: "0 3px" }}
+                        >
+                          S{siPct.toFixed(0)}%
+                        </span>
+                      )}
                       {livePrice != null ? (
                         <span style={{ color: liveChg >= 0 ? "#39d353" : "#f85149" }}>
                           {liveChg >= 0 ? "+" : ""}${Math.abs(liveChgAbs).toFixed(2)} ({liveChg >= 0 ? "+" : ""}{liveChg.toFixed(2)}%)
@@ -1428,79 +1414,22 @@ export default function TradingPlatform() {
                       ) : (
                         <span style={{ color: "#484f58" }}>—</span>
                       )}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const existing = positions[sym];
-                          setEditingPos((cur) => (cur === sym ? null : sym));
-                          setPosDraft({
-                            shares: existing ? String(existing.shares) : "",
-                            entry: existing ? String(existing.entry) : "",
-                          });
-                        }}
-                        title={positions[sym] ? "Edit position" : "Add position"}
-                        style={{ background: "transparent", border: "1px solid #30363d", color: positions[sym] ? "#e3b341" : "#6e7681", cursor: "pointer", fontSize: 8, fontWeight: 800, padding: "0 4px", borderRadius: 3, lineHeight: 1.4 }}
-                      >$</button>
                     </span>
                   </div>
-                  {(() => {
-                    const pos = positions[sym];
-                    if (!pos || livePrice == null) return null;
-                    const pl = (livePrice - pos.entry) * pos.shares;
-                    const plPct = pos.entry > 0 ? ((livePrice - pos.entry) / pos.entry) * 100 : 0;
-                    const color = pl >= 0 ? "#39d353" : "#f85149";
-                    return (
-                      <div style={{ marginTop: 1, fontSize: 9, color: "#8b949e", lineHeight: 1.1, display: "flex", justifyContent: "space-between" }}>
-                        <span>POS {pos.shares}@${pos.entry.toFixed(2)}</span>
-                        <span style={{ color, fontWeight: 700 }}>
-                          {pl >= 0 ? "+" : "−"}${Math.abs(pl).toFixed(2)} ({plPct >= 0 ? "+" : ""}{plPct.toFixed(2)}%)
-                        </span>
-                      </div>
-                    );
-                  })()}
-                  {editingPos === sym && (
-                    <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 3, display: "flex", gap: 3, alignItems: "center" }}>
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        placeholder="shares"
-                        value={posDraft.shares}
-                        onChange={(e) => setPosDraft((d) => ({ ...d, shares: e.target.value }))}
-                        style={{ flex: 1, minWidth: 0, background: "#010409", border: "1px solid #21262d", borderRadius: 3, padding: "2px 4px", color: "#e6edf3", fontSize: 10, fontFamily: mono }}
-                      />
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        placeholder="cost $"
-                        value={posDraft.entry}
-                        onChange={(e) => setPosDraft((d) => ({ ...d, entry: e.target.value }))}
-                        style={{ flex: 1, minWidth: 0, background: "#010409", border: "1px solid #21262d", borderRadius: 3, padding: "2px 4px", color: "#e6edf3", fontSize: 10, fontFamily: mono }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const s = parseFloat(posDraft.shares);
-                          const e = parseFloat(posDraft.entry);
-                          if (Number.isFinite(s) && s > 0 && Number.isFinite(e) && e > 0) {
-                            setPositions((p) => ({ ...p, [sym]: { shares: s, entry: e } }));
-                          }
-                          setEditingPos(null);
-                        }}
-                        style={{ background: "#238636", border: "none", color: "#fff", fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3, cursor: "pointer" }}
-                      >Save</button>
-                      {positions[sym] && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setPositions((p) => { const n = { ...p }; delete n[sym]; return n; });
-                            setEditingPos(null);
-                          }}
-                          style={{ background: "transparent", border: "1px solid #30363d", color: "#f85149", fontSize: 9, padding: "2px 4px", borderRadius: 3, cursor: "pointer" }}
-                        >✕</button>
-                      )}
-                    </div>
-                  )}
+                  <div style={{ marginTop: 1, fontSize: 9, color: "#8b949e" }}>
+                    VWAP{" "}
+                    <span
+                      title="Intraday volume-weighted average price"
+                      style={{
+                        color: vwap == null || livePrice == null
+                          ? "#8b949e"
+                          : livePrice >= vwap ? "#39d353" : "#f85149",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {vwap != null ? `$${vwap.toFixed(2)}` : "—"}
+                    </span>
+                  </div>
                 </div>
               );
             })}
@@ -1535,50 +1464,20 @@ export default function TradingPlatform() {
             const fmtM = (n: number | null | undefined) => n == null ? "—" : n >= 1e9 ? (n / 1e9).toFixed(2) + "B" : n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n.toLocaleString();
             return (
               <>
-                 <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, marginBottom: 4 }}>
-                   <span style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 18, color: "#e6edf3", lineHeight: 1 }}>{selectedStock}</span>
+                <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, marginBottom: 4 }}>
+                  <span style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 18, color: "#e6edf3", lineHeight: 1 }}>{selectedStock}</span>
                   {headPrice != null ? (
                     <>
                       <span style={{ fontSize: 18, fontWeight: 700, color: "#e6edf3", lineHeight: 1 }}>${headPrice.toFixed(2)}</span>
                       <span style={{ fontSize: 11, fontWeight: 600, color: headChange >= 0 ? "#39d353" : "#f85149", lineHeight: 1 }}>
                         {headChange >= 0 ? "▲" : "▼"}{headChange >= 0 ? "+" : ""}${Math.abs(headChange).toFixed(2)} ({headChangePct >= 0 ? "+" : ""}{headChangePct.toFixed(2)}%)
                       </span>
-                      {(() => {
-                         // Show bid/ask whenever Yahoo returns a positive value that
-                         // sits within 10% of the current print. We no longer gate on
-                         // session — extended-hours bid/ask is still meaningful, just
-                         // less liquid. Bogus stale ticks are filtered by the 10% band.
-                         const within = (v?: number) =>
-                           v != null && v > 0 && headPrice != null && Math.abs(v - headPrice) / headPrice <= 0.1;
-                         // Prefer real-time Polygon NBBO; fall back to Yahoo v7 bid/ask.
-                         const bidVal = bidAskData?.bid ?? liveSel?.bid;
-                         const askVal = bidAskData?.ask ?? liveSel?.ask;
-                         const bidSz = bidAskData?.bidSize ?? liveSel?.bidSize;
-                         const askSz = bidAskData?.askSize ?? liveSel?.askSize;
-                         const bidOk = within(bidVal);
-                         const askOk = within(askVal);
-                        return (
-                          <>
-                             <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Bid${bidSz != null ? ` × ${bidSz}` : ""}`}>
-                              BID <span style={{ color: bidOk ? "#f85149" : "#484f58" }}>{bidOk ? `$${bidVal!.toFixed(2)}` : "—"}</span>
-                            </span>
-                             <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Ask${askSz != null ? ` × ${askSz}` : ""}`}>
-                              ASK <span style={{ color: askOk ? "#39d353" : "#484f58" }}>{askOk ? `$${askVal!.toFixed(2)}` : "—"}</span>
-                            </span>
-                            {(() => {
-                              const vwap = watchlistVwap[selectedStock];
-                              const vColor = vwap == null || headPrice == null
-                                ? "#484f58"
-                                : headPrice >= vwap ? "#39d353" : "#f85149";
-                              return (
-                                <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title="Intraday volume-weighted average price">
-                                  VWAP <span style={{ color: vColor }}>{vwap != null ? `$${vwap.toFixed(2)}` : "—"}</span>
-                                </span>
-                              );
-                            })()}
-                          </>
-                        );
-                      })()}
+                      <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Bid${liveSel?.bidSize != null ? ` × ${liveSel.bidSize}` : ""}`}>
+                        BID <span style={{ color: "#f85149" }}>{liveSel?.bid != null && liveSel.bid > 0 ? `$${liveSel.bid.toFixed(2)}` : "—"}</span>
+                      </span>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Ask${liveSel?.askSize != null ? ` × ${liveSel.askSize}` : ""}`}>
+                        ASK <span style={{ color: "#39d353" }}>{liveSel?.ask != null && liveSel.ask > 0 ? `$${liveSel.ask.toFixed(2)}` : "—"}</span>
+                      </span>
                       {asiaSemis?.avgChangePct != null && (() => {
                         const pct = asiaSemis.avgChangePct;
                         const up = pct >= 0;
