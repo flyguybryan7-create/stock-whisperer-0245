@@ -12,7 +12,6 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as InterpolatorIndexRouteImport } from './routes/interpolator.index'
 import { Route as CheckoutReturnRouteImport } from './routes/checkout.return'
 import { Route as AuthSchwabCallbackRouteImport } from './routes/auth.schwab.callback'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
@@ -31,11 +30,6 @@ const AuthRoute = AuthRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const InterpolatorIndexRoute = InterpolatorIndexRouteImport.update({
-  id: '/interpolator/',
-  path: '/interpolator/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CheckoutReturnRoute = CheckoutReturnRouteImport.update({
@@ -66,7 +60,6 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRouteWithChildren
   '/pricing': typeof PricingRoute
   '/checkout/return': typeof CheckoutReturnRoute
-  '/interpolator/': typeof InterpolatorIndexRoute
   '/auth/schwab/callback': typeof AuthSchwabCallbackRoute
   '/api/public/hooks/pushover-alerts': typeof ApiPublicHooksPushoverAlertsRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
@@ -76,7 +69,6 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRouteWithChildren
   '/pricing': typeof PricingRoute
   '/checkout/return': typeof CheckoutReturnRoute
-  '/interpolator': typeof InterpolatorIndexRoute
   '/auth/schwab/callback': typeof AuthSchwabCallbackRoute
   '/api/public/hooks/pushover-alerts': typeof ApiPublicHooksPushoverAlertsRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
@@ -87,7 +79,6 @@ export interface FileRoutesById {
   '/auth': typeof AuthRouteWithChildren
   '/pricing': typeof PricingRoute
   '/checkout/return': typeof CheckoutReturnRoute
-  '/interpolator/': typeof InterpolatorIndexRoute
   '/auth/schwab/callback': typeof AuthSchwabCallbackRoute
   '/api/public/hooks/pushover-alerts': typeof ApiPublicHooksPushoverAlertsRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
@@ -99,7 +90,6 @@ export interface FileRouteTypes {
     | '/auth'
     | '/pricing'
     | '/checkout/return'
-    | '/interpolator/'
     | '/auth/schwab/callback'
     | '/api/public/hooks/pushover-alerts'
     | '/api/public/payments/webhook'
@@ -109,7 +99,6 @@ export interface FileRouteTypes {
     | '/auth'
     | '/pricing'
     | '/checkout/return'
-    | '/interpolator'
     | '/auth/schwab/callback'
     | '/api/public/hooks/pushover-alerts'
     | '/api/public/payments/webhook'
@@ -119,7 +108,6 @@ export interface FileRouteTypes {
     | '/auth'
     | '/pricing'
     | '/checkout/return'
-    | '/interpolator/'
     | '/auth/schwab/callback'
     | '/api/public/hooks/pushover-alerts'
     | '/api/public/payments/webhook'
@@ -130,7 +118,6 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRouteWithChildren
   PricingRoute: typeof PricingRoute
   CheckoutReturnRoute: typeof CheckoutReturnRoute
-  InterpolatorIndexRoute: typeof InterpolatorIndexRoute
   ApiPublicHooksPushoverAlertsRoute: typeof ApiPublicHooksPushoverAlertsRoute
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
 }
@@ -156,13 +143,6 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/interpolator/': {
-      id: '/interpolator/'
-      path: '/interpolator'
-      fullPath: '/interpolator/'
-      preLoaderRoute: typeof InterpolatorIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/checkout/return': {
@@ -211,7 +191,6 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRouteWithChildren,
   PricingRoute: PricingRoute,
   CheckoutReturnRoute: CheckoutReturnRoute,
-  InterpolatorIndexRoute: InterpolatorIndexRoute,
   ApiPublicHooksPushoverAlertsRoute: ApiPublicHooksPushoverAlertsRoute,
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
 }
