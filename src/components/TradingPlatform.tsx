@@ -24,7 +24,6 @@ import type { OptionsActivity } from "@/lib/options.server";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { useSubscription } from "@/hooks/useSubscription";
 import { supabase } from "@/integrations/supabase/client";
-import { Link } from "@tanstack/react-router";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ReferenceLine, AreaChart, Area, ComposedChart, Bar, BarChart, Cell, Scatter,
@@ -1214,25 +1213,6 @@ export default function TradingPlatform() {
                   </span>
                 );
               })}
-              <Link
-                to="/interpolator"
-                style={{
-                  fontSize: 9,
-                  fontWeight: 800,
-                  letterSpacing: "0.12em",
-                  padding: "2px 6px",
-                  borderRadius: 3,
-                  border: "1px solid #cc884455",
-                  background: "#cc884418",
-                  color: "#cc8844",
-                  textDecoration: "none",
-                  lineHeight: 1,
-                  fontFamily: "'Courier New', monospace",
-                }}
-                title="Open Futures Signal Interpolator"
-              >
-                ◈ INTERP
-              </Link>
             </span>
           )}
           {marketPulse?.semisBreadth && marketPulse.semisBreadth.components.length > 0 && (() => {
