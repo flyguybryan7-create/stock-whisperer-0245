@@ -1550,15 +1550,20 @@ export default function TradingPlatform() {
                          // less liquid. Bogus stale ticks are filtered by the 10% band.
                          const within = (v?: number) =>
                            v != null && v > 0 && headPrice != null && Math.abs(v - headPrice) / headPrice <= 0.1;
-                         const bidOk = within(liveSel?.bid);
-                         const askOk = within(liveSel?.ask);
+                         // Prefer real-time Polygon NBBO; fall back to Yahoo v7 bid/ask.
+                         const bidVal = bidAskData?.bid ?? liveSel?.bid;
+                         const askVal = bidAskData?.ask ?? liveSel?.ask;
+                         const bidSz = bidAskData?.bidSize ?? liveSel?.bidSize;
+                         const askSz = bidAskData?.askSize ?? liveSel?.askSize;
+                         const bidOk = within(bidVal);
+                         const askOk = within(askVal);
                         return (
                           <>
-                             <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Bid${liveSel?.bidSize != null ? ` × ${liveSel.bidSize}` : ""}`}>
-                              BID <span style={{ color: bidOk ? "#f85149" : "#484f58" }}>{bidOk ? `$${liveSel!.bid!.toFixed(2)}` : "—"}</span>
+                             <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Bid${bidSz != null ? ` × ${bidSz}` : ""}`}>
+                              BID <span style={{ color: bidOk ? "#f85149" : "#484f58" }}>{bidOk ? `$${bidVal!.toFixed(2)}` : "—"}</span>
                             </span>
-                             <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Ask${liveSel?.askSize != null ? ` × ${liveSel.askSize}` : ""}`}>
-                              ASK <span style={{ color: askOk ? "#39d353" : "#484f58" }}>{askOk ? `$${liveSel!.ask!.toFixed(2)}` : "—"}</span>
+                             <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Ask${askSz != null ? ` × ${askSz}` : ""}`}>
+                              ASK <span style={{ color: askOk ? "#39d353" : "#484f58" }}>{askOk ? `$${askVal!.toFixed(2)}` : "—"}</span>
                             </span>
                             {(() => {
                               const vwap = watchlistVwap[selectedStock];
