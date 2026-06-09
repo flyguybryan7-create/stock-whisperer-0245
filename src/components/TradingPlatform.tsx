@@ -624,6 +624,17 @@ export default function TradingPlatform() {
   });
   const live = (liveQuotes as Record<string, LiveQuote> | undefined) ?? {};
 
+  // Real-time bid/ask for the selected stock via Polygon NBBO.
+  // Yahoo's v7 quote (which carries bid/ask) is rate-limited on Workers and
+  // returns nothing most of the time, so we fetch NBBO directly for the
+  // single ticker the user is viewing — fast and reliable.
+  const { data: bidAskData } = useQuery({
+    queryKey: ["bidask", selectedStock],
+    queryFn: () => fetchBidAsk({ data: { symbol: selectedStock } }),
+    refetchInterval: 1000,
+    enabled: !!selectedStock,
+  });
+
   // Short interest / float — refresh every 30 min (Yahoo updates twice a month)
   const { data: shortData } = useQuery({
     queryKey: ["short", watchlist],
