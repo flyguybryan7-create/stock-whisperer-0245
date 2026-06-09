@@ -1308,14 +1308,6 @@ export default function TradingPlatform() {
               const liveChg = lq ? lq.changePercent : chg;
               const livePrice = lq ? lq.price : l?.close;
               const liveChgAbs = lq ? lq.change : (l && p ? l.close - p.close : 0);
-              const si = shorts[sym];
-              const siPct = si?.shortPercentOfFloat ?? null;
-              const siColor =
-                si?.risk === "EXTREME" ? "#f85149"
-                : si?.risk === "HIGH" ? "#ff7b29"
-                : si?.risk === "MODERATE" ? "#e3b341"
-                : si?.risk === "LOW" ? "#39d353"
-                : "#484f58";
               return (
                 <div key={sym} className="stock-row" onClick={() => onWatchlistRowClick(sym)}
                   data-stock-row={sym}
