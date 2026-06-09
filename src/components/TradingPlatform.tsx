@@ -1559,37 +1559,8 @@ export default function TradingPlatform() {
             const fmtM = (n: number | null | undefined) => n == null ? "—" : n >= 1e9 ? (n / 1e9).toFixed(2) + "B" : n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n.toLocaleString();
             return (
               <>
-                <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, marginBottom: 4 }}>
-                  <span style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 18, color: "#e6edf3", lineHeight: 1 }}>{selectedStock}</span>
-                  <Link
-                    to="/interpolator/stocks"
-                    search={{
-                      symbols: watchlist.slice(0, 20).join(","),
-                      prices: watchlist
-                        .slice(0, 20)
-                        .map((s) => {
-                          const p = live[s]?.price ?? allData[s]?.[allData[s].length - 1]?.close;
-                          return p != null && Number.isFinite(p) ? p.toFixed(2) : "100";
-                        })
-                        .join(","),
-                    }}
-                    style={{
-                      fontSize: 9,
-                      fontWeight: 700,
-                      letterSpacing: "0.15em",
-                      padding: "3px 8px",
-                      borderRadius: 4,
-                      border: "1px solid #44aaff55",
-                      background: "#44aaff18",
-                      color: "#44aaff",
-                      textDecoration: "none",
-                      lineHeight: 1,
-                      fontFamily: "'Courier New', monospace",
-                    }}
-                    title="Open Stocks Signal Interpolator (top 20 watchlist)"
-                  >
-                    ◈ STOCKS INTERPOLATOR
-                  </Link>
+                 <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, marginBottom: 4 }}>
+                   <span style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 18, color: "#e6edf3", lineHeight: 1 }}>{selectedStock}</span>
                   {headPrice != null ? (
                     <>
                       <span style={{ fontSize: 18, fontWeight: 700, color: "#e6edf3", lineHeight: 1 }}>${headPrice.toFixed(2)}</span>
@@ -1597,22 +1568,20 @@ export default function TradingPlatform() {
                         {headChange >= 0 ? "▲" : "▼"}{headChange >= 0 ? "+" : ""}${Math.abs(headChange).toFixed(2)} ({headChangePct >= 0 ? "+" : ""}{headChangePct.toFixed(2)}%)
                       </span>
                       {(() => {
-                        // Yahoo's bid/ask is unreliable outside the regular session and
-                        // sometimes returns stale values that are far from the actual print.
-                        // Only show when the quote is live (REGULAR) AND within 5% of the
-                        // current price — otherwise the field reads "—".
-                        const sess = liveSel?.session;
-                        const isLive = sess === "REGULAR";
-                        const within = (v?: number) =>
-                          v != null && v > 0 && headPrice != null && Math.abs(v - headPrice) / headPrice <= 0.05;
-                        const bidOk = isLive && within(liveSel?.bid);
-                        const askOk = isLive && within(liveSel?.ask);
+                         // Show bid/ask whenever Yahoo returns a positive value that
+                         // sits within 10% of the current print. We no longer gate on
+                         // session — extended-hours bid/ask is still meaningful, just
+                         // less liquid. Bogus stale ticks are filtered by the 10% band.
+                         const within = (v?: number) =>
+                           v != null && v > 0 && headPrice != null && Math.abs(v - headPrice) / headPrice <= 0.1;
+                         const bidOk = within(liveSel?.bid);
+                         const askOk = within(liveSel?.ask);
                         return (
                           <>
-                            <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Bid${liveSel?.bidSize != null ? ` × ${liveSel.bidSize}` : ""}${!isLive ? " — only shown during regular session" : ""}`}>
+                             <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Bid${liveSel?.bidSize != null ? ` × ${liveSel.bidSize}` : ""}`}>
                               BID <span style={{ color: bidOk ? "#f85149" : "#484f58" }}>{bidOk ? `$${liveSel!.bid!.toFixed(2)}` : "—"}</span>
                             </span>
-                            <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Ask${liveSel?.askSize != null ? ` × ${liveSel.askSize}` : ""}${!isLive ? " — only shown during regular session" : ""}`}>
+                             <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Ask${liveSel?.askSize != null ? ` × ${liveSel.askSize}` : ""}`}>
                               ASK <span style={{ color: askOk ? "#39d353" : "#484f58" }}>{askOk ? `$${liveSel!.ask!.toFixed(2)}` : "—"}</span>
                             </span>
                             {(() => {
