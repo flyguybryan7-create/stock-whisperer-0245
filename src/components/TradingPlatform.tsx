@@ -1308,20 +1308,12 @@ export default function TradingPlatform() {
               const liveChg = lq ? lq.changePercent : chg;
               const livePrice = lq ? lq.price : l?.close;
               const liveChgAbs = lq ? lq.change : (l && p ? l.close - p.close : 0);
-              const si = shorts[sym];
-              const siPct = si?.shortPercentOfFloat ?? null;
-              const siColor =
-                si?.risk === "EXTREME" ? "#f85149"
-                : si?.risk === "HIGH" ? "#ff7b29"
-                : si?.risk === "MODERATE" ? "#e3b341"
-                : si?.risk === "LOW" ? "#39d353"
-                : "#484f58";
               return (
                 <div key={sym} className="stock-row" onClick={() => onWatchlistRowClick(sym)}
                   data-stock-row={sym}
                   title={reorderModeSym && reorderModeSym !== sym ? `Move ${reorderModeSym} here` : "Select stock"}
-                  style={{
-                    padding: "4px 5px",
+                   style={{
+                     padding: "7px 6px",
                     borderBottom: "1px solid #161b22",
                     background:
                       reorderModeSym === sym
@@ -1345,7 +1337,7 @@ export default function TradingPlatform() {
                     WebkitTapHighlightColor: "transparent",
                   }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={{ fontWeight: 600, fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}>
                       <button
                         onClick={(e) => { e.stopPropagation(); removeStock(sym); }}
                         title="Remove"
@@ -1428,23 +1420,15 @@ export default function TradingPlatform() {
                     </div>
                   </div>
                   {stockNames[sym] && (
-                    <div style={{ fontSize: 9, color: "#8b949e", marginLeft: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.1 }}>
+                    <div style={{ fontSize: 10, color: "#8b949e", marginLeft: 16, marginTop: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1 }}>
                       {stockNames[sym]}
                     </div>
                   )}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2, fontSize: 9, lineHeight: 1.1 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 3, fontSize: 11, lineHeight: 1.1 }}>
                     <span style={{ color: "#8b949e" }}>
                       {livePrice != null ? `$${livePrice.toFixed(2)}` : <span style={{ opacity: 0.6 }}>Loading…</span>}
                     </span>
                     <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                      {siPct != null && (
-                        <span
-                          title={`Short interest: ${siPct.toFixed(1)}% of float · ${si?.risk}${si?.shortRatio ? ` · ${si.shortRatio.toFixed(1)}d to cover` : ""}`}
-                          style={{ fontSize: 7, fontWeight: 700, color: siColor, border: `1px solid ${siColor}`, borderRadius: 2, padding: "0 3px" }}
-                        >
-                          S{siPct.toFixed(0)}%
-                        </span>
-                      )}
                       {livePrice != null ? (
                         <span style={{ color: liveChg >= 0 ? "#39d353" : "#f85149" }}>
                           {liveChg >= 0 ? "+" : ""}${Math.abs(liveChgAbs).toFixed(2)} ({liveChg >= 0 ? "+" : ""}{liveChg.toFixed(2)}%)
@@ -1559,37 +1543,8 @@ export default function TradingPlatform() {
             const fmtM = (n: number | null | undefined) => n == null ? "—" : n >= 1e9 ? (n / 1e9).toFixed(2) + "B" : n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n.toLocaleString();
             return (
               <>
-                <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, marginBottom: 4 }}>
-                  <span style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 18, color: "#e6edf3", lineHeight: 1 }}>{selectedStock}</span>
-                  <Link
-                    to="/interpolator/stocks"
-                    search={{
-                      symbols: watchlist.slice(0, 20).join(","),
-                      prices: watchlist
-                        .slice(0, 20)
-                        .map((s) => {
-                          const p = live[s]?.price ?? allData[s]?.[allData[s].length - 1]?.close;
-                          return p != null && Number.isFinite(p) ? p.toFixed(2) : "100";
-                        })
-                        .join(","),
-                    }}
-                    style={{
-                      fontSize: 9,
-                      fontWeight: 700,
-                      letterSpacing: "0.15em",
-                      padding: "3px 8px",
-                      borderRadius: 4,
-                      border: "1px solid #44aaff55",
-                      background: "#44aaff18",
-                      color: "#44aaff",
-                      textDecoration: "none",
-                      lineHeight: 1,
-                      fontFamily: "'Courier New', monospace",
-                    }}
-                    title="Open Stocks Signal Interpolator (top 20 watchlist)"
-                  >
-                    ◈ STOCKS INTERPOLATOR
-                  </Link>
+                 <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, marginBottom: 4 }}>
+                   <span style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 18, color: "#e6edf3", lineHeight: 1 }}>{selectedStock}</span>
                   {headPrice != null ? (
                     <>
                       <span style={{ fontSize: 18, fontWeight: 700, color: "#e6edf3", lineHeight: 1 }}>${headPrice.toFixed(2)}</span>
@@ -1597,22 +1552,20 @@ export default function TradingPlatform() {
                         {headChange >= 0 ? "▲" : "▼"}{headChange >= 0 ? "+" : ""}${Math.abs(headChange).toFixed(2)} ({headChangePct >= 0 ? "+" : ""}{headChangePct.toFixed(2)}%)
                       </span>
                       {(() => {
-                        // Yahoo's bid/ask is unreliable outside the regular session and
-                        // sometimes returns stale values that are far from the actual print.
-                        // Only show when the quote is live (REGULAR) AND within 5% of the
-                        // current price — otherwise the field reads "—".
-                        const sess = liveSel?.session;
-                        const isLive = sess === "REGULAR";
-                        const within = (v?: number) =>
-                          v != null && v > 0 && headPrice != null && Math.abs(v - headPrice) / headPrice <= 0.05;
-                        const bidOk = isLive && within(liveSel?.bid);
-                        const askOk = isLive && within(liveSel?.ask);
+                         // Show bid/ask whenever Yahoo returns a positive value that
+                         // sits within 10% of the current print. We no longer gate on
+                         // session — extended-hours bid/ask is still meaningful, just
+                         // less liquid. Bogus stale ticks are filtered by the 10% band.
+                         const within = (v?: number) =>
+                           v != null && v > 0 && headPrice != null && Math.abs(v - headPrice) / headPrice <= 0.1;
+                         const bidOk = within(liveSel?.bid);
+                         const askOk = within(liveSel?.ask);
                         return (
                           <>
-                            <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Bid${liveSel?.bidSize != null ? ` × ${liveSel.bidSize}` : ""}${!isLive ? " — only shown during regular session" : ""}`}>
+                             <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Bid${liveSel?.bidSize != null ? ` × ${liveSel.bidSize}` : ""}`}>
                               BID <span style={{ color: bidOk ? "#f85149" : "#484f58" }}>{bidOk ? `$${liveSel!.bid!.toFixed(2)}` : "—"}</span>
                             </span>
-                            <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Ask${liveSel?.askSize != null ? ` × ${liveSel.askSize}` : ""}${!isLive ? " — only shown during regular session" : ""}`}>
+                             <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Ask${liveSel?.askSize != null ? ` × ${liveSel.askSize}` : ""}`}>
                               ASK <span style={{ color: askOk ? "#39d353" : "#484f58" }}>{askOk ? `$${liveSel!.ask!.toFixed(2)}` : "—"}</span>
                             </span>
                             {(() => {
