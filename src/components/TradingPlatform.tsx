@@ -1320,8 +1320,8 @@ export default function TradingPlatform() {
                 <div key={sym} className="stock-row" onClick={() => onWatchlistRowClick(sym)}
                   data-stock-row={sym}
                   title={reorderModeSym && reorderModeSym !== sym ? `Move ${reorderModeSym} here` : "Select stock"}
-                  style={{
-                    padding: "4px 5px",
+                   style={{
+                     padding: "7px 6px",
                     borderBottom: "1px solid #161b22",
                     background:
                       reorderModeSym === sym
@@ -1345,7 +1345,7 @@ export default function TradingPlatform() {
                     WebkitTapHighlightColor: "transparent",
                   }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={{ fontWeight: 600, fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}>
                       <button
                         onClick={(e) => { e.stopPropagation(); removeStock(sym); }}
                         title="Remove"
@@ -1428,23 +1428,15 @@ export default function TradingPlatform() {
                     </div>
                   </div>
                   {stockNames[sym] && (
-                    <div style={{ fontSize: 9, color: "#8b949e", marginLeft: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.1 }}>
+                    <div style={{ fontSize: 10, color: "#8b949e", marginLeft: 16, marginTop: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1 }}>
                       {stockNames[sym]}
                     </div>
                   )}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2, fontSize: 9, lineHeight: 1.1 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 3, fontSize: 11, lineHeight: 1.1 }}>
                     <span style={{ color: "#8b949e" }}>
                       {livePrice != null ? `$${livePrice.toFixed(2)}` : <span style={{ opacity: 0.6 }}>Loading…</span>}
                     </span>
                     <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                      {siPct != null && (
-                        <span
-                          title={`Short interest: ${siPct.toFixed(1)}% of float · ${si?.risk}${si?.shortRatio ? ` · ${si.shortRatio.toFixed(1)}d to cover` : ""}`}
-                          style={{ fontSize: 7, fontWeight: 700, color: siColor, border: `1px solid ${siColor}`, borderRadius: 2, padding: "0 3px" }}
-                        >
-                          S{siPct.toFixed(0)}%
-                        </span>
-                      )}
                       {livePrice != null ? (
                         <span style={{ color: liveChg >= 0 ? "#39d353" : "#f85149" }}>
                           {liveChg >= 0 ? "+" : ""}${Math.abs(liveChgAbs).toFixed(2)} ({liveChg >= 0 ? "+" : ""}{liveChg.toFixed(2)}%)
