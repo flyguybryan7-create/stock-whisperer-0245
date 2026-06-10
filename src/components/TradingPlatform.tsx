@@ -624,10 +624,8 @@ export default function TradingPlatform() {
   });
   const live = (liveQuotes as Record<string, LiveQuote> | undefined) ?? {};
 
-  // Real-time bid/ask for the selected stock via Polygon NBBO.
-  // Yahoo's v7 quote (which carries bid/ask) is rate-limited on Workers and
-  // returns nothing most of the time, so we fetch NBBO directly for the
-  // single ticker the user is viewing — fast and reliable.
+  // Real-time bid/ask for the selected stock via Nasdaq's quote endpoint.
+  // This refreshes every second and is independent from the watchlist batch.
   const { data: bidAskData } = useQuery({
     queryKey: ["bidask", selectedStock],
     queryFn: () => fetchBidAsk({ data: { symbol: selectedStock } }),
@@ -1516,12 +1514,9 @@ export default function TradingPlatform() {
         <div style={{ padding: "6px 10px", overflowY: "auto", maxHeight: "calc(100vh - 49px)" }}>
           {/* Stock header — ultra-tight single row */}
           {(() => {
-            // Header shows the regular-session (4pm) close even during after-hours.
-            // AH/overnight price still ticks live in the left watchlist column.
-            const regClose = liveSel?.regularPrice ?? liveSel?.price ?? last.close;
-            const headPrice = regClose;
+            const headPrice = liveSel?.price ?? liveSel?.regularPrice ?? last.close;
             const headPrev = liveSel?.previousClose ?? prev.close ?? 0;
-            const headChange = headPrev ? regClose - headPrev : change;
+            const headChange = headPrev ? headPrice - headPrev : change;
             const headChangePct = headPrev ? (headChange / headPrev) * 100 : changePct;
             const pink = "#ff4fa3";
             const dt = dayTrade.signal;

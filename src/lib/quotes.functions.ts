@@ -443,7 +443,7 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
           }
           const meta = r.meta;
           const regularPrice = meta.regularMarketPrice ?? null;
-          const prevClose = meta.chartPreviousClose ?? meta.previousClose ?? regularPrice ?? 0;
+          const prevClose = meta.previousClose ?? meta.chartPreviousClose ?? regularPrice ?? 0;
           if (lastIdx === -1 || prevClose === 0) {
             // Fallback to regular price
             if (regularPrice != null) {
@@ -743,10 +743,9 @@ export const getIntradayBatch = createServerFn({ method: "POST" })
     return out;
   });
 
-// ============ Polygon NBBO bid/ask (real-time on paid plan; 15-min delayed on free) ============
-// Yahoo's v7 quote endpoint is rate-limited / unauthorized on Cloudflare Workers,
-// so bid/ask never come through. Polygon's last-NBBO is a reliable backup that
-// always returns a quote when one exists.
+// ============ Nasdaq real-time bid/ask backup ============
+// The current Polygon key in this project is not entitled to stock quotes, so
+// we read bid/ask from Nasdaq's public real-time quote endpoint instead.
 export type BidAsk = {
   bid?: number;
   ask?: number;
@@ -763,29 +762,50 @@ export const getBidAsk = createServerFn({ method: "POST" })
     return { symbol };
   })
   .handler(async ({ data }): Promise<BidAsk> => {
-    const key = process.env.POLYGON_API_KEY;
-    if (!key) return {};
     try {
-      const url = `https://api.polygon.io/v3/quotes/${encodeURIComponent(data.symbol)}?order=desc&limit=1&sort=timestamp&apiKey=${encodeURIComponent(key)}`;
-      const res = await fetch(url);
+      const url = `https://api.nasdaq.com/api/quote/${encodeURIComponent(data.symbol)}/info?assetclass=stocks`;
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (compatible; BryanTrade/1.0)",
+          Accept: "application/json, text/plain, */*",
+          Origin: "https://www.nasdaq.com",
+          Referer: "https://www.nasdaq.com/",
+        },
+      });
       if (!res.ok) return {};
       const json = (await res.json()) as {
-        results?: Array<{
-          bid_price?: number;
-          bid_size?: number;
-          ask_price?: number;
-          ask_size?: number;
-          sip_timestamp?: number;
-        }>;
+        data?: {
+          primaryData?: {
+            bidPrice?: string;
+            askPrice?: string;
+            bidSize?: string;
+            askSize?: string;
+            lastTradeTimestamp?: string;
+          };
+        };
       };
-      const r = json.results?.[0];
-      if (!r) return {};
+
+      const primary = json.data?.primaryData;
+      if (!primary) return {};
+
+      const parseMoney = (value?: string) => {
+        if (!value) return undefined;
+        const n = Number(value.replace(/[^0-9.+-]/g, ""));
+        return Number.isFinite(n) && n > 0 ? n : undefined;
+      };
+
+      const parseSize = (value?: string) => {
+        if (!value) return undefined;
+        const n = Number(value.replace(/[^0-9.+-]/g, ""));
+        return Number.isFinite(n) && n >= 0 ? n : undefined;
+      };
+
       return {
-        bid: typeof r.bid_price === "number" && r.bid_price > 0 ? r.bid_price : undefined,
-        ask: typeof r.ask_price === "number" && r.ask_price > 0 ? r.ask_price : undefined,
-        bidSize: typeof r.bid_size === "number" ? r.bid_size : undefined,
-        askSize: typeof r.ask_size === "number" ? r.ask_size : undefined,
-        asOf: typeof r.sip_timestamp === "number" ? Math.floor(r.sip_timestamp / 1e6) : undefined,
+        bid: parseMoney(primary.bidPrice),
+        ask: parseMoney(primary.askPrice),
+        bidSize: parseSize(primary.bidSize),
+        askSize: parseSize(primary.askSize),
+        asOf: primary.lastTradeTimestamp ? Date.parse(primary.lastTradeTimestamp) : undefined,
       };
     } catch {
       return {};
