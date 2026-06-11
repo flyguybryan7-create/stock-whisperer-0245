@@ -1153,9 +1153,10 @@ export default function TradingPlatform() {
   const mono = "JetBrains Mono, ui-monospace, monospace";
 
   return (
-    <div style={{ minHeight: "100vh", background: "#010409", color: "#e6edf3", fontFamily: mono, fontSize: 12 }}>
+    <div style={{ minHeight: "100vh", background: "#010409", color: "#e6edf3", fontFamily: mono, fontSize: 12, paddingTop: "env(safe-area-inset-top, 0px)" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Orbitron:wght@700;900&display=swap');
+        body { padding-top: env(safe-area-inset-top, 0px); background: #010409; }
         ::-webkit-scrollbar { width: 4px; height: 4px; }
         ::-webkit-scrollbar-track { background: #010409; }
         ::-webkit-scrollbar-thumb { background: #21262d; border-radius: 2px; }
@@ -1172,12 +1173,15 @@ export default function TradingPlatform() {
           0%,100% { background: rgba(248,81,73,0.9); box-shadow: 0 0 12px rgba(248,81,73,0.95), 0 0 22px rgba(248,81,73,0.6); color: #1a0303; }
           50%     { background: rgba(248,81,73,0.25); box-shadow: 0 0 4px rgba(248,81,73,0.45); color: #f85149; }
         }
+        @keyframes tileBuy  { 0%,100% { background: rgba(57,211,83,0.18); } 50% { background: rgba(57,211,83,0.04); } }
+        @keyframes tileSell { 0%,100% { background: rgba(248,81,73,0.20); } 50% { background: rgba(248,81,73,0.04); } }
+        @keyframes flashHold { 0%,100% { background: rgba(227,179,65,0.12); } 50% { background: rgba(227,179,65,0.03); } }
         .flow-flash-buy  { animation: flashBuy 0.7s ease-in-out infinite; padding: 0 4px; border-radius: 3px; font-weight: 900 !important; }
         .flow-flash-sell { animation: flashSell 0.7s ease-in-out infinite; padding: 0 4px; border-radius: 3px; font-weight: 900 !important; }
       `}</style>
 
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid #21262d", background: "#0d1117" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid #21262d", background: "#0d1117", position: "sticky", top: 0, zIndex: 100 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 16, color: "#58a6ff", letterSpacing: 1 }}>⬡ BRYANTRADE</div>
           <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 2 }}>PRO TERMINAL</div>
