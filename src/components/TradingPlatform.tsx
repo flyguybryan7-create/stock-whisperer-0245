@@ -399,6 +399,7 @@ export default function TradingPlatform() {
   const [editingPos, setEditingPos] = useState<string | null>(null);
   const [posDraft, setPosDraft] = useState<{ shares: string; entry: string }>({ shares: "", entry: "" });
   const [selectedStock, setSelectedStock] = useState("MRVL");
+  const [showDetail, setShowDetail] = useState(false);
   const [search, setSearch] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [alerts, setAlerts] = useState<Record<string, Alert[]>>({});
@@ -629,7 +630,9 @@ export default function TradingPlatform() {
   const { data: bidAskData } = useQuery({
     queryKey: ["bidask", selectedStock],
     queryFn: () => fetchBidAsk({ data: { symbol: selectedStock } }),
-    refetchInterval: 1000,
+    refetchInterval: 250,
+    refetchIntervalInBackground: true,
+    staleTime: 0,
     enabled: !!selectedStock,
   });
 
