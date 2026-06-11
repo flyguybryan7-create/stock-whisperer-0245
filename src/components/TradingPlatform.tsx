@@ -1130,6 +1130,7 @@ export default function TradingPlatform() {
     }
     if (reorderModeSym === sym) return;
     setSelectedStock(sym);
+    setShowDetail(true);
   };
 
   const showNotif = (msg: string) => {
