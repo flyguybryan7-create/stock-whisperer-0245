@@ -399,6 +399,7 @@ export default function TradingPlatform() {
   const [editingPos, setEditingPos] = useState<string | null>(null);
   const [posDraft, setPosDraft] = useState<{ shares: string; entry: string }>({ shares: "", entry: "" });
   const [selectedStock, setSelectedStock] = useState("MRVL");
+  const [showDetail, setShowDetail] = useState(false);
   const [search, setSearch] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [alerts, setAlerts] = useState<Record<string, Alert[]>>({});
@@ -629,7 +630,9 @@ export default function TradingPlatform() {
   const { data: bidAskData } = useQuery({
     queryKey: ["bidask", selectedStock],
     queryFn: () => fetchBidAsk({ data: { symbol: selectedStock } }),
-    refetchInterval: 1000,
+    refetchInterval: 250,
+    refetchIntervalInBackground: true,
+    staleTime: 0,
     enabled: !!selectedStock,
   });
 
@@ -1127,6 +1130,7 @@ export default function TradingPlatform() {
     }
     if (reorderModeSym === sym) return;
     setSelectedStock(sym);
+    setShowDetail(true);
   };
 
   const showNotif = (msg: string) => {
@@ -1149,9 +1153,10 @@ export default function TradingPlatform() {
   const mono = "JetBrains Mono, ui-monospace, monospace";
 
   return (
-    <div style={{ minHeight: "100vh", background: "#010409", color: "#e6edf3", fontFamily: mono, fontSize: 12 }}>
+    <div style={{ minHeight: "100vh", background: "#010409", color: "#e6edf3", fontFamily: mono, fontSize: 12, paddingTop: "env(safe-area-inset-top, 0px)" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Orbitron:wght@700;900&display=swap');
+        body { padding-top: env(safe-area-inset-top, 0px); background: #010409; }
         ::-webkit-scrollbar { width: 4px; height: 4px; }
         ::-webkit-scrollbar-track { background: #010409; }
         ::-webkit-scrollbar-thumb { background: #21262d; border-radius: 2px; }
@@ -1168,12 +1173,15 @@ export default function TradingPlatform() {
           0%,100% { background: rgba(248,81,73,0.9); box-shadow: 0 0 12px rgba(248,81,73,0.95), 0 0 22px rgba(248,81,73,0.6); color: #1a0303; }
           50%     { background: rgba(248,81,73,0.25); box-shadow: 0 0 4px rgba(248,81,73,0.45); color: #f85149; }
         }
+        @keyframes tileBuy  { 0%,100% { background: rgba(57,211,83,0.18); } 50% { background: rgba(57,211,83,0.04); } }
+        @keyframes tileSell { 0%,100% { background: rgba(248,81,73,0.20); } 50% { background: rgba(248,81,73,0.04); } }
+        @keyframes flashHold { 0%,100% { background: rgba(227,179,65,0.12); } 50% { background: rgba(227,179,65,0.03); } }
         .flow-flash-buy  { animation: flashBuy 0.7s ease-in-out infinite; padding: 0 4px; border-radius: 3px; font-weight: 900 !important; }
         .flow-flash-sell { animation: flashSell 0.7s ease-in-out infinite; padding: 0 4px; border-radius: 3px; font-weight: 900 !important; }
       `}</style>
 
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid #21262d", background: "#0d1117" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid #21262d", background: "#0d1117", position: "sticky", top: 0, zIndex: 100 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 16, color: "#58a6ff", letterSpacing: 1 }}>⬡ BRYANTRADE</div>
           <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 2 }}>PRO TERMINAL</div>
@@ -1246,9 +1254,8 @@ export default function TradingPlatform() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "138px 1fr", minHeight: "calc(100vh - 49px)" }}>
-        {/* Watchlist */}
-        <div style={{ borderRight: "1px solid #21262d", background: "#0d1117", overflowY: "auto", maxHeight: "calc(100vh - 49px)" }}>
+      {/* Full-screen watchlist */}
+      <div style={{ background: "#0d1117", overflowY: "auto", maxHeight: "calc(100vh - env(safe-area-inset-top, 0px) - 49px)" }}>
           <div style={{ padding: "6px 6px", borderBottom: "1px solid #21262d", position: "relative" }}>
             <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1, marginBottom: 4 }}>WATCHLIST</div>
             <input
@@ -1286,146 +1293,114 @@ export default function TradingPlatform() {
               </div>
             )}
           </div>
-          <div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, padding: "8px" }}>
             {filteredStocks.map(sym => {
               const d = allData[sym] || [];
               const l = d[d.length - 1]; const p = d[d.length - 2];
               const chg = l && p ? ((l.close - p.close) / p.close) * 100 : 0;
               const sig: "BUY" | "SELL" | "HOLD" =
                 watchlistMacdSignals[sym] ?? (d.length ? getMacdMomentumSignal(d).signal : "HOLD");
-              const sigC = sig === "BUY" ? "#39d353" : sig === "SELL" ? "#f85149" : "#e3b341";
               const lq = live[sym];
               const liveChg = lq ? lq.changePercent : chg;
               const livePrice = lq ? lq.price : l?.close;
               const liveChgAbs = lq ? lq.change : (l && p ? l.close - p.close : 0);
+              const pos = positions[sym];
+              const pl = pos && livePrice != null ? (livePrice - pos.entry) * pos.shares : 0;
+              const plPct = pos && livePrice != null && pos.entry > 0 ? ((livePrice - pos.entry) / pos.entry) * 100 : 0;
+              const plColor = pl >= 0 ? "#39d353" : "#f85149";
+              const flashAnim =
+                sig === "BUY" ? "tileBuy 1.4s ease-in-out infinite" :
+                sig === "SELL" ? "tileSell 1.4s ease-in-out infinite" :
+                "flashHold 2s ease-in-out infinite";
+              const oa = optionsActivity[sym];
+              const oaShow = oa && (oa.callVolume + oa.putVolume) >= 50;
+              const oaColor = oa?.bias === "BULL" ? "#39d353" : oa?.bias === "BEAR" ? "#f85149" : "#d29922";
+              const oaLabel = oa?.bias === "BULL" ? "C↑" : oa?.bias === "BEAR" ? "P↓" : "UNU";
+              const border =
+                reorderModeSym === sym ? "2px solid #d2a8ff"
+                : selectedStock === sym ? "1px solid #58a6ff"
+                : "1px solid #21262d";
               return (
-                <div key={sym} className="stock-row" onClick={() => onWatchlistRowClick(sym)}
+                <div
+                  key={sym}
+                  className="stock-row"
+                  onClick={() => onWatchlistRowClick(sym)}
                   data-stock-row={sym}
                   title={reorderModeSym && reorderModeSym !== sym ? `Move ${reorderModeSym} here` : "Select stock"}
-                   style={{
-                     padding: "7px 6px",
-                    borderBottom: "1px solid #161b22",
-                    background:
-                      reorderModeSym === sym
-                        ? "#1f6feb33"
-                        : reorderModeSym
-                          ? "#0f1722"
-                          : selectedStock === sym
-                            ? "#161b22"
-                            : "transparent",
-                    borderLeft:
-                      reorderModeSym === sym
-                        ? "2px solid #d2a8ff"
-                        : selectedStock === sym
-                          ? "2px solid #58a6ff"
-                          : "2px solid transparent",
-                    opacity: reorderModeSym && reorderModeSym !== sym ? 0.96 : 1,
-                    transition: "background 120ms",
+                  style={{
+                    position: "relative",
+                    height: 90,
+                    padding: "8px 10px",
+                    borderRadius: 6,
+                    overflow: "hidden",
+                    border,
+                    background: "#0d1117",
+                    animation: flashAnim,
                     userSelect: "none",
                     WebkitUserSelect: "none",
                     WebkitTouchCallout: "none",
                     WebkitTapHighlightColor: "transparent",
-                  }}>
+                  }}
+                >
+                  {/* Row 1 — ticker + reorder */}
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={{ fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
                       <button
                         onClick={(e) => { e.stopPropagation(); removeStock(sym); }}
                         title="Remove"
-                        style={{ background: "transparent", border: "none", color: "#6e7681", cursor: "pointer", fontSize: 11, padding: 0, lineHeight: 1, width: 12 }}
+                        style={{ background: "transparent", border: "none", color: "#6e7681", cursor: "pointer", fontSize: 10, padding: 0, lineHeight: 1 }}
                       >✕</button>
                       {(() => {
                         const flow = flowSignals[sym];
-                        if (!flow) return <span>{sym}</span>;
+                        if (!flow) return <span style={{ fontWeight: 700, fontSize: 15, color: "#e6edf3" }}>{sym}</span>;
                         const cls = flow.kind === "BUY_SURGE" ? "flow-flash-buy" : "flow-flash-sell";
                         const tip = flow.kind === "BUY_SURGE"
                           ? `MASSIVE BUYING — ${flow.volRatio.toFixed(1)}× avg minute volume, +${flow.pricePct.toFixed(2)}% on the bar`
                           : `MASSIVE SELLING — ${flow.volRatio.toFixed(1)}× avg minute volume, ${flow.pricePct.toFixed(2)}% on the bar`;
-                        return <span className={cls} title={tip}>{sym}</span>;
-                      })()}
-                      <span style={{ fontSize: 9, color: sigC, fontWeight: 800 }}>{sig}</span>
-                      {(() => {
-                        const oa = optionsActivity[sym];
-                        if (!oa || (oa.callVolume + oa.putVolume) < 50) return null;
-                        const isBull = oa.bias === "BULL";
-                        const isBear = oa.bias === "BEAR";
-                        const color = isBull ? "#39d353" : isBear ? "#f85149" : "#d29922";
-                        const label = isBull ? "C↑" : isBear ? "P↓" : "UNU";
-                        const pc = oa.pcRatio == null ? "—" : oa.pcRatio.toFixed(2);
-                        const tip =
-                          `Options flow ${oa.bias}${oa.unusual ? " · UNUSUAL" : ""}\n` +
-                          `Calls ${oa.callVolume.toLocaleString()} vol / ${oa.callOi.toLocaleString()} OI\n` +
-                          `Puts  ${oa.putVolume.toLocaleString()} vol / ${oa.putOi.toLocaleString()} OI\n` +
-                          `P/C ${pc}${oa.expiry ? ` · exp ${oa.expiry}` : ""}`;
-                        return (
-                          <span
-                            title={tip}
-                            style={{
-                              fontSize: 8,
-                              fontWeight: 900,
-                              color,
-                              border: `1px solid ${color}`,
-                              borderRadius: 2,
-                              padding: "0 3px",
-                              animation: oa.unusual ? "flashBuy 1.1s ease-in-out infinite" : undefined,
-                              opacity: isBull || isBear ? 1 : 0.85,
-                            }}
-                          >
-                            {label}
-                          </span>
-                        );
+                        return <span className={cls} style={{ fontWeight: 700, fontSize: 15 }} title={tip}>{sym}</span>;
                       })()}
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
                       {reorderModeSym && reorderModeSym !== sym ? (
-                        <span
-                          aria-hidden="true"
-                          style={{
-                            minWidth: 28,
-                            textAlign: "center",
-                            color: "#58a6ff",
-                            fontSize: 14,
-                            fontWeight: 700,
-                          }}
-                        >
-                          ⊕
-                        </span>
+                        <span aria-hidden="true" style={{ color: "#58a6ff", fontSize: 14, fontWeight: 700 }}>⊕</span>
                       ) : null}
                       <button
                         type="button"
                         aria-label={reorderModeSym === sym ? "Cancel reorder" : "Reorder stock"}
-                        title={reorderModeSym === sym ? "Cancel reorder" : "Tap, then tap destination row"}
+                        title={reorderModeSym === sym ? "Cancel reorder" : "Tap, then tap destination tile"}
                         onMouseDown={(e) => e.preventDefault()}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleReorderMode(sym);
-                        }}
+                        onClick={(e) => { e.stopPropagation(); toggleReorderMode(sym); }}
                         style={{
                           background: "#161b22", border: "1px solid #30363d", color: "#8b949e",
-                          cursor: "pointer", padding: "6px 10px", fontSize: 14, lineHeight: 1,
-                          borderRadius: 4, userSelect: "none", WebkitUserSelect: "none",
-                          WebkitTouchCallout: "none", WebkitTapHighlightColor: "transparent",
-                          touchAction: "manipulation",
+                          cursor: "pointer", padding: "2px 5px", fontSize: 11, lineHeight: 1,
+                          borderRadius: 3, touchAction: "manipulation",
                         }}
                       >{reorderModeSym === sym ? "✕" : "⋮⋮"}</button>
                     </div>
                   </div>
-                  {stockNames[sym] && (
-                    <div style={{ fontSize: 10, color: "#8b949e", marginLeft: 16, marginTop: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1 }}>
-                      {stockNames[sym]}
-                    </div>
-                  )}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 3, fontSize: 11, lineHeight: 1.1 }}>
-                    <span style={{ color: "#8b949e" }}>
-                      {livePrice != null ? `$${livePrice.toFixed(2)}` : <span style={{ opacity: 0.6 }}>Loading…</span>}
-                    </span>
-                    <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                      {livePrice != null ? (
+
+                  {/* Row 2 — company name */}
+                  <div style={{ fontSize: 10, color: "#8b949e", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.1 }}>
+                    {stockNames[sym] || ""}
+                  </div>
+
+                  {/* Row 3 — price + change */}
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginTop: 3, fontSize: 11, lineHeight: 1.1, overflow: "hidden", whiteSpace: "nowrap" }}>
+                    {livePrice != null ? (
+                      <>
+                        <span style={{ fontWeight: 700, fontSize: 13, color: "#e6edf3" }}>${livePrice.toFixed(2)}</span>
                         <span style={{ color: liveChg >= 0 ? "#39d353" : "#f85149" }}>
-                          {liveChg >= 0 ? "+" : ""}${Math.abs(liveChgAbs).toFixed(2)} ({liveChg >= 0 ? "+" : ""}{liveChg.toFixed(2)}%)
+                          {liveChg >= 0 ? "+" : "-"}${Math.abs(liveChgAbs).toFixed(2)} ({liveChg >= 0 ? "+" : ""}{liveChg.toFixed(2)}%)
                         </span>
-                      ) : (
-                        <span style={{ color: "#484f58" }}>—</span>
-                      )}
+                      </>
+                    ) : (
+                      <span style={{ color: "#484f58" }}>Loading…</span>
+                    )}
+                  </div>
+
+                  {/* Row 4 — position P&L + $ button + options badge */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4, marginTop: 3, fontSize: 9, lineHeight: 1.1, overflow: "hidden", whiteSpace: "nowrap" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0, overflow: "hidden" }}>
                       <button
                         type="button"
                         onClick={(e) => {
@@ -1437,81 +1412,92 @@ export default function TradingPlatform() {
                             entry: existing ? String(existing.entry) : "",
                           });
                         }}
-                        title={positions[sym] ? "Edit position" : "Add position"}
-                        style={{ background: "transparent", border: "1px solid #30363d", color: positions[sym] ? "#e3b341" : "#6e7681", cursor: "pointer", fontSize: 8, fontWeight: 800, padding: "0 4px", borderRadius: 3, lineHeight: 1.4 }}
+                        title={pos ? "Edit position" : "Add position"}
+                        style={{ background: "transparent", border: "1px solid #30363d", color: pos ? "#e3b341" : "#6e7681", cursor: "pointer", fontSize: 9, fontWeight: 800, padding: "0 4px", borderRadius: 3, lineHeight: 1.4 }}
                       >$</button>
-                    </span>
+                      {pos && livePrice != null ? (
+                        <>
+                          <span style={{ color: "#8b949e", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {pos.shares}sh @ ${pos.entry.toFixed(2)}
+                          </span>
+                          <span style={{ color: plColor, fontWeight: 700 }}>
+                            {pl >= 0 ? "+" : "-"}${Math.abs(pl).toFixed(2)} ({plPct >= 0 ? "+" : ""}{plPct.toFixed(2)}%)
+                          </span>
+                        </>
+                      ) : null}
+                    </div>
+                    {oaShow && (
+                      <span
+                        title={`Options flow ${oa.bias}${oa.unusual ? " · UNUSUAL" : ""}`}
+                        style={{
+                          fontSize: 9, fontWeight: 900, color: oaColor,
+                          border: `1px solid ${oaColor}`, borderRadius: 2, padding: "0 3px",
+                          animation: oa.unusual ? "flashBuy 1.1s ease-in-out infinite" : undefined,
+                        }}
+                      >{oaLabel}</span>
+                    )}
                   </div>
-                  {(() => {
-                    const pos = positions[sym];
-                    if (!pos || livePrice == null) return null;
-                    const pl = (livePrice - pos.entry) * pos.shares;
-                    const plPct = pos.entry > 0 ? ((livePrice - pos.entry) / pos.entry) * 100 : 0;
-                    const color = pl >= 0 ? "#39d353" : "#f85149";
-                    return (
-                      <div style={{ marginTop: 1, fontSize: 9, color: "#8b949e", lineHeight: 1.1, display: "flex", justifyContent: "space-between" }}>
-                        <span>POS {pos.shares}@${pos.entry.toFixed(2)}</span>
-                        <span style={{ color, fontWeight: 700 }}>
-                          {pl >= 0 ? "+" : "−"}${Math.abs(pl).toFixed(2)} ({plPct >= 0 ? "+" : ""}{plPct.toFixed(2)}%)
-                        </span>
-                      </div>
-                    );
-                  })()}
+
+                  {/* Inline position editor overlay */}
                   {editingPos === sym && (
-                    <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 3, display: "flex", gap: 3, alignItems: "center" }}>
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ position: "absolute", inset: 0, background: "#0d1117ee", borderRadius: 6, padding: 6, display: "flex", flexDirection: "column", gap: 4, justifyContent: "center" }}
+                    >
                       <input
-                        type="number"
-                        inputMode="decimal"
-                        placeholder="shares"
+                        type="number" inputMode="decimal" placeholder="shares"
                         value={posDraft.shares}
                         onChange={(e) => setPosDraft((d) => ({ ...d, shares: e.target.value }))}
-                        style={{ flex: 1, minWidth: 0, background: "#010409", border: "1px solid #21262d", borderRadius: 3, padding: "2px 4px", color: "#e6edf3", fontSize: 10, fontFamily: mono }}
+                        style={{ background: "#010409", border: "1px solid #21262d", borderRadius: 3, padding: "2px 4px", color: "#e6edf3", fontSize: 10, fontFamily: mono }}
                       />
                       <input
-                        type="number"
-                        inputMode="decimal"
-                        placeholder="cost $"
+                        type="number" inputMode="decimal" placeholder="cost $"
                         value={posDraft.entry}
                         onChange={(e) => setPosDraft((d) => ({ ...d, entry: e.target.value }))}
-                        style={{ flex: 1, minWidth: 0, background: "#010409", border: "1px solid #21262d", borderRadius: 3, padding: "2px 4px", color: "#e6edf3", fontSize: 10, fontFamily: mono }}
+                        style={{ background: "#010409", border: "1px solid #21262d", borderRadius: 3, padding: "2px 4px", color: "#e6edf3", fontSize: 10, fontFamily: mono }}
                       />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const s = parseFloat(posDraft.shares);
-                          const e = parseFloat(posDraft.entry);
-                          if (Number.isFinite(s) && s > 0 && Number.isFinite(e) && e > 0) {
-                            setPositions((p) => ({ ...p, [sym]: { shares: s, entry: e } }));
-                          }
-                          setEditingPos(null);
-                        }}
-                        style={{ background: "#238636", border: "none", color: "#fff", fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3, cursor: "pointer" }}
-                      >Save</button>
-                      {positions[sym] && (
+                      <div style={{ display: "flex", gap: 3 }}>
                         <button
                           type="button"
                           onClick={() => {
-                            setPositions((p) => { const n = { ...p }; delete n[sym]; return n; });
+                            const s = parseFloat(posDraft.shares);
+                            const e = parseFloat(posDraft.entry);
+                            if (Number.isFinite(s) && s > 0 && Number.isFinite(e) && e > 0) {
+                              setPositions((p) => ({ ...p, [sym]: { shares: s, entry: e } }));
+                            }
                             setEditingPos(null);
                           }}
-                          style={{ background: "transparent", border: "1px solid #30363d", color: "#f85149", fontSize: 9, padding: "2px 4px", borderRadius: 3, cursor: "pointer" }}
+                          style={{ flex: 1, background: "#238636", border: "none", color: "#fff", fontSize: 9, fontWeight: 700, padding: "3px 6px", borderRadius: 3, cursor: "pointer" }}
+                        >Save</button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingPos(null)}
+                          style={{ background: "transparent", border: "1px solid #30363d", color: "#f85149", fontSize: 9, padding: "3px 6px", borderRadius: 3, cursor: "pointer" }}
                         >✕</button>
-                      )}
+                      </div>
                     </div>
                   )}
                 </div>
               );
             })}
-            {watchlist.length === 0 && (
-              <div style={{ padding: 16, fontSize: 10, color: "#8b949e", textAlign: "center" }}>
-                Your watchlist is empty. Search above to add stocks.
-              </div>
-            )}
           </div>
-        </div>
+          {watchlist.length === 0 && (
+            <div style={{ padding: 16, fontSize: 10, color: "#8b949e", textAlign: "center" }}>
+              Your watchlist is empty. Search above to add stocks.
+            </div>
+          )}
+          <div style={{ fontSize: 9, color: "#8b949e", textAlign: "center", padding: "6px 0 12px" }}>▼ more</div>
+      </div>
 
-        {/* Main */}
-        <div style={{ padding: "6px 10px", overflowY: "auto", maxHeight: "calc(100vh - 49px)" }}>
+      {/* Detail overlay */}
+      {showDetail && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 200, background: "#010409", overflowY: "auto", paddingTop: "env(safe-area-inset-top, 0px)" }}>
+          <button
+            type="button"
+            onClick={() => setShowDetail(false)}
+            style={{ background: "transparent", border: "none", color: "#58a6ff", fontSize: 13, fontWeight: 700, cursor: "pointer", padding: "12px 16px" }}
+          >← WATCHLIST</button>
+          <div style={{ padding: "6px 10px" }}>
           {/* Stock header — ultra-tight single row */}
           {(() => {
             const headPrice = liveSel?.price ?? liveSel?.regularPrice ?? last.close;
@@ -1839,7 +1825,8 @@ export default function TradingPlatform() {
           </div>
 
         </div>
-      </div>
+        </div>
+      )}
 
       {/* Notification */}
       {notification && (

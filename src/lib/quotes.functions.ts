@@ -763,49 +763,37 @@ export const getBidAsk = createServerFn({ method: "POST" })
   })
   .handler(async ({ data }): Promise<BidAsk> => {
     try {
-      const url = `https://api.nasdaq.com/api/quote/${encodeURIComponent(data.symbol)}/info?assetclass=stocks`;
+      // Yahoo Finance quote endpoint — fastest source for streaming bid/ask.
+      const url = `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(data.symbol)}&fields=bid,ask,bidSize,askSize,regularMarketPrice,regularMarketPreviousClose`;
       const res = await fetch(url, {
         headers: {
-          "User-Agent": "Mozilla/5.0 (compatible; BryanTrade/1.0)",
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Safari/605.1.15",
           Accept: "application/json, text/plain, */*",
-          Origin: "https://www.nasdaq.com",
-          Referer: "https://www.nasdaq.com/",
         },
       });
       if (!res.ok) return {};
       const json = (await res.json()) as {
-        data?: {
-          primaryData?: {
-            bidPrice?: string;
-            askPrice?: string;
-            bidSize?: string;
-            askSize?: string;
-            lastTradeTimestamp?: string;
-          };
+        quoteResponse?: {
+          result?: Array<{
+            bid?: number;
+            ask?: number;
+            bidSize?: number;
+            askSize?: number;
+            regularMarketTime?: number;
+          }>;
         };
       };
-
-      const primary = json.data?.primaryData;
-      if (!primary) return {};
-
-      const parseMoney = (value?: string) => {
-        if (!value) return undefined;
-        const n = Number(value.replace(/[^0-9.+-]/g, ""));
-        return Number.isFinite(n) && n > 0 ? n : undefined;
-      };
-
-      const parseSize = (value?: string) => {
-        if (!value) return undefined;
-        const n = Number(value.replace(/[^0-9.+-]/g, ""));
-        return Number.isFinite(n) && n >= 0 ? n : undefined;
-      };
-
+      const q = json.quoteResponse?.result?.[0];
+      if (!q) return {};
+      const ok = (n?: number) => (typeof n === "number" && Number.isFinite(n) && n > 0 ? n : undefined);
+      const sz = (n?: number) => (typeof n === "number" && Number.isFinite(n) && n >= 0 ? n : undefined);
       return {
-        bid: parseMoney(primary.bidPrice),
-        ask: parseMoney(primary.askPrice),
-        bidSize: parseSize(primary.bidSize),
-        askSize: parseSize(primary.askSize),
-        asOf: primary.lastTradeTimestamp ? Date.parse(primary.lastTradeTimestamp) : undefined,
+        bid: ok(q.bid),
+        ask: ok(q.ask),
+        bidSize: sz(q.bidSize),
+        askSize: sz(q.askSize),
+        asOf: q.regularMarketTime ? q.regularMarketTime * 1000 : undefined,
       };
     } catch {
       return {};

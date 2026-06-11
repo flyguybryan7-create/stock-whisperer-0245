@@ -1,36 +1,68 @@
-## What to change
+# Plan: Watchlist Grid + Detail Overlay Redesign
 
-### 1. Day high / day low above 52W H / 52W L
-- Extend `LiveQuote` (`src/lib/quotes.functions.ts`) with `dayHigh` and `dayLow`.
-- Populate both paths:
-  - v7 path: read `regularMarketDayHigh` / `regularMarketDayLow` from the Yahoo v7 response.
-  - v8 chart fallback: read `meta.regularMarketDayHigh` / `meta.regularMarketDayLow`; if absent, compute from today's intraday bars (max of `high[]`, min of `low[]` in the regular session window).
-- In `TradingPlatform.tsx`, render a new row directly above the 52W H / 52W L row using the same styling:
-  - `Day H $xx.xx` (green) and `Day L $xx.xx` (red).
-  - Only render when values exist.
+Restructure `TradingPlatform.tsx` into a mobile-first full-screen watchlist with a fixed detail overlay, plus a faster bid/ask feed.
 
-### 2. MACD chart cuts off the blue/red lines (ALAB)
-The bug is in the MACD chart YAxis (`src/components/TradingPlatform.tsx` ~line 1230):
-```
-domain={([min, max]) => { const m = ...; const z = m * 0.6; return [-z, z]; }}
-allowDataOverflow
-```
-This shrinks the domain to 60% of the data range with `allowDataOverflow`, so MACD/Signal lines literally render outside the plot — exactly what the ALAB screenshot shows.
+## 1. Layout shell (TradingPlatform.tsx)
 
-Fix:
-- Replace the domain function with padded auto-fit: `const m = Math.max(Math.abs(min), Math.abs(max)) || 0.1; const z = m * 1.15; return [-z, z];`
-- Remove `allowDataOverflow` so nothing draws past the axis.
-- Result: every stock's MACD chart auto-scales to its own value range (small-cap pennies and large-caps both fit), and lines stay inside the panel.
+- Wrap the whole component in a root `div` with `paddingTop: "env(safe-area-inset-top, 0px)"` and background `#010409`.
+- Make the existing BRYANTRADE header `div` `position: "sticky", top: 0, zIndex: 100` so it stays pinned (and visible below the iPhone notch).
+- Remove the existing two-column grid (watchlist left / detail right). Watchlist becomes the full-screen base view.
 
-### 3. BUY/SELL/HOLD next to each symbol must update every 30s from MACD
-Current code already calls `fetchIntradayBatch` on `refetchInterval: 30_000`, but the badge falls back to a daily-data signal when the batch entry is missing or has < 30 bars, which makes it look stuck. Tighten:
-- Keep the 30s refetch, but also set `refetchIntervalInBackground: true` so it keeps ticking when the tab is not focused.
-- Change `queryKey: ["intradayBatch", watchlist]` to `["intradayBatch", [...watchlist].sort().join(",")]` so the key is value-stable (avoids accidental cache splits / stale entries when the array identity changes).
-- In the badge render, use the live MACD signal whenever batch data exists (even if older than 30 bars use what we have via `getCurrentMacdSignal`); only fall back to the daily-data signal when batch is completely empty. This guarantees the badge reflects the latest blue-vs-red crossover from the 30s polled intraday data.
-- Add a small "·30s" tooltip on the badge so the user can see it's the live MACD-driven value.
+## 2. Detail overlay
 
-No backend schema changes, no new env vars, no UI redesign — three surgical edits to two files.
+- New state: `const [showDetail, setShowDetail] = useState(false)`.
+- Extract the current right-panel detail JSX (chart, quote header, bid/ask, options, etc.) into a fixed overlay:
+  - `position: "fixed", inset: 0, zIndex: 200, background: "#010409", overflowY: "auto"`.
+  - Rendered only when `showDetail`.
+  - Top bar: `← WATCHLIST` button (transparent, `#58a6ff`, 13px/700, padding `12px 16px`) that calls `setShowDetail(false)`.
+- In `onWatchlistRowClick`, after `setSelectedStock(sym)` call `setShowDetail(true)` (reorder-mode branch unchanged — no overlay open).
+
+## 3. 3×4 tile grid
+
+- Replace vertical watchlist list with:
+  - Container: `overflowY: "auto", maxHeight: "calc(100vh - env(safe-area-inset-top, 0px) - 49px)"`.
+  - Grid: `display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, padding: "8px"`.
+- Each tile: `height: 90, position: "relative", padding: "8px 10px", borderRadius: 6, overflow: "hidden"`.
+- Below the grid: `▼ more` label, `#8b949e`, `fontSize: 9`, `textAlign: "center"`.
+
+## 4. Tile content (4 rows)
+
+- **Row 1**: tiny `✕` remove button (fontSize 10, `#6e7681`) + ticker bold 15px white on left; existing reorder `⋮⋮`/`✕` button + `⊕` drop indicator on right. Keep all reorder logic (`reorderModeSym`, `toggleReorderMode`, `onWatchlistRowClick`) untouched.
+- **Row 2**: `stockNames[sym]` truncated (`ellipsis/nowrap/overflow:hidden`), 10px `#8b949e`, marginTop 2.
+- **Row 3**: live price bold 13px `#e6edf3` + `+$X.XX`/`-$X.XX` + `(+X.XX%)` in `#39d353`/`#f85149`, all 11px on one line, marginTop 3.
+- **Row 4**: `$` button (existing inline position editor unchanged). If `pos` exists: `{shares}sh @ ${entry}` in `#8b949e` 9px + P&L `(price-entry)*shares` as `+$X.XX (+X.XX%)` colored green/red. If no position: just the muted `$` button.
+- Remove drag handle from inside tile body (reorder ⋮⋮ on Row 1 right stays).
+- Remove the `{sig}` BUY/SELL/HOLD text span — signal is communicated by background flash.
+- Options flow badge (`C↑`/`P↓`/`UNU`) moved to Row 4 at 9px alongside/replacing the old VWAP slot.
+
+## 5. MACD-driven flashing
+
+- Tile `animation` prop:
+  - BUY → `"flashBuy 1.4s ease-in-out infinite"`
+  - SELL → `"flashSell 1.4s ease-in-out infinite"`
+  - HOLD → `"flashHold 2s ease-in-out infinite"`
+- Add to the existing `<style>` block:
+  - `@keyframes flashHold { 0%,100% { background: rgba(227,179,65,0.12); } 50% { background: rgba(227,179,65,0.03); } }`
+  - Confirm/keep existing `flashBuy`/`flashSell` keyframes (add if missing using same pattern with `#39d353` / `#f85149` rgba).
+- Reorder highlight: when `reorderModeSym === sym`, override border to `2px solid #d2a8ff`.
+
+## 6. Viewport meta + body styles
+
+- Update `index.html` `<meta name="viewport">` to `width=device-width, initial-scale=1, viewport-fit=cover`.
+- In the component's `<style>` block add `body { padding-top: env(safe-area-inset-top, 0px); background: #010409; }`.
+
+## 7. Fastest bid/ask (quotes.functions.ts + TradingPlatform)
+
+- Rewrite `getBidAsk` to call `https://query2.finance.yahoo.com/v8/finance/quote?symbols=${symbol}&fields=bid,ask,bidSize,askSize,regularMarketPrice,regularMarketPreviousClose`.
+- Parse `quoteResponse.result[0]` → return `{ bid, ask, bidSize, askSize }` (null on miss).
+- In `TradingPlatform`, change the `bidask` `useQuery` to `refetchInterval: 250`, `staleTime: 0`, keep `refetchIntervalInBackground: true`.
 
 ## Files touched
-- `src/lib/quotes.functions.ts` — add `dayHigh`/`dayLow` to `LiveQuote` and populate in v7 + v8 paths.
-- `src/components/TradingPlatform.tsx` — render Day H/L row, fix MACD YAxis domain, harden watchlist MACD signal refresh.
+
+- `src/components/TradingPlatform.tsx` — major edit (layout, overlay, grid, tile, flash, styles).
+- `src/lib/quotes.functions.ts` — rewrite `getBidAsk`.
+- `index.html` — viewport meta tag.
+
+## Out of scope
+
+No backend/auth/schema changes. No edits to other routes or components.
