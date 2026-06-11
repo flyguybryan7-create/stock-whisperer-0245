@@ -1825,7 +1825,8 @@ export default function TradingPlatform() {
           </div>
 
         </div>
-      </div>
+        </div>
+      )}
 
       {/* Notification */}
       {notification && (
