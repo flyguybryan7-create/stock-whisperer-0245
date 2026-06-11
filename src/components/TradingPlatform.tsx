@@ -1254,9 +1254,8 @@ export default function TradingPlatform() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "138px 1fr", minHeight: "calc(100vh - 49px)" }}>
-        {/* Watchlist */}
-        <div style={{ borderRight: "1px solid #21262d", background: "#0d1117", overflowY: "auto", maxHeight: "calc(100vh - 49px)" }}>
+      {/* Full-screen watchlist */}
+      <div style={{ background: "#0d1117", overflowY: "auto", maxHeight: "calc(100vh - env(safe-area-inset-top, 0px) - 49px)" }}>
           <div style={{ padding: "6px 6px", borderBottom: "1px solid #21262d", position: "relative" }}>
             <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1, marginBottom: 4 }}>WATCHLIST</div>
             <input
