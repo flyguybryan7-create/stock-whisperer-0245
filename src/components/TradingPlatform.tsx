@@ -1765,19 +1765,33 @@ export default function TradingPlatform() {
             </ResponsiveContainer>
           </ChartCard>
 
-          {/* RSI */}
-          <ChartCard title="RSI (14) — RELATIVE STRENGTH INDEX">
-            <ResponsiveContainer width="100%" height={140}>
-              <AreaChart data={displayData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+          {/* OBV + MFI */}
+          <ChartCard
+            title="OBV · ON-BALANCE VOLUME + MONEY FLOW INDEX"
+            legend={[
+              { label: "OBV (smart money flow)", color: "#79c0ff" },
+              { label: "MFI (price+volume pressure)", color: "#ffa657" },
+              { label: "Overbought 80", color: "#f85149" },
+              { label: "Oversold 20", color: "#39d353" },
+            ]}
+          >
+            <ResponsiveContainer width="100%" height={180}>
+              <ComposedChart data={flowChartData} margin={{ top: 5, right: 40, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                 <XAxis dataKey="date" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} />
-                <YAxis stroke="#8b949e" fontSize={9} domain={[0, 100]} ticks={[0, 30, 50, 70, 100]} width={35} />
+                <YAxis yAxisId="obv" stroke="#79c0ff" fontSize={9} width={50} tickFormatter={(v: number) => Math.abs(v) >= 1e6 ? `${(v/1e6).toFixed(1)}M` : Math.abs(v) >= 1e3 ? `${(v/1e3).toFixed(0)}k` : `${v}`} />
+                <YAxis yAxisId="mfi" orientation="right" stroke="#ffa657" fontSize={9} domain={[0, 100]} ticks={[0,20,50,80,100]} width={30} />
                 <Tooltip content={<CustomTooltip />} />
-                <ReferenceLine y={70} stroke="#f85149" strokeDasharray="3 3" />
-                <ReferenceLine y={30} stroke="#39d353" strokeDasharray="3 3" />
-                <Area type="monotone" dataKey="rsi" stroke="#e3b341" fill="#e3b341" fillOpacity={0.15} strokeWidth={1.5} name="RSI" />
-              </AreaChart>
+                <ReferenceLine yAxisId="mfi" y={80} stroke="#f85149" strokeDasharray="3 3" />
+                <ReferenceLine yAxisId="mfi" y={20} stroke="#39d353" strokeDasharray="3 3" />
+                <Area yAxisId="obv" type="monotone" dataKey="obv" stroke="#79c0ff" fill="#79c0ff" fillOpacity={0.15} strokeWidth={2} name="OBV" />
+                <Line yAxisId="mfi" type="monotone" dataKey="mfi" stroke="#ffa657" strokeWidth={2} dot={false} name="MFI" />
+              </ComposedChart>
             </ResponsiveContainer>
+            <div style={{ fontSize: 9, color: "#8b949e", padding: "4px 4px 0", lineHeight: 1.4 }}>
+              OBV rising → accumulation (smart money buying). OBV falling → distribution (smart money selling).
+              MFI &gt; 80 → overbought warning. MFI &lt; 20 → oversold opportunity. Combines price AND volume — stronger than RSI alone.
+            </div>
           </ChartCard>
 
           {/* MACD */}
