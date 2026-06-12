@@ -17,7 +17,7 @@ import {
   type PushPermission,
 } from "@/lib/push-client";
 import { getShortInterest, type ShortInterest } from "@/lib/shortinterest.functions";
-import { fetchAsiaSemis, fetchFastPulse, fetchMacroNews, fetchSemisPulse } from "@/lib/market-pulse.functions";
+import { fetchFastPulse, fetchMacroNews, fetchGlobalSemiIndex, fetchSemiRiskSentiment } from "@/lib/market-pulse.functions";
 import type { QuoteSnap } from "@/lib/market-pulse.server";
 import { fetchOptionsActivity } from "@/lib/options.functions";
 import type { OptionsActivity } from "@/lib/options.server";
@@ -26,7 +26,7 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  ReferenceLine, AreaChart, Area, ComposedChart, Bar, BarChart, Cell, Scatter,
+  ReferenceLine, Area, ComposedChart, Bar, Cell,
 } from "recharts";
 
 const DEFAULT_STOCKS = [
@@ -516,10 +516,10 @@ export default function TradingPlatform() {
   const callSubscribe = useServerFn(subscribeToPush);
   const callUnsubscribe = useServerFn(unsubscribeFromPush);
   const fetchShort = useServerFn(getShortInterest);
-  const fetchAsiaSemisFn = useServerFn(fetchAsiaSemis);
   const fetchMacroNewsFn = useServerFn(fetchMacroNews);
   const fetchFastPulseFn = useServerFn(fetchFastPulse);
-  const fetchSemisPulseFn = useServerFn(fetchSemisPulse);
+  const fetchGlobalSemiIndexFn = useServerFn(fetchGlobalSemiIndex);
+  const fetchSemiRiskSentimentFn = useServerFn(fetchSemiRiskSentiment);
   const fetchOptionsActivityFn = useServerFn(fetchOptionsActivity);
 
   // Reflect current notification permission + existing subscription.
@@ -630,7 +630,7 @@ export default function TradingPlatform() {
   const { data: bidAskData } = useQuery({
     queryKey: ["bidask", selectedStock],
     queryFn: () => fetchBidAsk({ data: { symbol: selectedStock } }),
-    refetchInterval: 250,
+    refetchInterval: 500,
     refetchIntervalInBackground: true,
     staleTime: 0,
     enabled: !!selectedStock,
@@ -646,14 +646,21 @@ export default function TradingPlatform() {
   });
   const shorts = (shortData as Record<string, ShortInterest> | undefined) ?? {};
 
-  // Asia semiconductor sector pulse — 5 ADRs, refresh every 15s so the badge
-  // in the main price header tracks pre/after-hours moves quickly.
-  const { data: asiaSemis } = useQuery({
-    queryKey: ["asiaSemis"],
-    queryFn: () => fetchAsiaSemisFn(),
+  // Global semiconductor index tracker — 6 major indices, 15s refresh
+  const { data: globalSemis } = useQuery({
+    queryKey: ["globalSemis"],
+    queryFn: () => fetchGlobalSemiIndexFn(),
     staleTime: 12_000,
     refetchInterval: 15_000,
     refetchIntervalInBackground: true,
+  });
+
+  // News-based semiconductor sector risk sentiment — refresh every 5 minutes
+  const { data: semiRiskSent } = useQuery({
+    queryKey: ["semiRiskSentiment"],
+    queryFn: () => fetchSemiRiskSentimentFn(),
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
   });
 
   // Macro market-moving news (CNBC / MarketWatch / WSJ) — refresh every 5 minutes.
@@ -676,23 +683,13 @@ export default function TradingPlatform() {
     refetchInterval: 1_000,
     refetchIntervalInBackground: true,
   });
-  const { data: semisPulse } = useQuery({
-    queryKey: ["semisPulse"],
-    queryFn: () => fetchSemisPulseFn(),
-    staleTime: 2_500,
-    refetchInterval: 3_000,
-    refetchIntervalInBackground: true,
-  });
   const marketPulse = useMemo(() => {
-    if (!fastPulse && !semisPulse) return undefined;
+    if (!fastPulse) return undefined;
     return {
       futures: fastPulse?.futures ?? [],
       vix: fastPulse?.vix ?? null,
-      semisEtfs: semisPulse?.semisEtfs ?? [],
-      semisBreadth: semisPulse?.semisBreadth ?? { advancers: 0, decliners: 0, unchanged: 0, avgChangePct: null, components: [] as QuoteSnap[] },
-      semisRisk: semisPulse?.semisRisk ?? null,
     };
-  }, [fastPulse, semisPulse]);
+  }, [fastPulse]);
 
   // Futures momentum tracker — flash only when there's directional momentum
   // over the last ~10s, not just because the day's change is +/-. Keeps a
@@ -963,6 +960,89 @@ export default function TradingPlatform() {
   const signal = liveMacdSignal.signal;
   const signalFrameLabel = selectedLiveMacdRows.length >= 5 ? "MACD live · 3s refresh" : "MACD daily fallback";
 
+  // OBV + MFI(14) per bar — for the flow chart
+  const flowChartData = useMemo(() => {
+    if (!displayData.length) return [] as Array<Row & { obv: number; mfi: number | null; tp: number }>;
+    const tps = displayData.map((d) => (((d as any).high ?? d.close) + ((d as any).low ?? d.close) + d.close) / 3);
+    let obv = 0;
+    const out: Array<Row & { obv: number; mfi: number | null; tp: number }> = [];
+    for (let i = 0; i < displayData.length; i++) {
+      const d = displayData[i];
+      if (i > 0) {
+        if (d.close > displayData[i - 1].close) obv += d.volume ?? 0;
+        else if (d.close < displayData[i - 1].close) obv -= d.volume ?? 0;
+      }
+      let mfi: number | null = null;
+      if (i >= 14) {
+        let pos = 0, neg = 0;
+        for (let j = i - 13; j <= i; j++) {
+          if (j === 0) continue;
+          const rmf = tps[j] * (displayData[j].volume ?? 0);
+          if (tps[j] > tps[j - 1]) pos += rmf;
+          else if (tps[j] < tps[j - 1]) neg += rmf;
+        }
+        const ratio = neg === 0 ? 100 : pos / neg;
+        mfi = +(100 - 100 / (1 + ratio)).toFixed(2);
+      }
+      out.push({ ...d, obv: +obv.toFixed(0), mfi, tp: +tps[i].toFixed(2) });
+    }
+    return out;
+  }, [displayData]);
+
+  // Master day-trade chart data: adds running VWAP + EMA21 (ema9 already on row)
+  const masterData = useMemo(() => {
+    if (!displayData.length) return [] as Array<Row & { vwap: number; ema21: number }>;
+    let pv = 0, vv = 0;
+    const kEma21 = 2 / 22;
+    let ema21 = displayData[0].close;
+    const out: Array<Row & { vwap: number; ema21: number }> = [];
+    for (let i = 0; i < displayData.length; i++) {
+      const d = displayData[i];
+      const typical = (((d as any).high ?? d.close) + ((d as any).low ?? d.close) + d.close) / 3;
+      pv += typical * (d.volume ?? 0);
+      vv += d.volume ?? 0;
+      const vwap = vv > 0 ? pv / vv : d.close;
+      if (i === 0) ema21 = d.close;
+      else ema21 = d.close * kEma21 + ema21 * (1 - kEma21);
+      out.push({ ...d, vwap: +vwap.toFixed(2), ema21: +ema21.toFixed(2) });
+    }
+    return out;
+  }, [displayData]);
+
+  // Decision strip — last bar metrics
+  const decision = useMemo(() => {
+    const last = masterData[masterData.length - 1];
+    if (!last) {
+      return {
+        trend: "—" as "BULL" | "BEAR" | "—",
+        vwapPos: "—" as "ABOVE" | "BELOW" | "—",
+        vol: "—" as "SURGE" | "NORMAL" | "—",
+        bb: "—" as "SQUEEZE" | "EXPANDING" | "—",
+        macd: signal,
+        bias: "NEUTRAL" as "STRONG BUY" | "STRONG SELL" | "NEUTRAL",
+      };
+    }
+    const trend: "BULL" | "BEAR" | "—" =
+      last.ema9 != null && last.ema21 != null ? (last.ema9 >= last.ema21 ? "BULL" : "BEAR") : "—";
+    const vwapPos: "ABOVE" | "BELOW" | "—" =
+      last.close >= last.vwap ? "ABOVE" : "BELOW";
+    const last20 = masterData.slice(-21, -1);
+    const avgVol = last20.length ? last20.reduce((s, b) => s + (b.volume ?? 0), 0) / last20.length : 0;
+    const vol: "SURGE" | "NORMAL" | "—" =
+      avgVol > 0 ? (((last.volume ?? 0) / avgVol) >= 2 ? "SURGE" : "NORMAL") : "—";
+    const bbWidth = last.bbUpper != null && last.bbLower != null && last.bbMiddle ? (last.bbUpper - last.bbLower) / last.bbMiddle : null;
+    const bb: "SQUEEZE" | "EXPANDING" | "—" = bbWidth == null ? "—" : bbWidth < 0.02 ? "SQUEEZE" : "EXPANDING";
+    let bull = 0, bear = 0;
+    if (trend === "BULL") bull++; else if (trend === "BEAR") bear++;
+    if (vwapPos === "ABOVE") bull++; else if (vwapPos === "BELOW") bear++;
+    if (vol === "SURGE" && (last.close >= last.open)) bull++;
+    if (vol === "SURGE" && (last.close < last.open)) bear++;
+    if (signal === "BUY") bull++; else if (signal === "SELL") bear++;
+    const bias: "STRONG BUY" | "STRONG SELL" | "NEUTRAL" =
+      bull >= 4 ? "STRONG BUY" : bear >= 4 ? "STRONG SELL" : "NEUTRAL";
+    return { trend, vwapPos, vol, bb, macd: signal, bias };
+  }, [masterData, signal]);
+
   // Watch every watchlist symbol; when its signal flips to BUY or SELL,
   // fire a web push to every subscribed device (5-min server-side cooldown).
   useEffect(() => {
@@ -1153,9 +1233,10 @@ export default function TradingPlatform() {
   const mono = "JetBrains Mono, ui-monospace, monospace";
 
   return (
-    <div style={{ minHeight: "100vh", background: "#010409", color: "#e6edf3", fontFamily: mono, fontSize: 12, paddingTop: "env(safe-area-inset-top, 0px)" }}>
+    <div style={{ minHeight: "100vh", width: "100vw", maxWidth: "100vw", overflowX: "hidden", background: "#010409", color: "#e6edf3", fontFamily: mono, fontSize: 12, paddingTop: "env(safe-area-inset-top, 0px)", boxSizing: "border-box" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Orbitron:wght@700;900&display=swap');
+        html, body { height: 100%; width: 100%; overflow-x: hidden; margin: 0; padding: 0; }
         body { padding-top: env(safe-area-inset-top, 0px); background: #010409; }
         ::-webkit-scrollbar { width: 4px; height: 4px; }
         ::-webkit-scrollbar-track { background: #010409; }
@@ -1165,19 +1246,16 @@ export default function TradingPlatform() {
         .btn-primary:hover { filter: brightness(1.2); }
         @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
         @keyframes slideIn { from { transform: translateY(-20px); opacity:0; } to { transform: translateY(0); opacity:1; } }
-        @keyframes flashBuy {
+        @keyframes flow-flash-buy {
           0%,100% { background: rgba(57,211,83,0.85); box-shadow: 0 0 12px rgba(57,211,83,0.9), 0 0 22px rgba(57,211,83,0.55); color: #03110a; }
           50%     { background: rgba(57,211,83,0.25); box-shadow: 0 0 4px rgba(57,211,83,0.4); color: #39d353; }
         }
-        @keyframes flashSell {
+        @keyframes flow-flash-sell {
           0%,100% { background: rgba(248,81,73,0.9); box-shadow: 0 0 12px rgba(248,81,73,0.95), 0 0 22px rgba(248,81,73,0.6); color: #1a0303; }
           50%     { background: rgba(248,81,73,0.25); box-shadow: 0 0 4px rgba(248,81,73,0.45); color: #f85149; }
         }
-        @keyframes tileBuy  { 0%,100% { background: rgba(57,211,83,0.18); } 50% { background: rgba(57,211,83,0.04); } }
-        @keyframes tileSell { 0%,100% { background: rgba(248,81,73,0.20); } 50% { background: rgba(248,81,73,0.04); } }
-        @keyframes flashHold { 0%,100% { background: rgba(227,179,65,0.12); } 50% { background: rgba(227,179,65,0.03); } }
-        .flow-flash-buy  { animation: flashBuy 0.7s ease-in-out infinite; padding: 0 4px; border-radius: 3px; font-weight: 900 !important; }
-        .flow-flash-sell { animation: flashSell 0.7s ease-in-out infinite; padding: 0 4px; border-radius: 3px; font-weight: 900 !important; }
+        .flow-flash-buy  { animation: flow-flash-buy 0.7s ease-in-out infinite; padding: 0 4px; border-radius: 3px; font-weight: 900 !important; }
+        .flow-flash-sell { animation: flow-flash-sell 0.7s ease-in-out infinite; padding: 0 4px; border-radius: 3px; font-weight: 900 !important; }
       `}</style>
 
       {/* Header */}
@@ -1187,14 +1265,32 @@ export default function TradingPlatform() {
           <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 2 }}>PRO TERMINAL</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {marketPulse?.semisRisk && (() => {
-            const r = marketPulse.semisRisk;
+          {semiRiskSent && (() => {
+            const r = semiRiskSent;
             const color = r.level === "EXTREME" ? "#f85149" : r.level === "HIGH" ? "#ff7b29" : r.level === "ELEVATED" ? "#e3b341" : "#39d353";
+            const tip = `Semi sector news sentiment — ${r.level} (${r.score}/100)\nBullish words: ${r.bullishCount} · Bearish words: ${r.bearishCount}\n\n` +
+              (r.headlines.length ? r.headlines.map((h, i) => `${i + 1}. [${h.publisher}] ${h.title}`).join("\n") : "No recent headlines.");
             return (
-              <span title={`Semis sector risk gauge — ${r.level} (${r.score}/100)\n${r.reason}`}
+              <span title={tip}
                 style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px", letterSpacing: 0.5 }}>
                 <span style={{ color: "#8b949e", fontWeight: 800 }}>SEMI RISK</span>
                 {r.level} <span style={{ opacity: 0.7 }}>{r.score}</span>
+              </span>
+            );
+          })()}
+          {globalSemis && globalSemis.avgChangePct != null && (() => {
+            const pct = globalSemis.avgChangePct;
+            const up = pct >= 0;
+            const color = up ? "#39d353" : "#f85149";
+            const tip = "Global semiconductor index avg (KOSPI, STAR 50, SOX, TAIEX, Nikkei 225, Hang Seng Tech)\n\n" +
+              (globalSemis.components ?? [])
+                .map((c) => `${c.name} (${c.symbol}): ${c.changePct == null ? "—" : (c.changePct >= 0 ? "+" : "") + c.changePct.toFixed(2) + "%"}`)
+                .join("\n");
+            return (
+              <span title={tip}
+                style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 800, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px", letterSpacing: 0.5 }}>
+                <span style={{ color: "#8b949e", fontWeight: 800 }}>GLOBAL SEMIS</span>
+                {up ? "+" : ""}{pct.toFixed(2)}%
               </span>
             );
           })()}
@@ -1233,20 +1329,6 @@ export default function TradingPlatform() {
               })}
             </span>
           )}
-          {marketPulse?.semisBreadth && marketPulse.semisBreadth.components.length > 0 && (() => {
-            const b = marketPulse.semisBreadth;
-            const total = b.advancers + b.decliners + b.unchanged;
-            const tip = b.components.map((c: QuoteSnap) => `${c.symbol}: ${c.changePct == null ? "—" : (c.changePct >= 0 ? "+" : "") + c.changePct.toFixed(2) + "%"}`).join("\n");
-            return (
-              <span title={`US semis breadth (12-name basket)\n${tip}`}
-                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, border: "1px solid #21262d", borderRadius: 4, padding: "2px 6px" }}>
-                <span style={{ color: "#8b949e" }}>US SEMIS</span>
-                <span style={{ color: "#39d353" }}>{b.advancers}↑</span>
-                <span style={{ color: "#f85149" }}>{b.decliners}↓</span>
-                <span style={{ color: "#8b949e" }}>/ {total}</span>
-              </span>
-            );
-          })()}
           <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "#39d353" }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#39d353", animation: "pulse 2s infinite" }} />
             LIVE
@@ -1255,7 +1337,7 @@ export default function TradingPlatform() {
       </div>
 
       {/* Full-screen watchlist */}
-      <div style={{ background: "#0d1117", overflowY: "auto", maxHeight: "calc(100vh - env(safe-area-inset-top, 0px) - 49px)" }}>
+      <div style={{ background: "#0d1117", overflow: "hidden", overflowY: "auto", maxHeight: "calc(100vh - env(safe-area-inset-top, 0px) - 49px)", width: "100%", maxWidth: "100vw", boxSizing: "border-box" }}>
           <div style={{ padding: "6px 6px", borderBottom: "1px solid #21262d", position: "relative" }}>
             <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1, marginBottom: 4 }}>WATCHLIST</div>
             <input
@@ -1293,7 +1375,7 @@ export default function TradingPlatform() {
               </div>
             )}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, padding: "8px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6, padding: "6px", width: "100vw", maxWidth: "100vw", boxSizing: "border-box" }}>
             {filteredStocks.map(sym => {
               const d = allData[sym] || [];
               const l = d[d.length - 1]; const p = d[d.length - 2];
@@ -1308,10 +1390,14 @@ export default function TradingPlatform() {
               const pl = pos && livePrice != null ? (livePrice - pos.entry) * pos.shares : 0;
               const plPct = pos && livePrice != null && pos.entry > 0 ? ((livePrice - pos.entry) / pos.entry) * 100 : 0;
               const plColor = pl >= 0 ? "#39d353" : "#f85149";
-              const flashAnim =
-                sig === "BUY" ? "tileBuy 1.4s ease-in-out infinite" :
-                sig === "SELL" ? "tileSell 1.4s ease-in-out infinite" :
-                "flashHold 2s ease-in-out infinite";
+              const tileBg =
+                sig === "BUY" ? "rgba(57,211,83,0.15)" :
+                sig === "SELL" ? "rgba(248,81,73,0.15)" :
+                "rgba(227,179,65,0.10)";
+              const tileBorderColor =
+                sig === "BUY" ? "#39d353" :
+                sig === "SELL" ? "#f85149" :
+                "#e3b341";
               const oa = optionsActivity[sym];
               const oaShow = oa && (oa.callVolume + oa.putVolume) >= 50;
               const oaColor = oa?.bias === "BULL" ? "#39d353" : oa?.bias === "BEAR" ? "#f85149" : "#d29922";
@@ -1319,7 +1405,7 @@ export default function TradingPlatform() {
               const border =
                 reorderModeSym === sym ? "2px solid #d2a8ff"
                 : selectedStock === sym ? "1px solid #58a6ff"
-                : "1px solid #21262d";
+                : `1px solid ${tileBorderColor}`;
               return (
                 <div
                   key={sym}
@@ -1329,13 +1415,13 @@ export default function TradingPlatform() {
                   title={reorderModeSym && reorderModeSym !== sym ? `Move ${reorderModeSym} here` : "Select stock"}
                   style={{
                     position: "relative",
+                    minWidth: 0,
                     height: 90,
                     padding: "8px 10px",
                     borderRadius: 6,
                     overflow: "hidden",
                     border,
-                    background: "#0d1117",
-                    animation: flashAnim,
+                    background: tileBg,
                     userSelect: "none",
                     WebkitUserSelect: "none",
                     WebkitTouchCallout: "none",
@@ -1352,12 +1438,12 @@ export default function TradingPlatform() {
                       >✕</button>
                       {(() => {
                         const flow = flowSignals[sym];
-                        if (!flow) return <span style={{ fontWeight: 700, fontSize: 15, color: "#e6edf3" }}>{sym}</span>;
+                        if (!flow) return <span style={{ fontWeight: 700, fontSize: "clamp(13px, 3.5vw, 16px)", color: "#e6edf3" }}>{sym}</span>;
                         const cls = flow.kind === "BUY_SURGE" ? "flow-flash-buy" : "flow-flash-sell";
                         const tip = flow.kind === "BUY_SURGE"
                           ? `MASSIVE BUYING — ${flow.volRatio.toFixed(1)}× avg minute volume, +${flow.pricePct.toFixed(2)}% on the bar`
                           : `MASSIVE SELLING — ${flow.volRatio.toFixed(1)}× avg minute volume, ${flow.pricePct.toFixed(2)}% on the bar`;
-                        return <span className={cls} style={{ fontWeight: 700, fontSize: 15 }} title={tip}>{sym}</span>;
+                        return <span className={cls} style={{ fontWeight: 700, fontSize: "clamp(13px, 3.5vw, 16px)" }} title={tip}>{sym}</span>;
                       })()}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
@@ -1380,21 +1466,23 @@ export default function TradingPlatform() {
                   </div>
 
                   {/* Row 2 — company name */}
-                  <div style={{ fontSize: 10, color: "#8b949e", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.1 }}>
+                  <div style={{ fontSize: "clamp(9px, 2.2vw, 11px)", color: "#8b949e", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.1 }}>
                     {stockNames[sym] || ""}
                   </div>
 
-                  {/* Row 3 — price + change */}
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginTop: 3, fontSize: 11, lineHeight: 1.1, overflow: "hidden", whiteSpace: "nowrap" }}>
+                  {/* Row 3 — price (line 1) + change (line 2) */}
+                  <div style={{ marginTop: 3, lineHeight: 1.15, overflow: "hidden", whiteSpace: "nowrap" }}>
                     {livePrice != null ? (
                       <>
-                        <span style={{ fontWeight: 700, fontSize: 13, color: "#e6edf3" }}>${livePrice.toFixed(2)}</span>
-                        <span style={{ color: liveChg >= 0 ? "#39d353" : "#f85149" }}>
+                        <div style={{ fontWeight: 700, fontSize: "clamp(10px, 2.8vw, 13px)", color: "#e6edf3", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          ${livePrice.toFixed(2)}
+                        </div>
+                        <div style={{ fontSize: "clamp(9px, 2.2vw, 11px)", color: liveChg >= 0 ? "#39d353" : "#f85149", overflow: "hidden", textOverflow: "ellipsis" }}>
                           {liveChg >= 0 ? "+" : "-"}${Math.abs(liveChgAbs).toFixed(2)} ({liveChg >= 0 ? "+" : ""}{liveChg.toFixed(2)}%)
-                        </span>
+                        </div>
                       </>
                     ) : (
-                      <span style={{ color: "#484f58" }}>Loading…</span>
+                      <span style={{ color: "#484f58", fontSize: "clamp(9px, 2.2vw, 11px)" }}>Loading…</span>
                     )}
                   </div>
 
@@ -1432,7 +1520,7 @@ export default function TradingPlatform() {
                         style={{
                           fontSize: 9, fontWeight: 900, color: oaColor,
                           border: `1px solid ${oaColor}`, borderRadius: 2, padding: "0 3px",
-                          animation: oa.unusual ? "flashBuy 1.1s ease-in-out infinite" : undefined,
+                          background: oa.unusual ? `${oaColor}22` : undefined,
                         }}
                       >{oaLabel}</span>
                     )}
@@ -1560,23 +1648,6 @@ export default function TradingPlatform() {
                           </>
                         );
                       })()}
-                      {asiaSemis?.avgChangePct != null && (() => {
-                        const pct = asiaSemis.avgChangePct;
-                        const up = pct >= 0;
-                        const color = up ? "#39d353" : "#f85149";
-                        const tip = (asiaSemis.components ?? [])
-                          .map((c: { name: string; symbol: string; changePct: number | null }) =>
-                            `${c.name} (${c.symbol}): ${c.changePct == null ? "—" : (c.changePct >= 0 ? "+" : "") + c.changePct.toFixed(2) + "%"}`)
-                          .join("\n");
-                        return (
-                          <span
-                            title={`Asia semiconductor sector daily move (avg of TSMC, Samsung, SK Hynix, Tokyo Electron, Advantest)\n\n${tip}`}
-                            style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 800, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px", lineHeight: 1 }}>
-                            <span style={{ color: "#8b949e", fontSize: 9, fontWeight: 800, letterSpacing: 0.5 }}>ASIA SEMIS</span>
-                            {up ? "▲" : "▼"}{up ? "+" : ""}{pct.toFixed(2)}%
-                          </span>
-                        );
-                      })()}
                     </>
                   ) : <span style={{ fontSize: 13, color: "#8b949e" }}>…</span>}
                   {sessLabel && (
@@ -1694,19 +1765,121 @@ export default function TradingPlatform() {
             </ResponsiveContainer>
           </ChartCard>
 
-          {/* RSI */}
-          <ChartCard title="RSI (14) — RELATIVE STRENGTH INDEX">
-            <ResponsiveContainer width="100%" height={140}>
-              <AreaChart data={displayData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+          {/* BRYANTRADE MASTER day-trade chart */}
+          <ChartCard
+            title="⚡ BRYANTRADE MASTER · DAY TRADE SIGNAL CHART"
+            legend={[
+              { label: "Buy Vol (green bar)", color: "#39d353" },
+              { label: "Sell Vol (red bar)", color: "#f85149" },
+              { label: "VWAP", color: "#ff4fa3" },
+              { label: "EMA9", color: "#79c0ff" },
+              { label: "EMA21", color: "#d2a8ff" },
+              { label: "BB Squeeze", color: "#ffa657" },
+            ]}
+          >
+            <ResponsiveContainer width="100%" height={420}>
+              <ComposedChart data={masterData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                 <XAxis dataKey="date" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} />
-                <YAxis stroke="#8b949e" fontSize={9} domain={[0, 100]} ticks={[0, 30, 50, 70, 100]} width={35} />
+                <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={["auto", "auto"]} tickFormatter={(v: number) => `$${v}`} width={55} />
+                <YAxis yAxisId="vol" orientation="right" hide domain={[0, (dataMax: number) => dataMax * 3]} />
                 <Tooltip content={<CustomTooltip />} />
-                <ReferenceLine y={70} stroke="#f85149" strokeDasharray="3 3" />
-                <ReferenceLine y={30} stroke="#39d353" strokeDasharray="3 3" />
-                <Area type="monotone" dataKey="rsi" stroke="#e3b341" fill="#e3b341" fillOpacity={0.15} strokeWidth={1.5} name="RSI" />
-              </AreaChart>
+                <Bar yAxisId="vol" dataKey="volume" name="Volume" isAnimationActive={false}>
+                  {masterData.map((d, i) => (
+                    <Cell key={i} fill={d.close >= d.open ? "#39d353" : "#f85149"} fillOpacity={0.6} />
+                  ))}
+                </Bar>
+                <Line type="monotone" dataKey="vwap" stroke="#ff4fa3" strokeWidth={2.5} dot={false} strokeDasharray="6 3" name="VWAP" />
+                <Line type="monotone" dataKey="ema9" stroke="#79c0ff" strokeWidth={2} dot={false} name="EMA9" />
+                <Line type="monotone" dataKey="ema21" stroke="#d2a8ff" strokeWidth={1.5} dot={false} name="EMA21" />
+                {(() => {
+                  const last = masterData[masterData.length - 1];
+                  if (!last || last.bbUpper == null || last.bbLower == null || !last.bbMiddle) return null;
+                  const width = (last.bbUpper - last.bbLower) / last.bbMiddle;
+                  if (width >= 0.02) return null;
+                  return (
+                    <ReferenceLine y={last.close} stroke="#ffa657" strokeDasharray="4 4"
+                      label={{ value: "SQUEEZE", fill: "#ffa657", fontSize: 9, position: "insideTopRight" }} />
+                  );
+                })()}
+                {masterData.map((d, i) => {
+                  if (d.macdAlert === "BUY") {
+                    return (
+                      <ReferenceLine key={`b${i}`} x={d.date} stroke="#39d353" strokeDasharray="2 4"
+                        label={{ value: "B", fill: "#39d353", fontSize: 9, position: "top" }} />
+                    );
+                  }
+                  if (d.macdAlert === "SELL") {
+                    return (
+                      <ReferenceLine key={`s${i}`} x={d.date} stroke="#f85149" strokeDasharray="2 4"
+                        label={{ value: "S", fill: "#f85149", fontSize: 9, position: "top" }} />
+                    );
+                  }
+                  return null;
+                })}
+              </ComposedChart>
             </ResponsiveContainer>
+            <div style={{ fontSize: 9, color: "#8b949e", padding: "4px 4px 0", lineHeight: 1.4 }}>
+              Green bars = buy volume dominance · Red bars = sell volume dominance · Pink dashed = VWAP (stay above for long bias) ·
+              Blue = EMA9 · Purple = EMA21 · Orange = BB Squeeze warning · B/S markers = MACD crossover signals
+            </div>
+            {/* Decision strip */}
+            {(() => {
+              const badge = (label: string, value: string, color: string) => (
+                <span key={label} style={{
+                  fontSize: 10, fontWeight: 800, padding: "3px 7px", borderRadius: 4, marginRight: 4,
+                  background: `${color}33`, border: `1px solid ${color}`, color,
+                  display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap",
+                }}>
+                  <span style={{ color: "#8b949e", fontWeight: 800 }}>{label}</span>{value}
+                </span>
+              );
+              const cTrend = decision.trend === "BULL" ? "#39d353" : decision.trend === "BEAR" ? "#f85149" : "#8b949e";
+              const cVwap  = decision.vwapPos === "ABOVE" ? "#39d353" : decision.vwapPos === "BELOW" ? "#f85149" : "#8b949e";
+              const cVol   = decision.vol === "SURGE" ? "#ffa657" : "#8b949e";
+              const cBB    = decision.bb === "SQUEEZE" ? "#ffa657" : "#8b949e";
+              const cMacd  = decision.macd === "BUY" ? "#39d353" : decision.macd === "SELL" ? "#f85149" : "#e3b341";
+              const cBias  = decision.bias === "STRONG BUY" ? "#39d353" : decision.bias === "STRONG SELL" ? "#f85149" : "#e3b341";
+              return (
+                <div style={{ display: "flex", flexWrap: "wrap", marginTop: 8, gap: 4 }}>
+                  {badge("TREND", decision.trend, cTrend)}
+                  {badge("VWAP", decision.vwapPos, cVwap)}
+                  {badge("VOL", decision.vol, cVol)}
+                  {badge("BB", decision.bb, cBB)}
+                  {badge("MACD", decision.macd, cMacd)}
+                  {badge("BIAS", decision.bias, cBias)}
+                </div>
+              );
+            })()}
+          </ChartCard>
+
+          {/* OBV + MFI */}
+          <ChartCard
+            title="OBV · ON-BALANCE VOLUME + MONEY FLOW INDEX"
+            legend={[
+              { label: "OBV (smart money flow)", color: "#79c0ff" },
+              { label: "MFI (price+volume pressure)", color: "#ffa657" },
+              { label: "Overbought 80", color: "#f85149" },
+              { label: "Oversold 20", color: "#39d353" },
+            ]}
+          >
+            <ResponsiveContainer width="100%" height={180}>
+              <ComposedChart data={flowChartData} margin={{ top: 5, right: 40, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
+                <XAxis dataKey="date" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} />
+                <YAxis yAxisId="obv" stroke="#79c0ff" fontSize={9} width={50} tickFormatter={(v: number) => Math.abs(v) >= 1e6 ? `${(v/1e6).toFixed(1)}M` : Math.abs(v) >= 1e3 ? `${(v/1e3).toFixed(0)}k` : `${v}`} />
+                <YAxis yAxisId="mfi" orientation="right" stroke="#ffa657" fontSize={9} domain={[0, 100]} ticks={[0,20,50,80,100]} width={30} />
+                <Tooltip content={<CustomTooltip />} />
+                <ReferenceLine yAxisId="mfi" y={80} stroke="#f85149" strokeDasharray="3 3" />
+                <ReferenceLine yAxisId="mfi" y={20} stroke="#39d353" strokeDasharray="3 3" />
+                <Area yAxisId="obv" type="monotone" dataKey="obv" stroke="#79c0ff" fill="#79c0ff" fillOpacity={0.15} strokeWidth={2} name="OBV" />
+                <Line yAxisId="mfi" type="monotone" dataKey="mfi" stroke="#ffa657" strokeWidth={2} dot={false} name="MFI" />
+              </ComposedChart>
+            </ResponsiveContainer>
+            <div style={{ fontSize: 9, color: "#8b949e", padding: "4px 4px 0", lineHeight: 1.4 }}>
+              OBV rising → accumulation (smart money buying). OBV falling → distribution (smart money selling).
+              MFI &gt; 80 → overbought warning. MFI &lt; 20 → oversold opportunity. Combines price AND volume — stronger than RSI alone.
+            </div>
           </ChartCard>
 
           {/* MACD */}
