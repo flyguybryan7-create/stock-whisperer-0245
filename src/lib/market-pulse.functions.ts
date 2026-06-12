@@ -5,6 +5,8 @@ import {
   fetchMacroNewsSnapshot,
   fetchMarketPulseSnapshot,
   fetchSemisPulseSnapshot,
+  fetchGlobalSemiIndexSnapshot,
+  fetchSemiRiskSentimentSnapshot,
 } from "./market-pulse.server";
 
 export const fetchAsiaSemis = createServerFn({ method: "GET" }).handler(async () => {
@@ -25,4 +27,12 @@ export const fetchFastPulse = createServerFn({ method: "GET" }).handler(async ()
 
 export const fetchSemisPulse = createServerFn({ method: "GET" }).handler(async () => {
   return fetchSemisPulseSnapshot();
+});
+
+export const fetchGlobalSemiIndex = createServerFn({ method: "GET" }).handler(async () => {
+  return fetchGlobalSemiIndexSnapshot();
+});
+
+export const fetchSemiRiskSentiment = createServerFn({ method: "GET" }).handler(async () => {
+  return fetchSemiRiskSentimentSnapshot();
 });
