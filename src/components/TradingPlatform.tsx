@@ -1765,6 +1765,94 @@ export default function TradingPlatform() {
             </ResponsiveContainer>
           </ChartCard>
 
+          {/* BRYANTRADE MASTER day-trade chart */}
+          <ChartCard
+            title="⚡ BRYANTRADE MASTER · DAY TRADE SIGNAL CHART"
+            legend={[
+              { label: "Buy Vol (green bar)", color: "#39d353" },
+              { label: "Sell Vol (red bar)", color: "#f85149" },
+              { label: "VWAP", color: "#ff4fa3" },
+              { label: "EMA9", color: "#79c0ff" },
+              { label: "EMA21", color: "#d2a8ff" },
+              { label: "BB Squeeze", color: "#ffa657" },
+            ]}
+          >
+            <ResponsiveContainer width="100%" height={420}>
+              <ComposedChart data={masterData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
+                <XAxis dataKey="date" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} />
+                <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={["auto", "auto"]} tickFormatter={(v: number) => `$${v}`} width={55} />
+                <YAxis yAxisId="vol" orientation="right" hide domain={[0, (dataMax: number) => dataMax * 3]} />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar yAxisId="vol" dataKey="volume" name="Volume" isAnimationActive={false}>
+                  {masterData.map((d, i) => (
+                    <Cell key={i} fill={d.close >= d.open ? "#39d353" : "#f85149"} fillOpacity={0.6} />
+                  ))}
+                </Bar>
+                <Line type="monotone" dataKey="vwap" stroke="#ff4fa3" strokeWidth={2.5} dot={false} strokeDasharray="6 3" name="VWAP" />
+                <Line type="monotone" dataKey="ema9" stroke="#79c0ff" strokeWidth={2} dot={false} name="EMA9" />
+                <Line type="monotone" dataKey="ema21" stroke="#d2a8ff" strokeWidth={1.5} dot={false} name="EMA21" />
+                {(() => {
+                  const last = masterData[masterData.length - 1];
+                  if (!last || last.bbUpper == null || last.bbLower == null || !last.bbMiddle) return null;
+                  const width = (last.bbUpper - last.bbLower) / last.bbMiddle;
+                  if (width >= 0.02) return null;
+                  return (
+                    <ReferenceLine y={last.close} stroke="#ffa657" strokeDasharray="4 4"
+                      label={{ value: "SQUEEZE", fill: "#ffa657", fontSize: 9, position: "insideTopRight" }} />
+                  );
+                })()}
+                {masterData.map((d, i) => {
+                  if (d.macdAlert === "BUY") {
+                    return (
+                      <ReferenceLine key={`b${i}`} x={d.date} stroke="#39d353" strokeDasharray="2 4"
+                        label={{ value: "B", fill: "#39d353", fontSize: 9, position: "top" }} />
+                    );
+                  }
+                  if (d.macdAlert === "SELL") {
+                    return (
+                      <ReferenceLine key={`s${i}`} x={d.date} stroke="#f85149" strokeDasharray="2 4"
+                        label={{ value: "S", fill: "#f85149", fontSize: 9, position: "top" }} />
+                    );
+                  }
+                  return null;
+                })}
+              </ComposedChart>
+            </ResponsiveContainer>
+            <div style={{ fontSize: 9, color: "#8b949e", padding: "4px 4px 0", lineHeight: 1.4 }}>
+              Green bars = buy volume dominance · Red bars = sell volume dominance · Pink dashed = VWAP (stay above for long bias) ·
+              Blue = EMA9 · Purple = EMA21 · Orange = BB Squeeze warning · B/S markers = MACD crossover signals
+            </div>
+            {/* Decision strip */}
+            {(() => {
+              const badge = (label: string, value: string, color: string) => (
+                <span key={label} style={{
+                  fontSize: 10, fontWeight: 800, padding: "3px 7px", borderRadius: 4, marginRight: 4,
+                  background: `${color}33`, border: `1px solid ${color}`, color,
+                  display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap",
+                }}>
+                  <span style={{ color: "#8b949e", fontWeight: 800 }}>{label}</span>{value}
+                </span>
+              );
+              const cTrend = decision.trend === "BULL" ? "#39d353" : decision.trend === "BEAR" ? "#f85149" : "#8b949e";
+              const cVwap  = decision.vwapPos === "ABOVE" ? "#39d353" : decision.vwapPos === "BELOW" ? "#f85149" : "#8b949e";
+              const cVol   = decision.vol === "SURGE" ? "#ffa657" : "#8b949e";
+              const cBB    = decision.bb === "SQUEEZE" ? "#ffa657" : "#8b949e";
+              const cMacd  = decision.macd === "BUY" ? "#39d353" : decision.macd === "SELL" ? "#f85149" : "#e3b341";
+              const cBias  = decision.bias === "STRONG BUY" ? "#39d353" : decision.bias === "STRONG SELL" ? "#f85149" : "#e3b341";
+              return (
+                <div style={{ display: "flex", flexWrap: "wrap", marginTop: 8, gap: 4 }}>
+                  {badge("TREND", decision.trend, cTrend)}
+                  {badge("VWAP", decision.vwapPos, cVwap)}
+                  {badge("VOL", decision.vol, cVol)}
+                  {badge("BB", decision.bb, cBB)}
+                  {badge("MACD", decision.macd, cMacd)}
+                  {badge("BIAS", decision.bias, cBias)}
+                </div>
+              );
+            })()}
+          </ChartCard>
+
           {/* OBV + MFI */}
           <ChartCard
             title="OBV · ON-BALANCE VOLUME + MONEY FLOW INDEX"
