@@ -630,7 +630,7 @@ export default function TradingPlatform() {
   const { data: bidAskData } = useQuery({
     queryKey: ["bidask", selectedStock],
     queryFn: () => fetchBidAsk({ data: { symbol: selectedStock } }),
-    refetchInterval: 250,
+    refetchInterval: 500,
     refetchIntervalInBackground: true,
     staleTime: 0,
     enabled: !!selectedStock,
@@ -646,14 +646,21 @@ export default function TradingPlatform() {
   });
   const shorts = (shortData as Record<string, ShortInterest> | undefined) ?? {};
 
-  // Asia semiconductor sector pulse — 5 ADRs, refresh every 15s so the badge
-  // in the main price header tracks pre/after-hours moves quickly.
-  const { data: asiaSemis } = useQuery({
-    queryKey: ["asiaSemis"],
-    queryFn: () => fetchAsiaSemisFn(),
+  // Global semiconductor index tracker — 6 major indices, 15s refresh
+  const { data: globalSemis } = useQuery({
+    queryKey: ["globalSemis"],
+    queryFn: () => fetchGlobalSemiIndexFn(),
     staleTime: 12_000,
     refetchInterval: 15_000,
     refetchIntervalInBackground: true,
+  });
+
+  // News-based semiconductor sector risk sentiment — refresh every 5 minutes
+  const { data: semiRiskSent } = useQuery({
+    queryKey: ["semiRiskSentiment"],
+    queryFn: () => fetchSemiRiskSentimentFn(),
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
   });
 
   // Macro market-moving news (CNBC / MarketWatch / WSJ) — refresh every 5 minutes.
@@ -676,23 +683,13 @@ export default function TradingPlatform() {
     refetchInterval: 1_000,
     refetchIntervalInBackground: true,
   });
-  const { data: semisPulse } = useQuery({
-    queryKey: ["semisPulse"],
-    queryFn: () => fetchSemisPulseFn(),
-    staleTime: 2_500,
-    refetchInterval: 3_000,
-    refetchIntervalInBackground: true,
-  });
   const marketPulse = useMemo(() => {
-    if (!fastPulse && !semisPulse) return undefined;
+    if (!fastPulse) return undefined;
     return {
       futures: fastPulse?.futures ?? [],
       vix: fastPulse?.vix ?? null,
-      semisEtfs: semisPulse?.semisEtfs ?? [],
-      semisBreadth: semisPulse?.semisBreadth ?? { advancers: 0, decliners: 0, unchanged: 0, avgChangePct: null, components: [] as QuoteSnap[] },
-      semisRisk: semisPulse?.semisRisk ?? null,
     };
-  }, [fastPulse, semisPulse]);
+  }, [fastPulse]);
 
   // Futures momentum tracker — flash only when there's directional momentum
   // over the last ~10s, not just because the day's change is +/-. Keeps a
