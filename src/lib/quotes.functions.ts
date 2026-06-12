@@ -762,40 +762,34 @@ export const getBidAsk = createServerFn({ method: "POST" })
     return { symbol };
   })
   .handler(async ({ data }): Promise<BidAsk> => {
-    try {
-      // Yahoo Finance quote endpoint — fastest source for streaming bid/ask.
-      const url = `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(data.symbol)}&fields=bid,ask,bidSize,askSize,regularMarketPrice,regularMarketPreviousClose`;
-      const res = await fetch(url, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Safari/605.1.15",
-          Accept: "application/json, text/plain, */*",
-        },
-      });
-      if (!res.ok) return {};
-      const json = (await res.json()) as {
-        quoteResponse?: {
-          result?: Array<{
-            bid?: number;
-            ask?: number;
-            bidSize?: number;
-            askSize?: number;
-            regularMarketTime?: number;
-          }>;
+    // Pre-June-7 working implementation: Yahoo Finance v7 detail endpoint
+    // with a simple Mozilla User-Agent. Try query1 first, fall back to query2.
+    const fields = "bid,ask,bidSize,askSize,regularMarketPrice,regularMarketPreviousClose,regularMarketOpen";
+    for (const host of ["query1.finance.yahoo.com", "query2.finance.yahoo.com"]) {
+      try {
+        const url = `https://${host}/v7/finance/quote?symbols=${encodeURIComponent(data.symbol)}&fields=${fields}`;
+        const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+        if (!res.ok) continue;
+        const json = (await res.json()) as {
+          quoteResponse?: {
+            result?: Array<{ bid?: number; ask?: number; bidSize?: number; askSize?: number; regularMarketTime?: number }>;
+          };
         };
-      };
-      const q = json.quoteResponse?.result?.[0];
-      if (!q) return {};
-      const ok = (n?: number) => (typeof n === "number" && Number.isFinite(n) && n > 0 ? n : undefined);
-      const sz = (n?: number) => (typeof n === "number" && Number.isFinite(n) && n >= 0 ? n : undefined);
-      return {
-        bid: ok(q.bid),
-        ask: ok(q.ask),
-        bidSize: sz(q.bidSize),
-        askSize: sz(q.askSize),
-        asOf: q.regularMarketTime ? q.regularMarketTime * 1000 : undefined,
-      };
-    } catch {
-      return {};
+        const q = json.quoteResponse?.result?.[0];
+        if (!q) continue;
+        const bid = typeof q.bid === "number" && q.bid > 0 ? q.bid : undefined;
+        const ask = typeof q.ask === "number" && q.ask > 0 ? q.ask : undefined;
+        if (bid == null && ask == null) continue;
+        return {
+          bid,
+          ask,
+          bidSize: typeof q.bidSize === "number" ? q.bidSize : undefined,
+          askSize: typeof q.askSize === "number" ? q.askSize : undefined,
+          asOf: q.regularMarketTime ? q.regularMarketTime * 1000 : Date.now(),
+        };
+      } catch {
+        /* try next host */
+      }
     }
+    return {};
   });
