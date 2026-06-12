@@ -960,6 +960,89 @@ export default function TradingPlatform() {
   const signal = liveMacdSignal.signal;
   const signalFrameLabel = selectedLiveMacdRows.length >= 5 ? "MACD live · 3s refresh" : "MACD daily fallback";
 
+  // OBV + MFI(14) per bar — for the flow chart
+  const flowChartData = useMemo(() => {
+    if (!displayData.length) return [] as Array<Row & { obv: number; mfi: number | null; tp: number }>;
+    const tps = displayData.map((d) => (((d as any).high ?? d.close) + ((d as any).low ?? d.close) + d.close) / 3);
+    let obv = 0;
+    const out: Array<Row & { obv: number; mfi: number | null; tp: number }> = [];
+    for (let i = 0; i < displayData.length; i++) {
+      const d = displayData[i];
+      if (i > 0) {
+        if (d.close > displayData[i - 1].close) obv += d.volume ?? 0;
+        else if (d.close < displayData[i - 1].close) obv -= d.volume ?? 0;
+      }
+      let mfi: number | null = null;
+      if (i >= 14) {
+        let pos = 0, neg = 0;
+        for (let j = i - 13; j <= i; j++) {
+          if (j === 0) continue;
+          const rmf = tps[j] * (displayData[j].volume ?? 0);
+          if (tps[j] > tps[j - 1]) pos += rmf;
+          else if (tps[j] < tps[j - 1]) neg += rmf;
+        }
+        const ratio = neg === 0 ? 100 : pos / neg;
+        mfi = +(100 - 100 / (1 + ratio)).toFixed(2);
+      }
+      out.push({ ...d, obv: +obv.toFixed(0), mfi, tp: +tps[i].toFixed(2) });
+    }
+    return out;
+  }, [displayData]);
+
+  // Master day-trade chart data: adds running VWAP + EMA21 (ema9 already on row)
+  const masterData = useMemo(() => {
+    if (!displayData.length) return [] as Array<Row & { vwap: number; ema21: number }>;
+    let pv = 0, vv = 0;
+    const kEma21 = 2 / 22;
+    let ema21 = displayData[0].close;
+    const out: Array<Row & { vwap: number; ema21: number }> = [];
+    for (let i = 0; i < displayData.length; i++) {
+      const d = displayData[i];
+      const typical = (((d as any).high ?? d.close) + ((d as any).low ?? d.close) + d.close) / 3;
+      pv += typical * (d.volume ?? 0);
+      vv += d.volume ?? 0;
+      const vwap = vv > 0 ? pv / vv : d.close;
+      if (i === 0) ema21 = d.close;
+      else ema21 = d.close * kEma21 + ema21 * (1 - kEma21);
+      out.push({ ...d, vwap: +vwap.toFixed(2), ema21: +ema21.toFixed(2) });
+    }
+    return out;
+  }, [displayData]);
+
+  // Decision strip — last bar metrics
+  const decision = useMemo(() => {
+    const last = masterData[masterData.length - 1];
+    if (!last) {
+      return {
+        trend: "—" as "BULL" | "BEAR" | "—",
+        vwapPos: "—" as "ABOVE" | "BELOW" | "—",
+        vol: "—" as "SURGE" | "NORMAL" | "—",
+        bb: "—" as "SQUEEZE" | "EXPANDING" | "—",
+        macd: signal,
+        bias: "NEUTRAL" as "STRONG BUY" | "STRONG SELL" | "NEUTRAL",
+      };
+    }
+    const trend: "BULL" | "BEAR" | "—" =
+      last.ema9 != null && last.ema21 != null ? (last.ema9 >= last.ema21 ? "BULL" : "BEAR") : "—";
+    const vwapPos: "ABOVE" | "BELOW" | "—" =
+      last.close >= last.vwap ? "ABOVE" : "BELOW";
+    const last20 = masterData.slice(-21, -1);
+    const avgVol = last20.length ? last20.reduce((s, b) => s + (b.volume ?? 0), 0) / last20.length : 0;
+    const vol: "SURGE" | "NORMAL" | "—" =
+      avgVol > 0 ? (((last.volume ?? 0) / avgVol) >= 2 ? "SURGE" : "NORMAL") : "—";
+    const bbWidth = last.bbUpper != null && last.bbLower != null && last.bbMiddle ? (last.bbUpper - last.bbLower) / last.bbMiddle : null;
+    const bb: "SQUEEZE" | "EXPANDING" | "—" = bbWidth == null ? "—" : bbWidth < 0.02 ? "SQUEEZE" : "EXPANDING";
+    let bull = 0, bear = 0;
+    if (trend === "BULL") bull++; else if (trend === "BEAR") bear++;
+    if (vwapPos === "ABOVE") bull++; else if (vwapPos === "BELOW") bear++;
+    if (vol === "SURGE" && (last.close >= last.open)) bull++;
+    if (vol === "SURGE" && (last.close < last.open)) bear++;
+    if (signal === "BUY") bull++; else if (signal === "SELL") bear++;
+    const bias: "STRONG BUY" | "STRONG SELL" | "NEUTRAL" =
+      bull >= 4 ? "STRONG BUY" : bear >= 4 ? "STRONG SELL" : "NEUTRAL";
+    return { trend, vwapPos, vol, bb, macd: signal, bias };
+  }, [masterData, signal]);
+
   // Watch every watchlist symbol; when its signal flips to BUY or SELL,
   // fire a web push to every subscribed device (5-min server-side cooldown).
   useEffect(() => {
