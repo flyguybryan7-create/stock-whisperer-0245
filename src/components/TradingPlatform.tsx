@@ -1561,23 +1561,6 @@ export default function TradingPlatform() {
                           </>
                         );
                       })()}
-                      {asiaSemis?.avgChangePct != null && (() => {
-                        const pct = asiaSemis.avgChangePct;
-                        const up = pct >= 0;
-                        const color = up ? "#39d353" : "#f85149";
-                        const tip = (asiaSemis.components ?? [])
-                          .map((c: { name: string; symbol: string; changePct: number | null }) =>
-                            `${c.name} (${c.symbol}): ${c.changePct == null ? "—" : (c.changePct >= 0 ? "+" : "") + c.changePct.toFixed(2) + "%"}`)
-                          .join("\n");
-                        return (
-                          <span
-                            title={`Asia semiconductor sector daily move (avg of TSMC, Samsung, SK Hynix, Tokyo Electron, Advantest)\n\n${tip}`}
-                            style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 800, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px", lineHeight: 1 }}>
-                            <span style={{ color: "#8b949e", fontSize: 9, fontWeight: 800, letterSpacing: 0.5 }}>ASIA SEMIS</span>
-                            {up ? "▲" : "▼"}{up ? "+" : ""}{pct.toFixed(2)}%
-                          </span>
-                        );
-                      })()}
                     </>
                   ) : <span style={{ fontSize: 13, color: "#8b949e" }}>…</span>}
                   {sessLabel && (
