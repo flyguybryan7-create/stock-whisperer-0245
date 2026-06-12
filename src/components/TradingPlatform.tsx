@@ -1254,7 +1254,7 @@ export default function TradingPlatform() {
       </div>
 
       {/* Full-screen watchlist */}
-      <div style={{ background: "#0d1117", overflowY: "auto", maxHeight: "calc(100vh - env(safe-area-inset-top, 0px) - 49px)" }}>
+      <div style={{ background: "#0d1117", overflow: "hidden", overflowY: "auto", maxHeight: "calc(100vh - env(safe-area-inset-top, 0px) - 49px)", width: "100%", maxWidth: "100vw", boxSizing: "border-box" }}>
           <div style={{ padding: "6px 6px", borderBottom: "1px solid #21262d", position: "relative" }}>
             <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1, marginBottom: 4 }}>WATCHLIST</div>
             <input
@@ -1292,7 +1292,7 @@ export default function TradingPlatform() {
               </div>
             )}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, padding: "8px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6, padding: "6px", width: "100vw", maxWidth: "100vw", boxSizing: "border-box" }}>
             {filteredStocks.map(sym => {
               const d = allData[sym] || [];
               const l = d[d.length - 1]; const p = d[d.length - 2];
@@ -1307,10 +1307,14 @@ export default function TradingPlatform() {
               const pl = pos && livePrice != null ? (livePrice - pos.entry) * pos.shares : 0;
               const plPct = pos && livePrice != null && pos.entry > 0 ? ((livePrice - pos.entry) / pos.entry) * 100 : 0;
               const plColor = pl >= 0 ? "#39d353" : "#f85149";
-              const flashAnim =
-                sig === "BUY" ? "tileBuy 1.4s ease-in-out infinite" :
-                sig === "SELL" ? "tileSell 1.4s ease-in-out infinite" :
-                "flashHold 2s ease-in-out infinite";
+              const tileBg =
+                sig === "BUY" ? "rgba(57,211,83,0.15)" :
+                sig === "SELL" ? "rgba(248,81,73,0.15)" :
+                "rgba(227,179,65,0.10)";
+              const tileBorderColor =
+                sig === "BUY" ? "#39d353" :
+                sig === "SELL" ? "#f85149" :
+                "#e3b341";
               const oa = optionsActivity[sym];
               const oaShow = oa && (oa.callVolume + oa.putVolume) >= 50;
               const oaColor = oa?.bias === "BULL" ? "#39d353" : oa?.bias === "BEAR" ? "#f85149" : "#d29922";
@@ -1318,7 +1322,7 @@ export default function TradingPlatform() {
               const border =
                 reorderModeSym === sym ? "2px solid #d2a8ff"
                 : selectedStock === sym ? "1px solid #58a6ff"
-                : "1px solid #21262d";
+                : `1px solid ${tileBorderColor}`;
               return (
                 <div
                   key={sym}
@@ -1328,13 +1332,13 @@ export default function TradingPlatform() {
                   title={reorderModeSym && reorderModeSym !== sym ? `Move ${reorderModeSym} here` : "Select stock"}
                   style={{
                     position: "relative",
+                    minWidth: 0,
                     height: 90,
                     padding: "8px 10px",
                     borderRadius: 6,
                     overflow: "hidden",
                     border,
-                    background: "#0d1117",
-                    animation: flashAnim,
+                    background: tileBg,
                     userSelect: "none",
                     WebkitUserSelect: "none",
                     WebkitTouchCallout: "none",
@@ -1351,12 +1355,12 @@ export default function TradingPlatform() {
                       >✕</button>
                       {(() => {
                         const flow = flowSignals[sym];
-                        if (!flow) return <span style={{ fontWeight: 700, fontSize: 15, color: "#e6edf3" }}>{sym}</span>;
+                        if (!flow) return <span style={{ fontWeight: 700, fontSize: "clamp(13px, 3.5vw, 16px)", color: "#e6edf3" }}>{sym}</span>;
                         const cls = flow.kind === "BUY_SURGE" ? "flow-flash-buy" : "flow-flash-sell";
                         const tip = flow.kind === "BUY_SURGE"
                           ? `MASSIVE BUYING — ${flow.volRatio.toFixed(1)}× avg minute volume, +${flow.pricePct.toFixed(2)}% on the bar`
                           : `MASSIVE SELLING — ${flow.volRatio.toFixed(1)}× avg minute volume, ${flow.pricePct.toFixed(2)}% on the bar`;
-                        return <span className={cls} style={{ fontWeight: 700, fontSize: 15 }} title={tip}>{sym}</span>;
+                        return <span className={cls} style={{ fontWeight: 700, fontSize: "clamp(13px, 3.5vw, 16px)" }} title={tip}>{sym}</span>;
                       })()}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
@@ -1379,21 +1383,23 @@ export default function TradingPlatform() {
                   </div>
 
                   {/* Row 2 — company name */}
-                  <div style={{ fontSize: 10, color: "#8b949e", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.1 }}>
+                  <div style={{ fontSize: "clamp(9px, 2.2vw, 11px)", color: "#8b949e", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.1 }}>
                     {stockNames[sym] || ""}
                   </div>
 
-                  {/* Row 3 — price + change */}
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginTop: 3, fontSize: 11, lineHeight: 1.1, overflow: "hidden", whiteSpace: "nowrap" }}>
+                  {/* Row 3 — price (line 1) + change (line 2) */}
+                  <div style={{ marginTop: 3, lineHeight: 1.15, overflow: "hidden", whiteSpace: "nowrap" }}>
                     {livePrice != null ? (
                       <>
-                        <span style={{ fontWeight: 700, fontSize: 13, color: "#e6edf3" }}>${livePrice.toFixed(2)}</span>
-                        <span style={{ color: liveChg >= 0 ? "#39d353" : "#f85149" }}>
+                        <div style={{ fontWeight: 700, fontSize: "clamp(10px, 2.8vw, 13px)", color: "#e6edf3", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          ${livePrice.toFixed(2)}
+                        </div>
+                        <div style={{ fontSize: "clamp(9px, 2.2vw, 11px)", color: liveChg >= 0 ? "#39d353" : "#f85149", overflow: "hidden", textOverflow: "ellipsis" }}>
                           {liveChg >= 0 ? "+" : "-"}${Math.abs(liveChgAbs).toFixed(2)} ({liveChg >= 0 ? "+" : ""}{liveChg.toFixed(2)}%)
-                        </span>
+                        </div>
                       </>
                     ) : (
-                      <span style={{ color: "#484f58" }}>Loading…</span>
+                      <span style={{ color: "#484f58", fontSize: "clamp(9px, 2.2vw, 11px)" }}>Loading…</span>
                     )}
                   </div>
 
@@ -1431,7 +1437,7 @@ export default function TradingPlatform() {
                         style={{
                           fontSize: 9, fontWeight: 900, color: oaColor,
                           border: `1px solid ${oaColor}`, borderRadius: 2, padding: "0 3px",
-                          animation: oa.unusual ? "flashBuy 1.1s ease-in-out infinite" : undefined,
+                          background: oa.unusual ? `${oaColor}22` : undefined,
                         }}
                       >{oaLabel}</span>
                     )}
