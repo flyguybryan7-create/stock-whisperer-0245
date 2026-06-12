@@ -26,7 +26,7 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  ReferenceLine, AreaChart, Area, ComposedChart, Bar, BarChart, Cell, Scatter,
+  ReferenceLine, Area, ComposedChart, Bar, Cell,
 } from "recharts";
 
 const DEFAULT_STOCKS = [
