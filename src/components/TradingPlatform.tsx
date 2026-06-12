@@ -1184,14 +1184,32 @@ export default function TradingPlatform() {
           <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 2 }}>PRO TERMINAL</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {marketPulse?.semisRisk && (() => {
-            const r = marketPulse.semisRisk;
+          {semiRiskSent && (() => {
+            const r = semiRiskSent;
             const color = r.level === "EXTREME" ? "#f85149" : r.level === "HIGH" ? "#ff7b29" : r.level === "ELEVATED" ? "#e3b341" : "#39d353";
+            const tip = `Semi sector news sentiment — ${r.level} (${r.score}/100)\nBullish words: ${r.bullishCount} · Bearish words: ${r.bearishCount}\n\n` +
+              (r.headlines.length ? r.headlines.map((h, i) => `${i + 1}. [${h.publisher}] ${h.title}`).join("\n") : "No recent headlines.");
             return (
-              <span title={`Semis sector risk gauge — ${r.level} (${r.score}/100)\n${r.reason}`}
+              <span title={tip}
                 style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px", letterSpacing: 0.5 }}>
                 <span style={{ color: "#8b949e", fontWeight: 800 }}>SEMI RISK</span>
                 {r.level} <span style={{ opacity: 0.7 }}>{r.score}</span>
+              </span>
+            );
+          })()}
+          {globalSemis && globalSemis.avgChangePct != null && (() => {
+            const pct = globalSemis.avgChangePct;
+            const up = pct >= 0;
+            const color = up ? "#39d353" : "#f85149";
+            const tip = "Global semiconductor index avg (KOSPI, STAR 50, SOX, TAIEX, Nikkei 225, Hang Seng Tech)\n\n" +
+              (globalSemis.components ?? [])
+                .map((c) => `${c.name} (${c.symbol}): ${c.changePct == null ? "—" : (c.changePct >= 0 ? "+" : "") + c.changePct.toFixed(2) + "%"}`)
+                .join("\n");
+            return (
+              <span title={tip}
+                style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 800, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px", letterSpacing: 0.5 }}>
+                <span style={{ color: "#8b949e", fontWeight: 800 }}>GLOBAL SEMIS</span>
+                {up ? "+" : ""}{pct.toFixed(2)}%
               </span>
             );
           })()}
@@ -1230,20 +1248,6 @@ export default function TradingPlatform() {
               })}
             </span>
           )}
-          {marketPulse?.semisBreadth && marketPulse.semisBreadth.components.length > 0 && (() => {
-            const b = marketPulse.semisBreadth;
-            const total = b.advancers + b.decliners + b.unchanged;
-            const tip = b.components.map((c: QuoteSnap) => `${c.symbol}: ${c.changePct == null ? "—" : (c.changePct >= 0 ? "+" : "") + c.changePct.toFixed(2) + "%"}`).join("\n");
-            return (
-              <span title={`US semis breadth (12-name basket)\n${tip}`}
-                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, border: "1px solid #21262d", borderRadius: 4, padding: "2px 6px" }}>
-                <span style={{ color: "#8b949e" }}>US SEMIS</span>
-                <span style={{ color: "#39d353" }}>{b.advancers}↑</span>
-                <span style={{ color: "#f85149" }}>{b.decliners}↓</span>
-                <span style={{ color: "#8b949e" }}>/ {total}</span>
-              </span>
-            );
-          })()}
           <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "#39d353" }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#39d353", animation: "pulse 2s infinite" }} />
             LIVE
