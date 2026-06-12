@@ -441,3 +441,83 @@ export async function fetchSemisPulseSnapshot(): Promise<SemisPulseResponse> {
     };
   }
 }
+
+export async function fetchGlobalSemiIndexSnapshot(): Promise<GlobalSemiIndexResponse> {
+  try {
+    const components: GlobalSemiComponent[] = await Promise.all(
+      GLOBAL_SEMI_INDICES.map(async (idx) => {
+        const { price, prev } = await fetchYahooSnap(idx.symbol);
+        const changePct = price != null && prev != null && prev > 0 ? ((price - prev) / prev) * 100 : null;
+        return { symbol: idx.symbol, name: idx.name, changePct };
+      }),
+    );
+    const valid = components.filter((c) => c.changePct != null) as Array<GlobalSemiComponent & { changePct: number }>;
+    const avgChangePct = valid.length ? valid.reduce((s, c) => s + c.changePct, 0) / valid.length : null;
+    return { avgChangePct, components, asOf: Date.now() };
+  } catch (error) {
+    console.error("[global-semis] snapshot failed", error);
+    return { avgChangePct: null, components: [], asOf: Date.now(), error: "SERVICE_UNAVAILABLE" };
+  }
+}
+
+const BULLISH_KW = ["beat", "surge", "upgrade", "record", "strong", "growth", "rally", "soar", "boom", "outperform"];
+const BEARISH_KW = ["cut", "miss", "downgrade", "tariff", "ban", "glut", "weak", "oversupply", "warning", "plunge", "slump", "layoff"];
+
+export async function fetchSemiRiskSentimentSnapshot(): Promise<SemiRiskSentimentResponse> {
+  try {
+    const queries = ["semiconductor industry", "chip stocks", "semiconductor demand"];
+    const all: { title: string; publisher: string; link: string; publishedAt: number }[] = [];
+    for (const q of queries) {
+      try {
+        const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&newsCount=10&quotesCount=0`;
+        const res = await fetch(url, { headers: { "User-Agent": UA } });
+        if (!res.ok) continue;
+        const json = (await res.json()) as { news?: Array<{ title?: string; publisher?: string; link?: string; providerPublishTime?: number }> };
+        for (const n of json.news ?? []) {
+          if (!n.title || !n.link) continue;
+          all.push({ title: n.title, publisher: n.publisher ?? "", link: n.link, publishedAt: n.providerPublishTime ?? 0 });
+        }
+      } catch { /* skip */ }
+    }
+    // Dedupe by title and sort by recency, take top 5
+    const seen = new Set<string>();
+    const uniq = all.filter((h) => {
+      const k = h.title.toLowerCase();
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    uniq.sort((a, b) => (b.publishedAt ?? 0) - (a.publishedAt ?? 0));
+    const top = uniq.slice(0, 5);
+
+    let bullish = 0, bearish = 0;
+    for (const h of top) {
+      const t = h.title.toLowerCase();
+      for (const k of BULLISH_KW) if (t.includes(k)) bullish++;
+      for (const k of BEARISH_KW) if (t.includes(k)) bearish++;
+    }
+    // Score 0-100, 50 neutral. More bearish => higher risk.
+    const total = bullish + bearish;
+    let score = 50;
+    if (total > 0) {
+      const bearShare = bearish / total;
+      score = Math.round(50 + (bearShare - 0.5) * 100);
+    }
+    score = Math.max(0, Math.min(100, score));
+    const level: SemiRiskSentimentResponse["level"] =
+      score >= 71 ? "EXTREME" : score >= 51 ? "HIGH" : score >= 31 ? "ELEVATED" : "LOW";
+    return {
+      level,
+      score,
+      bullishCount: bullish,
+      bearishCount: bearish,
+      headlines: top.map((h) => ({ title: h.title, publisher: h.publisher, link: h.link })),
+      asOf: Date.now(),
+    };
+  } catch (error) {
+    console.error("[semi-risk-sentiment] snapshot failed", error);
+    return {
+      level: "ELEVATED", score: 50, bullishCount: 0, bearishCount: 0, headlines: [], asOf: Date.now(), error: "SERVICE_UNAVAILABLE",
+    };
+  }
+}
