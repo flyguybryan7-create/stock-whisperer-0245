@@ -80,6 +80,33 @@ export type SemisPulseResponse = {
   error?: string;
 };
 
+export type GlobalSemiComponent = { symbol: string; name: string; changePct: number | null };
+export type GlobalSemiIndexResponse = {
+  avgChangePct: number | null;
+  components: GlobalSemiComponent[];
+  asOf: number;
+  error?: string;
+};
+
+export type SemiRiskSentimentResponse = {
+  level: "LOW" | "ELEVATED" | "HIGH" | "EXTREME";
+  score: number; // 0-100, 50 neutral
+  bullishCount: number;
+  bearishCount: number;
+  headlines: { title: string; publisher: string; link: string }[];
+  asOf: number;
+  error?: string;
+};
+
+const GLOBAL_SEMI_INDICES: { symbol: string; name: string }[] = [
+  { symbol: "^KS11", name: "KOSPI" },
+  { symbol: "688000.SS", name: "STAR 50" },
+  { symbol: "^SOX", name: "PHLX Semi" },
+  { symbol: "^TWII", name: "TAIEX" },
+  { symbol: "^N225", name: "Nikkei 225" },
+  { symbol: "3031.HK", name: "Hang Seng Tech" },
+];
+
 export type NewsItem = {
   title: string;
   link: string;
