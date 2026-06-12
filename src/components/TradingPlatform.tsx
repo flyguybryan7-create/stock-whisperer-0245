@@ -17,7 +17,7 @@ import {
   type PushPermission,
 } from "@/lib/push-client";
 import { getShortInterest, type ShortInterest } from "@/lib/shortinterest.functions";
-import { fetchAsiaSemis, fetchFastPulse, fetchMacroNews, fetchSemisPulse } from "@/lib/market-pulse.functions";
+import { fetchFastPulse, fetchMacroNews, fetchGlobalSemiIndex, fetchSemiRiskSentiment } from "@/lib/market-pulse.functions";
 import type { QuoteSnap } from "@/lib/market-pulse.server";
 import { fetchOptionsActivity } from "@/lib/options.functions";
 import type { OptionsActivity } from "@/lib/options.server";
@@ -516,10 +516,10 @@ export default function TradingPlatform() {
   const callSubscribe = useServerFn(subscribeToPush);
   const callUnsubscribe = useServerFn(unsubscribeFromPush);
   const fetchShort = useServerFn(getShortInterest);
-  const fetchAsiaSemisFn = useServerFn(fetchAsiaSemis);
   const fetchMacroNewsFn = useServerFn(fetchMacroNews);
   const fetchFastPulseFn = useServerFn(fetchFastPulse);
-  const fetchSemisPulseFn = useServerFn(fetchSemisPulse);
+  const fetchGlobalSemiIndexFn = useServerFn(fetchGlobalSemiIndex);
+  const fetchSemiRiskSentimentFn = useServerFn(fetchSemiRiskSentiment);
   const fetchOptionsActivityFn = useServerFn(fetchOptionsActivity);
 
   // Reflect current notification permission + existing subscription.
