@@ -1512,6 +1512,12 @@ export default function TradingPlatform() {
                           <span style={{ color: plColor, fontWeight: 700 }}>
                             {pl >= 0 ? "+" : "-"}${Math.abs(pl).toFixed(2)} ({plPct >= 0 ? "+" : ""}{plPct.toFixed(2)}%)
                           </span>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setPositions((p) => { const n = { ...p }; delete n[sym]; return n; }); }}
+                            title="Clear position"
+                            style={{ background: "transparent", border: "1px solid #f85149", color: "#f85149", fontSize: 8, fontWeight: 800, padding: "1px 4px", borderRadius: 3, cursor: "pointer", marginLeft: 4 }}
+                          >✕ CLEAR</button>
                         </>
                       ) : null}
                     </div>
@@ -1551,7 +1557,10 @@ export default function TradingPlatform() {
                           onClick={() => {
                             const s = parseFloat(posDraft.shares);
                             const e = parseFloat(posDraft.entry);
-                            if (Number.isFinite(s) && s > 0 && Number.isFinite(e) && e > 0) {
+                            const empty = posDraft.shares.trim() === "" && posDraft.entry.trim() === "";
+                            if (empty || (Number.isFinite(s) && s === 0)) {
+                              setPositions((p) => { const n = { ...p }; delete n[sym]; return n; });
+                            } else if (Number.isFinite(s) && s > 0 && Number.isFinite(e) && e > 0) {
                               setPositions((p) => ({ ...p, [sym]: { shares: s, entry: e } }));
                             }
                             setEditingPos(null);
@@ -1564,6 +1573,13 @@ export default function TradingPlatform() {
                           style={{ background: "transparent", border: "1px solid #30363d", color: "#f85149", fontSize: 9, padding: "3px 6px", borderRadius: 3, cursor: "pointer" }}
                         >✕</button>
                       </div>
+                      {positions[sym] && (
+                        <button
+                          type="button"
+                          onClick={() => { setPositions((p) => { const n = { ...p }; delete n[sym]; return n; }); setEditingPos(null); }}
+                          style={{ background: "rgba(248,81,73,0.15)", border: "1px solid #f85149", color: "#f85149", fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 3, cursor: "pointer", width: "100%", marginTop: 4 }}
+                        >🗑 Clear Position</button>
+                      )}
                     </div>
                   )}
                 </div>
