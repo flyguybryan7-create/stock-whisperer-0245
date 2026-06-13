@@ -511,7 +511,11 @@ export default function TradingPlatform() {
   const fetchSentiment = useServerFn(analyzeNewsSentiment);
   const fetchIntraday = useServerFn(getIntraday);
   const fetchIntradayBatch = useServerFn(getIntradayBatch);
-  const fetchBidAsk = useServerFn(getBidAsk);
+  const fetchScreenerFn = useServerFn(fetchScreener);
+  const queryClient = useQueryClient();
+  const [showScreener, setShowScreener] = useState(false);
+  const [screenerTab, setScreenerTab] = useState<"gainers" | "losers" | "actives">("gainers");
+  const [countdown, setCountdown] = useState(15);
   const firePush = useServerFn(sendAlert);
   const fireTestPush = useServerFn(sendTestPush);
   const callSubscribe = useServerFn(subscribeToPush);
