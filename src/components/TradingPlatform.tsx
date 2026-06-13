@@ -1270,13 +1270,14 @@ export default function TradingPlatform() {
         .flow-flash-sell { animation: flow-flash-sell 0.7s ease-in-out infinite; padding: 0 4px; border-radius: 3px; font-weight: 900 !important; }
       `}</style>
 
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid #21262d", background: "#0d1117", position: "sticky", top: 0, zIndex: 100 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 16, color: "#58a6ff", letterSpacing: 1 }}>⬡ BRYANTRADE</div>
-          <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 2 }}>PRO TERMINAL</div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      {/* Header — two rows for mobile portrait fit */}
+      <div style={{ padding: "8px 12px", borderBottom: "1px solid #21262d", background: "#0d1117", position: "sticky", top: 0, zIndex: 100, overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+            <div style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 16, color: "#58a6ff", letterSpacing: 1 }}>⬡ BRYANTRADE</div>
+            <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 2 }}>PRO TERMINAL</div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {semiRiskSent && (() => {
             const r = semiRiskSent;
             const color = r.level === "EXTREME" ? "#f85149" : r.level === "HIGH" ? "#ff7b29" : r.level === "ELEVATED" ? "#e3b341" : "#39d353";
@@ -1284,25 +1285,9 @@ export default function TradingPlatform() {
               (r.headlines.length ? r.headlines.map((h, i) => `${i + 1}. [${h.publisher}] ${h.title}`).join("\n") : "No recent headlines.");
             return (
               <span title={tip}
-                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px", letterSpacing: 0.5 }}>
+                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px", letterSpacing: 0.5, flexShrink: 0 }}>
                 <span style={{ color: "#8b949e", fontWeight: 800 }}>SEMI RISK</span>
                 {r.level} <span style={{ opacity: 0.7 }}>{r.score}</span>
-              </span>
-            );
-          })()}
-          {globalSemis && globalSemis.avgChangePct != null && (() => {
-            const pct = globalSemis.avgChangePct;
-            const up = pct >= 0;
-            const color = up ? "#39d353" : "#f85149";
-            const tip = "Global semiconductor index avg (KOSPI, STAR 50, SOX, TAIEX, Nikkei 225, Hang Seng Tech)\n\n" +
-              (globalSemis.components ?? [])
-                .map((c) => `${c.name} (${c.symbol}): ${c.changePct == null ? "—" : (c.changePct >= 0 ? "+" : "") + c.changePct.toFixed(2) + "%"}`)
-                .join("\n");
-            return (
-              <span title={tip}
-                style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 800, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px", letterSpacing: 0.5 }}>
-                <span style={{ color: "#8b949e", fontWeight: 800 }}>GLOBAL SEMIS</span>
-                {up ? "+" : ""}{pct.toFixed(2)}%
               </span>
             );
           })()}
@@ -1312,14 +1297,22 @@ export default function TradingPlatform() {
             const color = (v.price ?? 0) >= 22 ? "#f85149" : (v.price ?? 0) >= 18 ? "#e3b341" : "#39d353";
             return (
               <span title={`CBOE Volatility Index (fear gauge)`}
-                style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px" }}>
+                style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px", flexShrink: 0 }}>
                 <span style={{ color: "#8b949e", fontWeight: 800 }}>VIX</span>
                 {v.price!.toFixed(2)} <span style={{ opacity: 0.7 }}>{pct >= 0 ? "+" : ""}{pct.toFixed(2)}%</span>
               </span>
             );
           })()}
-          {marketPulse?.futures && marketPulse.futures.length > 0 && (
-            <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 10, fontWeight: 700, border: "1px solid #21262d", borderRadius: 4, padding: "2px 6px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "#39d353", flexShrink: 0 }}>
+            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#39d353", animation: "pulse 2s infinite" }} />
+            LIVE
+          </div>
+          </div>
+        </div>
+        {/* Row 2: FUT strip full width */}
+        {marketPulse?.futures && marketPulse.futures.length > 0 && (
+          <div style={{ marginTop: 6, overflowX: "auto", whiteSpace: "nowrap" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 10, fontWeight: 700, border: "1px solid #21262d", borderRadius: 4, padding: "2px 6px" }}>
               <span style={{ color: "#8b949e", fontWeight: 800 }}>FUT</span>
               {marketPulse.futures.map((f: QuoteSnap) => {
                 const pct = f.changePct ?? 0;
@@ -1340,12 +1333,8 @@ export default function TradingPlatform() {
                 );
               })}
             </span>
-          )}
-          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "#39d353" }}>
-            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#39d353", animation: "pulse 2s infinite" }} />
-            LIVE
           </div>
-        </div>
+        )}
       </div>
 
       {/* Full-screen watchlist */}
