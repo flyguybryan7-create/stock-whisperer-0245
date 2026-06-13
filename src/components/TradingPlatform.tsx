@@ -1385,7 +1385,14 @@ export default function TradingPlatform() {
       {/* Full-screen watchlist */}
       <div style={{ background: "#0d1117", overflow: "hidden", overflowY: "auto", maxHeight: "calc(100vh - env(safe-area-inset-top, 0px) - 49px)", width: "100%", maxWidth: "100vw", boxSizing: "border-box" }}>
           <div style={{ padding: "6px 6px", borderBottom: "1px solid #21262d", position: "relative" }}>
-            <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1, marginBottom: 4 }}>WATCHLIST</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+              <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1 }}>WATCHLIST</div>
+              <button
+                type="button"
+                onClick={() => setShowScreener(true)}
+                style={{ background: "rgba(88,166,255,0.15)", border: "1px solid #58a6ff", color: "#58a6ff", fontSize: 11, fontWeight: 800, padding: "6px 14px", borderRadius: 5, cursor: "pointer", letterSpacing: 1, fontFamily: mono }}
+              >⚡ SCREENER</button>
+            </div>
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
