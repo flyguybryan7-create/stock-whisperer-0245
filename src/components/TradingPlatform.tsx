@@ -3,9 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
   getQuotes, searchSymbols, getLiveQuotes, getNews, analyzeNewsSentiment,
-  getIntraday, getIntradayBatch, getBidAsk,
+  getIntraday, getIntradayBatch, fetchScreener,
   type Candle, type SymbolSearchResult, type LiveQuote, type NewsItem, type SentimentResult,
-  type IntradayBar,
+  type IntradayBar, type ScreenerRow,
 } from "@/lib/quotes.functions";
 import { sendAlert, sendTestPush, subscribeToPush, unsubscribeFromPush } from "@/lib/push.functions";
 import {
@@ -26,8 +26,9 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  ReferenceLine, Area, ComposedChart, Bar, Cell,
+  ReferenceLine, Area, ComposedChart, Bar, Cell, Scatter,
 } from "recharts";
+import { useQueryClient } from "@tanstack/react-query";
 
 const DEFAULT_STOCKS = [
   "NVDA","MRVL","SMTC","TSEM","CRDO","INTC","QBTS","INFQ","HUT","ALAB","AAOI","SNOW","NVTS","MCHP","ANET",
