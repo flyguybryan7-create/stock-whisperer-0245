@@ -2083,10 +2083,6 @@ export default function TradingPlatform() {
         </div>
       )}
 
-      {/* Notification */}
-      {notification && (
-        null
-      )}
       {/* SCREENER overlay */}
       {showScreener && (() => {
         const rows: ScreenerRow[] =
