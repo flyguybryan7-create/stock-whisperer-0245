@@ -1768,18 +1768,18 @@ export default function TradingPlatform() {
             ]}
           >
             <ResponsiveContainer width="100%" height={420}>
-              <ComposedChart data={masterData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+              <ComposedChart data={masterData} height={300} margin={{ top: 5, right: 8, left: 0, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-                <XAxis dataKey="date" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} />
+                <XAxis dataKey="date" stroke="#8b949e" fontSize={8} tick={{ fontFamily: mono, fontSize: 8, angle: -30, textAnchor: "end" }} />
                 <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={["auto", "auto"]} tickFormatter={(v: number) => `$${v}`} width={55} />
                 <YAxis yAxisId="vol" orientation="right" hide domain={[0, (dataMax: number) => dataMax * 3]} />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar yAxisId="vol" dataKey="volume" name="Volume" isAnimationActive={false}>
+                <Bar yAxisId="vol" dataKey="volume" name="Volume" maxBarSize={4} isAnimationActive={false}>
                   {masterData.map((d, i) => (
                     <Cell key={i} fill={d.close >= d.open ? "#39d353" : "#f85149"} fillOpacity={0.6} />
                   ))}
                 </Bar>
-                <Line type="monotone" dataKey="vwap" stroke="#ff4fa3" strokeWidth={2.5} dot={false} strokeDasharray="6 3" name="VWAP" />
+                <Line type="monotone" dataKey="vwap" stroke="#ff4fa3" strokeWidth={2.5} dot={false} name="VWAP" />
                 <Line type="monotone" dataKey="ema9" stroke="#79c0ff" strokeWidth={2} dot={false} name="EMA9" />
                 <Line type="monotone" dataKey="ema21" stroke="#d2a8ff" strokeWidth={1.5} dot={false} name="EMA21" />
                 {(() => {
@@ -1792,21 +1792,25 @@ export default function TradingPlatform() {
                       label={{ value: "SQUEEZE", fill: "#ffa657", fontSize: 9, position: "insideTopRight" }} />
                   );
                 })()}
-                {masterData.map((d, i) => {
-                  if (d.macdAlert === "BUY") {
-                    return (
-                      <ReferenceLine key={`b${i}`} x={d.date} stroke="#39d353" strokeDasharray="2 4"
-                        label={{ value: "B", fill: "#39d353", fontSize: 9, position: "top" }} />
-                    );
+                {(() => {
+                  const buys: Array<{ date: string; y: number }> = [];
+                  const sells: Array<{ date: string; y: number }> = [];
+                  for (let i = masterData.length - 1; i >= 0 && (buys.length < 3 || sells.length < 3); i--) {
+                    const d = masterData[i];
+                    if (d.macdAlert === "BUY" && buys.length < 3) buys.push({ date: d.date, y: (d as any).low ?? d.close });
+                    else if (d.macdAlert === "SELL" && sells.length < 3) sells.push({ date: d.date, y: (d as any).high ?? d.close });
                   }
-                  if (d.macdAlert === "SELL") {
-                    return (
-                      <ReferenceLine key={`s${i}`} x={d.date} stroke="#f85149" strokeDasharray="2 4"
-                        label={{ value: "S", fill: "#f85149", fontSize: 9, position: "top" }} />
-                    );
-                  }
-                  return null;
-                })}
+                  return (
+                    <>
+                      <Scatter data={buys} dataKey="y" fill="#39d353" shape={(p: any) => (
+                        <polygon points={`${p.cx},${p.cy + 8} ${p.cx - 5},${p.cy + 16} ${p.cx + 5},${p.cy + 16}`} fill="#39d353" />
+                      )} isAnimationActive={false} />
+                      <Scatter data={sells} dataKey="y" fill="#f85149" shape={(p: any) => (
+                        <polygon points={`${p.cx},${p.cy - 8} ${p.cx - 5},${p.cy - 16} ${p.cx + 5},${p.cy - 16}`} fill="#f85149" />
+                      )} isAnimationActive={false} />
+                    </>
+                  );
+                })()}
               </ComposedChart>
             </ResponsiveContainer>
             <div style={{ fontSize: 9, color: "#8b949e", padding: "4px 4px 0", lineHeight: 1.4 }}>
