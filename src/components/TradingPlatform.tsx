@@ -960,11 +960,62 @@ export default function TradingPlatform() {
   // Show only the most recent ~3 hours on the MACD chart so the crossover
   // structure is readable. Daily mode keeps the full visible range.
   const macdDisplayData = useMemo(() => {
+    type CandleRow = Row & {
+      candleStart: number; candleBody: number; candleColor: string;
+      wickStart: number; wickRange: number;
+      buyArrowY: number | null; sellArrowY: number | null;
+      ema21?: number;
+    };
+    let base: Row[];
     if (chartMode === "D") return displayData;
     const minutesPerBar = parseInt(intradayInterval) || 5;
     const bars = Math.max(12, Math.ceil(180 / minutesPerBar));
     return displayData.slice(-bars);
   }, [displayData, chartMode, intradayInterval]);
+  // Candlestick-ready data: only last 6 arrow signals (3 BUY + 3 SELL) annotated,
+  // plus EMA21 (EMA9 already on Row) for the top panel.
+  const macdCandleData = useMemo(() => {
+    const src = macdDisplayData as Row[];
+    if (!src.length) return [] as Array<Row & {
+      candleStart: number; candleBody: number; candleColor: string;
+      wickStart: number; wickRange: number;
+      buyArrowY: number | null; sellArrowY: number | null;
+      ema21: number;
+    }>;
+    const kEma21 = 2 / 22;
+    let ema21 = src[0].close;
+    // Count BUY/SELL from most recent backwards, allow only last 3 each
+    let buyKept = 0, sellKept = 0;
+    const keepBuy = new Set<number>();
+    const keepSell = new Set<number>();
+    for (let i = src.length - 1; i >= 0; i--) {
+      if (src[i].macdAlert === "BUY" && buyKept < 3) { keepBuy.add(i); buyKept++; }
+      else if (src[i].macdAlert === "SELL" && sellKept < 3) { keepSell.add(i); sellKept++; }
+    }
+    const out = src.map((d, i) => {
+      const o = (d as any).open ?? d.close;
+      const h = (d as any).high ?? d.close;
+      const l = (d as any).low ?? d.close;
+      const body = Math.abs(d.close - o);
+      const start = Math.min(o, d.close);
+      const green = d.close >= o;
+      if (i === 0) ema21 = d.close;
+      else ema21 = d.close * kEma21 + ema21 * (1 - kEma21);
+      const offset = (h - l) * 0.35 || d.close * 0.0015;
+      return {
+        ...d,
+        candleStart: +start.toFixed(4),
+        candleBody: +body.toFixed(4),
+        candleColor: green ? "#39d353" : "#f85149",
+        wickStart: +l.toFixed(4),
+        wickRange: +(h - l).toFixed(4),
+        buyArrowY: keepBuy.has(i) ? +(l - offset).toFixed(4) : null,
+        sellArrowY: keepSell.has(i) ? +(h + offset).toFixed(4) : null,
+        ema21: +ema21.toFixed(4),
+      };
+    });
+    return out;
+  }, [macdDisplayData]);
   const last = chartData[chartData.length - 1] || ({} as Row);
   const prev = chartData[chartData.length - 2] || ({} as Row);
   const liveSel = live[selectedStock];
