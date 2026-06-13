@@ -1921,36 +1921,73 @@ export default function TradingPlatform() {
           </ChartCard>
 
           {/* MACD */}
-          <ChartCard title="MACD (12,26,9) — MOVING AVERAGE CONVERGENCE DIVERGENCE"
-            legend={[{ label: "MACD", color: "#79c0ff" }, { label: "Signal", color: "#f85149" }, { label: "Histogram", color: "#39d353" }]}>
-            <ResponsiveContainer width="100%" height={340}>
-              <ComposedChart data={macdDisplayData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+          {/* MACD — dual panel: candlesticks + EMA + arrows on top, MACD hist + signal lines below */}
+          <ChartCard
+            title="MACD (12,26,9) · CANDLES + MOMENTUM"
+            legend={[
+              { label: "Bullish candle", color: "#39d353" },
+              { label: "Bearish candle", color: "#f85149" },
+              { label: "EMA9", color: "#8b1a1a" },
+              { label: "EMA21", color: "#ffffcc" },
+              { label: "MACD", color: "#79c0ff" },
+              { label: "Signal", color: "#f85149" },
+            ]}
+          >
+            <div style={{ fontSize: 9, color: "#8b949e", marginBottom: 4 }}>
+              ▲ green = buy crossover (last 3) · ▼ red = sell crossover (last 3) · EMA lines = trend
+            </div>
+            {/* Top panel: candlesticks + EMAs + arrows */}
+            <ResponsiveContainer width="100%" height={220}>
+              <ComposedChart data={macdCandleData} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-                <XAxis dataKey="date" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} />
-                <YAxis
-                  stroke="#8b949e"
-                  fontSize={9}
-                  width={45}
-                  domain={([min, max]: [number, number]) => {
-                    const m = Math.max(Math.abs(min), Math.abs(max)) || 0.1;
-                    const z = m * 1.15;
-                    return [-z, z];
-                  }}
-                />
-                {/* Hidden right axis just for the volume overlay so it
-                    doesn't squash the MACD scale. */}
-                <YAxis yAxisId="vol" orientation="right" hide domain={[0, (dataMax: number) => dataMax * 2.2]} />
+                <XAxis dataKey="date" stroke="#8b949e" fontSize={8} tick={{ fontFamily: mono, fontSize: 8 }} hide />
+                <YAxis stroke="#8b949e" fontSize={9} width={50} domain={["auto", "auto"]} tickFormatter={(v: number) => `$${v}`} />
                 <Tooltip content={<CustomTooltip />} />
-                <ReferenceLine y={0} stroke="#30363d" />
-                {/* Volume bars rendered first so MACD lines/histogram sit on top */}
-                <Bar yAxisId="vol" dataKey="volume" fill="#c9d1d9" fillOpacity={0.35} stroke="#8b949e" strokeOpacity={0.4} name="Volume" isAnimationActive={false} />
-                <Bar dataKey="macdHist" name="Histogram">
-                  {macdDisplayData.map((d: Row, i: number) => (
-                    <Cell key={i} fill={(d.macdHist ?? 0) >= 0 ? "#39d353" : "#f85149"} fillOpacity={0.7} />
+                {/* Wick = thin transparent bar from low to high */}
+                <Bar dataKey="wickRange" stackId="wick" fill="transparent" isAnimationActive={false} maxBarSize={1} />
+                <Bar dataKey="candleBody" name="Candle" isAnimationActive={false} maxBarSize={6}>
+                  {macdCandleData.map((d, i) => (
+                    <Cell key={`c${i}`} fill={d.candleColor} />
                   ))}
                 </Bar>
-                <Line type="monotone" dataKey="macd" stroke="#79c0ff" strokeWidth={3} dot={false} name="MACD" />
-                <Line type="monotone" dataKey="macdSignal" stroke="#f85149" strokeWidth={3} dot={false} name="Signal" />
+                {/* Wick rendering — overlay thin bars at low..high using stack offset */}
+                <Line type="monotone" dataKey="ema9" stroke="#8b1a1a" strokeWidth={2} dot={false} name="EMA9" />
+                <Line type="monotone" dataKey="ema21" stroke="#ffffcc" strokeWidth={2.5} dot={false} name="EMA21" />
+                {/* Buy/sell arrows — Scatter with custom shape */}
+                <Scatter
+                  dataKey="buyArrowY"
+                  fill="#39d353"
+                  isAnimationActive={false}
+                  shape={(p: any) => p?.payload?.buyArrowY == null ? <g /> : (
+                    <polygon points={`${p.cx - 5},${p.cy} ${p.cx + 5},${p.cy} ${p.cx},${p.cy - 6}`} fill="#39d353" />
+                  )}
+                />
+                <Scatter
+                  dataKey="sellArrowY"
+                  fill="#f85149"
+                  isAnimationActive={false}
+                  shape={(p: any) => p?.payload?.sellArrowY == null ? <g /> : (
+                    <polygon points={`${p.cx - 5},${p.cy} ${p.cx + 5},${p.cy} ${p.cx},${p.cy + 6}`} fill="#f85149" />
+                  )}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+            {/* Bottom panel: MACD histogram + signal lines */}
+            <div style={{ fontSize: 9, color: "#8b949e", marginTop: 2 }}>MACD</div>
+            <ResponsiveContainer width="100%" height={120}>
+              <ComposedChart data={macdCandleData} margin={{ top: 0, right: 8, left: 0, bottom: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
+                <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} />
+                <YAxis stroke="#8b949e" fontSize={9} width={45} />
+                <Tooltip content={<CustomTooltip />} />
+                <ReferenceLine y={0} stroke="#30363d" />
+                <Bar dataKey="macdHist" name="Histogram" maxBarSize={4} isAnimationActive={false}>
+                  {macdCandleData.map((d, i) => (
+                    <Cell key={`h${i}`} fill={(d.macdHist ?? 0) >= 0 ? "#39d353" : "#f85149"} fillOpacity={0.7} />
+                  ))}
+                </Bar>
+                <Line type="monotone" dataKey="macd" stroke="#79c0ff" strokeWidth={2} dot={false} name="MACD" />
+                <Line type="monotone" dataKey="macdSignal" stroke="#f85149" strokeWidth={2} dot={false} name="Signal" />
               </ComposedChart>
             </ResponsiveContainer>
           </ChartCard>
