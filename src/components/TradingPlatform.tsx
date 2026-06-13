@@ -1593,9 +1593,6 @@ export default function TradingPlatform() {
             const headPrev = liveSel?.previousClose ?? prev.close ?? 0;
             const headChange = headPrev ? headPrice - headPrev : change;
             const headChangePct = headPrev ? (headChange / headPrev) * 100 : changePct;
-            const pink = "#ff4fa3";
-            const dt = dayTrade.signal;
-            const dtBg = dt === "BUY" ? "rgba(255,79,163,0.18)" : dt === "SELL" ? "rgba(255,79,163,0.10)" : "rgba(255,79,163,0.05)";
             const sess = liveSel?.session;
             const sessLabel = sess === "PRE" ? "PRE" : sess === "POST" ? "AH" : sess === "REGULAR" ? "LIVE" : sess === "OVERNIGHT" ? "24H" : sess ? "CLSD" : null;
             const sessColor = sess === "REGULAR" ? "#39d353" : sess === "PRE" ? "#58a6ff" : sess === "POST" ? "#d2a8ff" : sess === "OVERNIGHT" ? "#ff9b3d" : "#8b949e";
@@ -1603,62 +1600,38 @@ export default function TradingPlatform() {
             const pct = si?.shortPercentOfFloat;
             const siColor = si?.risk === "EXTREME" ? "#f85149" : si?.risk === "HIGH" ? "#ff7b29" : si?.risk === "MODERATE" ? "#e3b341" : si?.risk === "LOW" ? "#39d353" : "#8b949e";
             const fmtM = (n: number | null | undefined) => n == null ? "—" : n >= 1e9 ? (n / 1e9).toFixed(2) + "B" : n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n.toLocaleString();
+            const bidVal = liveSel?.bid;
+            const askVal = liveSel?.ask;
+            const bidOk = bidVal != null && bidVal > 0;
+            const askOk = askVal != null && askVal > 0;
+            const vwap = watchlistVwap[selectedStock];
             return (
               <>
-                 <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, marginBottom: 4 }}>
-                   <span style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 18, color: "#e6edf3", lineHeight: 1 }}>{selectedStock}</span>
+                {/* Row 1: SYMBOL  PRICE  CHANGE  (session badge) */}
+                <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 18, color: "#e6edf3", lineHeight: 1 }}>{selectedStock}</span>
                   {headPrice != null ? (
                     <>
                       <span style={{ fontSize: 18, fontWeight: 700, color: "#e6edf3", lineHeight: 1 }}>${headPrice.toFixed(2)}</span>
                       <span style={{ fontSize: 11, fontWeight: 600, color: headChange >= 0 ? "#39d353" : "#f85149", lineHeight: 1 }}>
                         {headChange >= 0 ? "▲" : "▼"}{headChange >= 0 ? "+" : ""}${Math.abs(headChange).toFixed(2)} ({headChangePct >= 0 ? "+" : ""}{headChangePct.toFixed(2)}%)
                       </span>
-                      {(() => {
-                         // Show bid/ask whenever Yahoo returns a positive value that
-                         // sits within 10% of the current print. We no longer gate on
-                         // session — extended-hours bid/ask is still meaningful, just
-                         // less liquid. Bogus stale ticks are filtered by the 10% band.
-                         const within = (v?: number) =>
-                           v != null && v > 0 && headPrice != null && Math.abs(v - headPrice) / headPrice <= 0.1;
-                         // Prefer real-time Polygon NBBO; fall back to Yahoo v7 bid/ask.
-                         const bidVal = bidAskData?.bid ?? liveSel?.bid;
-                         const askVal = bidAskData?.ask ?? liveSel?.ask;
-                         const bidSz = bidAskData?.bidSize ?? liveSel?.bidSize;
-                         const askSz = bidAskData?.askSize ?? liveSel?.askSize;
-                         const bidOk = within(bidVal);
-                         const askOk = within(askVal);
-                        return (
-                          <>
-                             <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Bid${bidSz != null ? ` × ${bidSz}` : ""}`}>
-                              BID <span style={{ color: bidOk ? "#f85149" : "#484f58" }}>{bidOk ? `$${bidVal!.toFixed(2)}` : "—"}</span>
-                            </span>
-                             <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Ask${askSz != null ? ` × ${askSz}` : ""}`}>
-                              ASK <span style={{ color: askOk ? "#39d353" : "#484f58" }}>{askOk ? `$${askVal!.toFixed(2)}` : "—"}</span>
-                            </span>
-                            {(() => {
-                              const vwap = watchlistVwap[selectedStock];
-                              const vColor = vwap == null || headPrice == null
-                                ? "#484f58"
-                                : headPrice >= vwap ? "#39d353" : "#f85149";
-                              return (
-                                <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title="Intraday volume-weighted average price">
-                                  VWAP <span style={{ color: vColor }}>{vwap != null ? `$${vwap.toFixed(2)}` : "—"}</span>
-                                </span>
-                              );
-                            })()}
-                          </>
-                        );
-                      })()}
                     </>
                   ) : <span style={{ fontSize: 13, color: "#8b949e" }}>…</span>}
                   {sessLabel && (
                     <span style={{ fontSize: 8, fontWeight: 700, color: sessColor, border: `1px solid ${sessColor}`, borderRadius: 3, padding: "1px 4px", lineHeight: 1 }}>● {sessLabel}</span>
                   )}
-                  <span style={{ flex: 1 }} />
-                  <span
-                    title={`Signal (${intradayInterval} / ${intradayRange}): ${dayTrade.reason}\nRSI7 ${dayTrade.rsi ?? "—"} · VWAP ${dayTrade.vwap ?? "—"} · EMA9/21 ${dayTrade.emaFast ?? "—"}/${dayTrade.emaSlow ?? "—"}\nMACD (${signalFrameLabel}): ${signal} — ${liveMacdSignal.reason}`}
-                    style={{ background: dtBg, border: `1.5px solid ${pink}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 900, color: pink, lineHeight: 1, boxShadow: dt !== "HOLD" ? `0 0 8px ${pink}55` : "none" }}>
-                    ⚡ {dt}
+                </div>
+                {/* Row 2: BID  ASK  VWAP — real values only, never synthetic */}
+                <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 6, fontSize: 11, fontWeight: 700, color: "#8b949e", lineHeight: 1 }}>
+                  <span title={`Bid${liveSel?.bidSize != null ? ` × ${liveSel.bidSize}` : ""}`}>
+                    BID <span style={{ color: bidOk ? "#f85149" : "#484f58" }}>{bidOk ? `$${bidVal!.toFixed(2)}` : "—"}</span>
+                  </span>
+                  <span title={`Ask${liveSel?.askSize != null ? ` × ${liveSel.askSize}` : ""}`}>
+                    ASK <span style={{ color: askOk ? "#39d353" : "#484f58" }}>{askOk ? `$${askVal!.toFixed(2)}` : "—"}</span>
+                  </span>
+                  <span title="Intraday volume-weighted average price">
+                    VWAP <span style={{ color: vwap == null || headPrice == null ? "#484f58" : headPrice >= vwap ? "#39d353" : "#f85149" }}>{vwap != null ? `$${vwap.toFixed(2)}` : "—"}</span>
                   </span>
                 </div>
                 {/* Mini stat strip */}
@@ -1668,11 +1641,10 @@ export default function TradingPlatform() {
                   <span>SMA9 <span style={{ color: "#79c0ff", fontWeight: 700 }}>${last.sma9?.toFixed(2) ?? "—"}</span></span>
                   <span style={{ display: "flex", gap: 10, flexBasis: "100%" }}>
                     <span
-                      title={si ? `Short interest from FINRA semi-monthly report\nFloat: ${fmtM(si.floatShares)}\nShares short: ${fmtM(si.sharesShort)}\nShort % of float: ${pct?.toFixed(2) ?? "—"}%\nDays to cover: ${si.shortRatio?.toFixed(1) ?? "—"}\nRisk: ${si.risk}\nSource: FINRA via Yahoo Finance` : "Short interest data sourced from FINRA semi-monthly report (unavailable)"}
+                      title={si ? `Short interest\nFloat: ${fmtM(si.floatShares)}\nShares short: ${fmtM(si.sharesShort)}\nShort % of float: ${pct?.toFixed(2) ?? "—"}%\nDays to cover: ${si.shortRatio?.toFixed(1) ?? "—"}\nRisk: ${si.risk}` : "Short interest data unavailable"}
                       style={{ cursor: "help" }}>
                       SHORT/FLOAT <span style={{ color: siColor, fontWeight: 800 }}>{pct != null ? `${pct.toFixed(1)}%` : "—"}</span>
                       {si?.risk && si.risk !== "UNKNOWN" && <span style={{ color: siColor, fontSize: 8, marginLeft: 3 }}>{si.risk}</span>}
-                      <span style={{ color: "#484f58", fontSize: 8, marginLeft: 4 }}>FINRA</span>
                     </span>
                     {si?.sharesOutstanding != null && (
                       <span title="Total shares outstanding">SHARES OUT <span style={{ color: "#e6edf3", fontWeight: 700 }}>{fmtM(si.sharesOutstanding)}</span></span>
