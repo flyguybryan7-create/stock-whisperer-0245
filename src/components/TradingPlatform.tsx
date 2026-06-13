@@ -3,9 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
   getQuotes, searchSymbols, getLiveQuotes, getNews, analyzeNewsSentiment,
-  getIntraday, getIntradayBatch, getBidAsk,
+  getIntraday, getIntradayBatch, fetchScreener,
   type Candle, type SymbolSearchResult, type LiveQuote, type NewsItem, type SentimentResult,
-  type IntradayBar,
+  type IntradayBar, type ScreenerRow,
 } from "@/lib/quotes.functions";
 import { sendAlert, sendTestPush, subscribeToPush, unsubscribeFromPush } from "@/lib/push.functions";
 import {
@@ -26,8 +26,9 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  ReferenceLine, Area, ComposedChart, Bar, Cell,
+  ReferenceLine, Area, ComposedChart, Bar, Cell, Scatter,
 } from "recharts";
+import { useQueryClient } from "@tanstack/react-query";
 
 const DEFAULT_STOCKS = [
   "NVDA","MRVL","SMTC","TSEM","CRDO","INTC","QBTS","INFQ","HUT","ALAB","AAOI","SNOW","NVTS","MCHP","ANET",
@@ -510,7 +511,11 @@ export default function TradingPlatform() {
   const fetchSentiment = useServerFn(analyzeNewsSentiment);
   const fetchIntraday = useServerFn(getIntraday);
   const fetchIntradayBatch = useServerFn(getIntradayBatch);
-  const fetchBidAsk = useServerFn(getBidAsk);
+  const fetchScreenerFn = useServerFn(fetchScreener);
+  const queryClient = useQueryClient();
+  const [showScreener, setShowScreener] = useState(false);
+  const [screenerTab, setScreenerTab] = useState<"gainers" | "losers" | "actives">("gainers");
+  const [countdown, setCountdown] = useState(15);
   const firePush = useServerFn(sendAlert);
   const fireTestPush = useServerFn(sendTestPush);
   const callSubscribe = useServerFn(subscribeToPush);
@@ -625,16 +630,23 @@ export default function TradingPlatform() {
   });
   const live = (liveQuotes as Record<string, LiveQuote> | undefined) ?? {};
 
-  // Real-time bid/ask for the selected stock via Nasdaq's quote endpoint.
-  // This refreshes every second and is independent from the watchlist batch.
-  const { data: bidAskData } = useQuery({
-    queryKey: ["bidask", selectedStock],
-    queryFn: () => fetchBidAsk({ data: { symbol: selectedStock } }),
-    refetchInterval: 500,
-    refetchIntervalInBackground: true,
-    staleTime: 0,
-    enabled: !!selectedStock,
+  // Bid/ask now comes through getLiveQuotes (v7 endpoint returns bid/ask/bidSize/askSize)
+  // on the same 1s tick as the live price — no separate query.
+
+  // Screener — gainers / losers / most active, refresh every 15s.
+  const { data: screenerData, isFetching: screenerFetching, dataUpdatedAt: screenerUpdatedAt } = useQuery({
+    queryKey: ["screener"],
+    queryFn: () => fetchScreenerFn(),
+    refetchInterval: 15_000,
+    staleTime: 12_000,
+    enabled: showScreener,
   });
+  useEffect(() => {
+    if (!showScreener) return;
+    const id = setInterval(() => setCountdown((c) => (c <= 1 ? 15 : c - 1)), 1000);
+    return () => clearInterval(id);
+  }, [showScreener]);
+  useEffect(() => { setCountdown(15); }, [screenerUpdatedAt]);
 
   // Short interest / float — refresh every 30 min (Yahoo updates twice a month)
   const { data: shortData } = useQuery({
@@ -924,7 +936,8 @@ export default function TradingPlatform() {
   }, [intradayBars]);
 
   const chartData = chartMode === "D" ? dailyChartData : intradayRows;
-  const displayDataRaw = chartMode === "D" ? chartData.slice(-chartRange) : chartData;
+  const maxIntraBars = intradayInterval === "1m" ? 120 : intradayInterval === "5m" ? 78 : 26;
+  const displayDataRaw = chartMode === "D" ? chartData.slice(-chartRange) : chartData.slice(-maxIntraBars);
   const displayData = useMemo(() => annotateMacdSignals(displayDataRaw), [displayDataRaw]);
   const macdCurrent = useMemo(() => getCurrentMacdSignal(displayData), [displayData]);
   const selectedLiveMacdRows = useMemo(() => {
@@ -952,6 +965,50 @@ export default function TradingPlatform() {
     const bars = Math.max(12, Math.ceil(180 / minutesPerBar));
     return displayData.slice(-bars);
   }, [displayData, chartMode, intradayInterval]);
+  // Candlestick-ready data: only last 6 arrow signals (3 BUY + 3 SELL) annotated,
+  // plus EMA21 (EMA9 already on Row) for the top panel.
+  const macdCandleData = useMemo(() => {
+    const src = macdDisplayData as Row[];
+    if (!src.length) return [] as Array<Row & {
+      candleStart: number; candleBody: number; candleColor: string;
+      wickStart: number; wickRange: number;
+      buyArrowY: number | null; sellArrowY: number | null;
+      ema21: number;
+    }>;
+    const kEma21 = 2 / 22;
+    let ema21 = src[0].close;
+    // Count BUY/SELL from most recent backwards, allow only last 3 each
+    let buyKept = 0, sellKept = 0;
+    const keepBuy = new Set<number>();
+    const keepSell = new Set<number>();
+    for (let i = src.length - 1; i >= 0; i--) {
+      if (src[i].macdAlert === "BUY" && buyKept < 3) { keepBuy.add(i); buyKept++; }
+      else if (src[i].macdAlert === "SELL" && sellKept < 3) { keepSell.add(i); sellKept++; }
+    }
+    const out = src.map((d, i) => {
+      const o = (d as any).open ?? d.close;
+      const h = (d as any).high ?? d.close;
+      const l = (d as any).low ?? d.close;
+      const body = Math.abs(d.close - o);
+      const start = Math.min(o, d.close);
+      const green = d.close >= o;
+      if (i === 0) ema21 = d.close;
+      else ema21 = d.close * kEma21 + ema21 * (1 - kEma21);
+      const offset = (h - l) * 0.35 || d.close * 0.0015;
+      return {
+        ...d,
+        candleStart: +start.toFixed(4),
+        candleBody: +body.toFixed(4),
+        candleColor: green ? "#39d353" : "#f85149",
+        wickStart: +l.toFixed(4),
+        wickRange: +(h - l).toFixed(4),
+        buyArrowY: keepBuy.has(i) ? +(l - offset).toFixed(4) : null,
+        sellArrowY: keepSell.has(i) ? +(h + offset).toFixed(4) : null,
+        ema21: +ema21.toFixed(4),
+      };
+    });
+    return out;
+  }, [macdDisplayData]);
   const last = chartData[chartData.length - 1] || ({} as Row);
   const prev = chartData[chartData.length - 2] || ({} as Row);
   const liveSel = live[selectedStock];
@@ -1258,13 +1315,14 @@ export default function TradingPlatform() {
         .flow-flash-sell { animation: flow-flash-sell 0.7s ease-in-out infinite; padding: 0 4px; border-radius: 3px; font-weight: 900 !important; }
       `}</style>
 
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid #21262d", background: "#0d1117", position: "sticky", top: 0, zIndex: 100 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 16, color: "#58a6ff", letterSpacing: 1 }}>⬡ BRYANTRADE</div>
-          <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 2 }}>PRO TERMINAL</div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      {/* Header — two rows for mobile portrait fit */}
+      <div style={{ padding: "8px 12px", borderBottom: "1px solid #21262d", background: "#0d1117", position: "sticky", top: 0, zIndex: 100, overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+            <div style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 16, color: "#58a6ff", letterSpacing: 1 }}>⬡ BRYANTRADE</div>
+            <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 2 }}>PRO TERMINAL</div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {semiRiskSent && (() => {
             const r = semiRiskSent;
             const color = r.level === "EXTREME" ? "#f85149" : r.level === "HIGH" ? "#ff7b29" : r.level === "ELEVATED" ? "#e3b341" : "#39d353";
@@ -1272,25 +1330,9 @@ export default function TradingPlatform() {
               (r.headlines.length ? r.headlines.map((h, i) => `${i + 1}. [${h.publisher}] ${h.title}`).join("\n") : "No recent headlines.");
             return (
               <span title={tip}
-                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px", letterSpacing: 0.5 }}>
+                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px", letterSpacing: 0.5, flexShrink: 0 }}>
                 <span style={{ color: "#8b949e", fontWeight: 800 }}>SEMI RISK</span>
                 {r.level} <span style={{ opacity: 0.7 }}>{r.score}</span>
-              </span>
-            );
-          })()}
-          {globalSemis && globalSemis.avgChangePct != null && (() => {
-            const pct = globalSemis.avgChangePct;
-            const up = pct >= 0;
-            const color = up ? "#39d353" : "#f85149";
-            const tip = "Global semiconductor index avg (KOSPI, STAR 50, SOX, TAIEX, Nikkei 225, Hang Seng Tech)\n\n" +
-              (globalSemis.components ?? [])
-                .map((c) => `${c.name} (${c.symbol}): ${c.changePct == null ? "—" : (c.changePct >= 0 ? "+" : "") + c.changePct.toFixed(2) + "%"}`)
-                .join("\n");
-            return (
-              <span title={tip}
-                style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 800, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px", letterSpacing: 0.5 }}>
-                <span style={{ color: "#8b949e", fontWeight: 800 }}>GLOBAL SEMIS</span>
-                {up ? "+" : ""}{pct.toFixed(2)}%
               </span>
             );
           })()}
@@ -1300,14 +1342,22 @@ export default function TradingPlatform() {
             const color = (v.price ?? 0) >= 22 ? "#f85149" : (v.price ?? 0) >= 18 ? "#e3b341" : "#39d353";
             return (
               <span title={`CBOE Volatility Index (fear gauge)`}
-                style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px" }}>
+                style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px", flexShrink: 0 }}>
                 <span style={{ color: "#8b949e", fontWeight: 800 }}>VIX</span>
                 {v.price!.toFixed(2)} <span style={{ opacity: 0.7 }}>{pct >= 0 ? "+" : ""}{pct.toFixed(2)}%</span>
               </span>
             );
           })()}
-          {marketPulse?.futures && marketPulse.futures.length > 0 && (
-            <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 10, fontWeight: 700, border: "1px solid #21262d", borderRadius: 4, padding: "2px 6px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "#39d353", flexShrink: 0 }}>
+            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#39d353", animation: "pulse 2s infinite" }} />
+            LIVE
+          </div>
+          </div>
+        </div>
+        {/* Row 2: FUT strip full width */}
+        {marketPulse?.futures && marketPulse.futures.length > 0 && (
+          <div style={{ marginTop: 6, overflowX: "auto", whiteSpace: "nowrap" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 10, fontWeight: 700, border: "1px solid #21262d", borderRadius: 4, padding: "2px 6px" }}>
               <span style={{ color: "#8b949e", fontWeight: 800 }}>FUT</span>
               {marketPulse.futures.map((f: QuoteSnap) => {
                 const pct = f.changePct ?? 0;
@@ -1328,18 +1378,21 @@ export default function TradingPlatform() {
                 );
               })}
             </span>
-          )}
-          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "#39d353" }}>
-            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#39d353", animation: "pulse 2s infinite" }} />
-            LIVE
           </div>
-        </div>
+        )}
       </div>
 
       {/* Full-screen watchlist */}
       <div style={{ background: "#0d1117", overflow: "hidden", overflowY: "auto", maxHeight: "calc(100vh - env(safe-area-inset-top, 0px) - 49px)", width: "100%", maxWidth: "100vw", boxSizing: "border-box" }}>
           <div style={{ padding: "6px 6px", borderBottom: "1px solid #21262d", position: "relative" }}>
-            <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1, marginBottom: 4 }}>WATCHLIST</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+              <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1 }}>WATCHLIST</div>
+              <button
+                type="button"
+                onClick={() => setShowScreener(true)}
+                style={{ background: "rgba(88,166,255,0.15)", border: "1px solid #58a6ff", color: "#58a6ff", fontSize: 11, fontWeight: 800, padding: "6px 14px", borderRadius: 5, cursor: "pointer", letterSpacing: 1, fontFamily: mono }}
+              >⚡ SCREENER</button>
+            </div>
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
@@ -1375,7 +1428,7 @@ export default function TradingPlatform() {
               </div>
             )}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6, padding: "6px", width: "100vw", maxWidth: "100vw", boxSizing: "border-box" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 5, padding: "6px", width: "100vw", maxWidth: "100vw", boxSizing: "border-box" }}>
             {filteredStocks.map(sym => {
               const d = allData[sym] || [];
               const l = d[d.length - 1]; const p = d[d.length - 2];
@@ -1417,7 +1470,7 @@ export default function TradingPlatform() {
                     position: "relative",
                     minWidth: 0,
                     height: 90,
-                    padding: "8px 10px",
+                    padding: "10px 8px",
                     borderRadius: 6,
                     overflow: "hidden",
                     border,
@@ -1511,6 +1564,12 @@ export default function TradingPlatform() {
                           <span style={{ color: plColor, fontWeight: 700 }}>
                             {pl >= 0 ? "+" : "-"}${Math.abs(pl).toFixed(2)} ({plPct >= 0 ? "+" : ""}{plPct.toFixed(2)}%)
                           </span>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setPositions((p) => { const n = { ...p }; delete n[sym]; return n; }); }}
+                            title="Clear position"
+                            style={{ background: "transparent", border: "1px solid #f85149", color: "#f85149", fontSize: 8, fontWeight: 800, padding: "1px 4px", borderRadius: 3, cursor: "pointer", marginLeft: 4 }}
+                          >✕ CLEAR</button>
                         </>
                       ) : null}
                     </div>
@@ -1550,7 +1609,10 @@ export default function TradingPlatform() {
                           onClick={() => {
                             const s = parseFloat(posDraft.shares);
                             const e = parseFloat(posDraft.entry);
-                            if (Number.isFinite(s) && s > 0 && Number.isFinite(e) && e > 0) {
+                            const empty = posDraft.shares.trim() === "" && posDraft.entry.trim() === "";
+                            if (empty || (Number.isFinite(s) && s === 0)) {
+                              setPositions((p) => { const n = { ...p }; delete n[sym]; return n; });
+                            } else if (Number.isFinite(s) && s > 0 && Number.isFinite(e) && e > 0) {
                               setPositions((p) => ({ ...p, [sym]: { shares: s, entry: e } }));
                             }
                             setEditingPos(null);
@@ -1563,6 +1625,13 @@ export default function TradingPlatform() {
                           style={{ background: "transparent", border: "1px solid #30363d", color: "#f85149", fontSize: 9, padding: "3px 6px", borderRadius: 3, cursor: "pointer" }}
                         >✕</button>
                       </div>
+                      {positions[sym] && (
+                        <button
+                          type="button"
+                          onClick={() => { setPositions((p) => { const n = { ...p }; delete n[sym]; return n; }); setEditingPos(null); }}
+                          style={{ background: "rgba(248,81,73,0.15)", border: "1px solid #f85149", color: "#f85149", fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 3, cursor: "pointer", width: "100%", marginTop: 4 }}
+                        >🗑 Clear Position</button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1592,9 +1661,6 @@ export default function TradingPlatform() {
             const headPrev = liveSel?.previousClose ?? prev.close ?? 0;
             const headChange = headPrev ? headPrice - headPrev : change;
             const headChangePct = headPrev ? (headChange / headPrev) * 100 : changePct;
-            const pink = "#ff4fa3";
-            const dt = dayTrade.signal;
-            const dtBg = dt === "BUY" ? "rgba(255,79,163,0.18)" : dt === "SELL" ? "rgba(255,79,163,0.10)" : "rgba(255,79,163,0.05)";
             const sess = liveSel?.session;
             const sessLabel = sess === "PRE" ? "PRE" : sess === "POST" ? "AH" : sess === "REGULAR" ? "LIVE" : sess === "OVERNIGHT" ? "24H" : sess ? "CLSD" : null;
             const sessColor = sess === "REGULAR" ? "#39d353" : sess === "PRE" ? "#58a6ff" : sess === "POST" ? "#d2a8ff" : sess === "OVERNIGHT" ? "#ff9b3d" : "#8b949e";
@@ -1602,62 +1668,38 @@ export default function TradingPlatform() {
             const pct = si?.shortPercentOfFloat;
             const siColor = si?.risk === "EXTREME" ? "#f85149" : si?.risk === "HIGH" ? "#ff7b29" : si?.risk === "MODERATE" ? "#e3b341" : si?.risk === "LOW" ? "#39d353" : "#8b949e";
             const fmtM = (n: number | null | undefined) => n == null ? "—" : n >= 1e9 ? (n / 1e9).toFixed(2) + "B" : n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n.toLocaleString();
+            const bidVal = liveSel?.bid;
+            const askVal = liveSel?.ask;
+            const bidOk = bidVal != null && bidVal > 0;
+            const askOk = askVal != null && askVal > 0;
+            const vwap = watchlistVwap[selectedStock];
             return (
               <>
-                 <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, marginBottom: 4 }}>
-                   <span style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 18, color: "#e6edf3", lineHeight: 1 }}>{selectedStock}</span>
+                {/* Row 1: SYMBOL  PRICE  CHANGE  (session badge) */}
+                <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 18, color: "#e6edf3", lineHeight: 1 }}>{selectedStock}</span>
                   {headPrice != null ? (
                     <>
                       <span style={{ fontSize: 18, fontWeight: 700, color: "#e6edf3", lineHeight: 1 }}>${headPrice.toFixed(2)}</span>
                       <span style={{ fontSize: 11, fontWeight: 600, color: headChange >= 0 ? "#39d353" : "#f85149", lineHeight: 1 }}>
                         {headChange >= 0 ? "▲" : "▼"}{headChange >= 0 ? "+" : ""}${Math.abs(headChange).toFixed(2)} ({headChangePct >= 0 ? "+" : ""}{headChangePct.toFixed(2)}%)
                       </span>
-                      {(() => {
-                         // Show bid/ask whenever Yahoo returns a positive value that
-                         // sits within 10% of the current print. We no longer gate on
-                         // session — extended-hours bid/ask is still meaningful, just
-                         // less liquid. Bogus stale ticks are filtered by the 10% band.
-                         const within = (v?: number) =>
-                           v != null && v > 0 && headPrice != null && Math.abs(v - headPrice) / headPrice <= 0.1;
-                         // Prefer real-time Polygon NBBO; fall back to Yahoo v7 bid/ask.
-                         const bidVal = bidAskData?.bid ?? liveSel?.bid;
-                         const askVal = bidAskData?.ask ?? liveSel?.ask;
-                         const bidSz = bidAskData?.bidSize ?? liveSel?.bidSize;
-                         const askSz = bidAskData?.askSize ?? liveSel?.askSize;
-                         const bidOk = within(bidVal);
-                         const askOk = within(askVal);
-                        return (
-                          <>
-                             <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Bid${bidSz != null ? ` × ${bidSz}` : ""}`}>
-                              BID <span style={{ color: bidOk ? "#f85149" : "#484f58" }}>{bidOk ? `$${bidVal!.toFixed(2)}` : "—"}</span>
-                            </span>
-                             <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title={`Ask${askSz != null ? ` × ${askSz}` : ""}`}>
-                              ASK <span style={{ color: askOk ? "#39d353" : "#484f58" }}>{askOk ? `$${askVal!.toFixed(2)}` : "—"}</span>
-                            </span>
-                            {(() => {
-                              const vwap = watchlistVwap[selectedStock];
-                              const vColor = vwap == null || headPrice == null
-                                ? "#484f58"
-                                : headPrice >= vwap ? "#39d353" : "#f85149";
-                              return (
-                                <span style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", lineHeight: 1 }} title="Intraday volume-weighted average price">
-                                  VWAP <span style={{ color: vColor }}>{vwap != null ? `$${vwap.toFixed(2)}` : "—"}</span>
-                                </span>
-                              );
-                            })()}
-                          </>
-                        );
-                      })()}
                     </>
                   ) : <span style={{ fontSize: 13, color: "#8b949e" }}>…</span>}
                   {sessLabel && (
                     <span style={{ fontSize: 8, fontWeight: 700, color: sessColor, border: `1px solid ${sessColor}`, borderRadius: 3, padding: "1px 4px", lineHeight: 1 }}>● {sessLabel}</span>
                   )}
-                  <span style={{ flex: 1 }} />
-                  <span
-                    title={`Signal (${intradayInterval} / ${intradayRange}): ${dayTrade.reason}\nRSI7 ${dayTrade.rsi ?? "—"} · VWAP ${dayTrade.vwap ?? "—"} · EMA9/21 ${dayTrade.emaFast ?? "—"}/${dayTrade.emaSlow ?? "—"}\nMACD (${signalFrameLabel}): ${signal} — ${liveMacdSignal.reason}`}
-                    style={{ background: dtBg, border: `1.5px solid ${pink}`, borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 900, color: pink, lineHeight: 1, boxShadow: dt !== "HOLD" ? `0 0 8px ${pink}55` : "none" }}>
-                    ⚡ {dt}
+                </div>
+                {/* Row 2: BID  ASK  VWAP — real values only, never synthetic */}
+                <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 6, fontSize: 11, fontWeight: 700, color: "#8b949e", lineHeight: 1 }}>
+                  <span title={`Bid${liveSel?.bidSize != null ? ` × ${liveSel.bidSize}` : ""}`}>
+                    BID <span style={{ color: bidOk ? "#f85149" : "#484f58" }}>{bidOk ? `$${bidVal!.toFixed(2)}` : "—"}</span>
+                  </span>
+                  <span title={`Ask${liveSel?.askSize != null ? ` × ${liveSel.askSize}` : ""}`}>
+                    ASK <span style={{ color: askOk ? "#39d353" : "#484f58" }}>{askOk ? `$${askVal!.toFixed(2)}` : "—"}</span>
+                  </span>
+                  <span title="Intraday volume-weighted average price">
+                    VWAP <span style={{ color: vwap == null || headPrice == null ? "#484f58" : headPrice >= vwap ? "#39d353" : "#f85149" }}>{vwap != null ? `$${vwap.toFixed(2)}` : "—"}</span>
                   </span>
                 </div>
                 {/* Mini stat strip */}
@@ -1667,11 +1709,10 @@ export default function TradingPlatform() {
                   <span>SMA9 <span style={{ color: "#79c0ff", fontWeight: 700 }}>${last.sma9?.toFixed(2) ?? "—"}</span></span>
                   <span style={{ display: "flex", gap: 10, flexBasis: "100%" }}>
                     <span
-                      title={si ? `Short interest from FINRA semi-monthly report\nFloat: ${fmtM(si.floatShares)}\nShares short: ${fmtM(si.sharesShort)}\nShort % of float: ${pct?.toFixed(2) ?? "—"}%\nDays to cover: ${si.shortRatio?.toFixed(1) ?? "—"}\nRisk: ${si.risk}\nSource: FINRA via Yahoo Finance` : "Short interest data sourced from FINRA semi-monthly report (unavailable)"}
+                      title={si ? `Short interest\nFloat: ${fmtM(si.floatShares)}\nShares short: ${fmtM(si.sharesShort)}\nShort % of float: ${pct?.toFixed(2) ?? "—"}%\nDays to cover: ${si.shortRatio?.toFixed(1) ?? "—"}\nRisk: ${si.risk}` : "Short interest data unavailable"}
                       style={{ cursor: "help" }}>
                       SHORT/FLOAT <span style={{ color: siColor, fontWeight: 800 }}>{pct != null ? `${pct.toFixed(1)}%` : "—"}</span>
                       {si?.risk && si.risk !== "UNKNOWN" && <span style={{ color: siColor, fontSize: 8, marginLeft: 3 }}>{si.risk}</span>}
-                      <span style={{ color: "#484f58", fontSize: 8, marginLeft: 4 }}>FINRA</span>
                     </span>
                     {si?.sharesOutstanding != null && (
                       <span title="Total shares outstanding">SHARES OUT <span style={{ color: "#e6edf3", fontWeight: 700 }}>{fmtM(si.sharesOutstanding)}</span></span>
@@ -1778,18 +1819,18 @@ export default function TradingPlatform() {
             ]}
           >
             <ResponsiveContainer width="100%" height={420}>
-              <ComposedChart data={masterData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+              <ComposedChart data={masterData} height={300} margin={{ top: 5, right: 8, left: 0, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-                <XAxis dataKey="date" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} />
+                <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} />
                 <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={["auto", "auto"]} tickFormatter={(v: number) => `$${v}`} width={55} />
                 <YAxis yAxisId="vol" orientation="right" hide domain={[0, (dataMax: number) => dataMax * 3]} />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar yAxisId="vol" dataKey="volume" name="Volume" isAnimationActive={false}>
+                <Bar yAxisId="vol" dataKey="volume" name="Volume" maxBarSize={4} isAnimationActive={false}>
                   {masterData.map((d, i) => (
                     <Cell key={i} fill={d.close >= d.open ? "#39d353" : "#f85149"} fillOpacity={0.6} />
                   ))}
                 </Bar>
-                <Line type="monotone" dataKey="vwap" stroke="#ff4fa3" strokeWidth={2.5} dot={false} strokeDasharray="6 3" name="VWAP" />
+                <Line type="monotone" dataKey="vwap" stroke="#ff4fa3" strokeWidth={2.5} dot={false} name="VWAP" />
                 <Line type="monotone" dataKey="ema9" stroke="#79c0ff" strokeWidth={2} dot={false} name="EMA9" />
                 <Line type="monotone" dataKey="ema21" stroke="#d2a8ff" strokeWidth={1.5} dot={false} name="EMA21" />
                 {(() => {
@@ -1802,21 +1843,25 @@ export default function TradingPlatform() {
                       label={{ value: "SQUEEZE", fill: "#ffa657", fontSize: 9, position: "insideTopRight" }} />
                   );
                 })()}
-                {masterData.map((d, i) => {
-                  if (d.macdAlert === "BUY") {
-                    return (
-                      <ReferenceLine key={`b${i}`} x={d.date} stroke="#39d353" strokeDasharray="2 4"
-                        label={{ value: "B", fill: "#39d353", fontSize: 9, position: "top" }} />
-                    );
+                {(() => {
+                  const buys: Array<{ date: string; y: number }> = [];
+                  const sells: Array<{ date: string; y: number }> = [];
+                  for (let i = masterData.length - 1; i >= 0 && (buys.length < 3 || sells.length < 3); i--) {
+                    const d = masterData[i];
+                    if (d.macdAlert === "BUY" && buys.length < 3) buys.push({ date: d.date, y: (d as any).low ?? d.close });
+                    else if (d.macdAlert === "SELL" && sells.length < 3) sells.push({ date: d.date, y: (d as any).high ?? d.close });
                   }
-                  if (d.macdAlert === "SELL") {
-                    return (
-                      <ReferenceLine key={`s${i}`} x={d.date} stroke="#f85149" strokeDasharray="2 4"
-                        label={{ value: "S", fill: "#f85149", fontSize: 9, position: "top" }} />
-                    );
-                  }
-                  return null;
-                })}
+                  return (
+                    <>
+                      <Scatter data={buys} dataKey="y" fill="#39d353" shape={(p: any) => (
+                        <polygon points={`${p.cx},${p.cy + 8} ${p.cx - 5},${p.cy + 16} ${p.cx + 5},${p.cy + 16}`} fill="#39d353" />
+                      )} isAnimationActive={false} />
+                      <Scatter data={sells} dataKey="y" fill="#f85149" shape={(p: any) => (
+                        <polygon points={`${p.cx},${p.cy - 8} ${p.cx - 5},${p.cy - 16} ${p.cx + 5},${p.cy - 16}`} fill="#f85149" />
+                      )} isAnimationActive={false} />
+                    </>
+                  );
+                })()}
               </ComposedChart>
             </ResponsiveContainer>
             <div style={{ fontSize: 9, color: "#8b949e", padding: "4px 4px 0", lineHeight: 1.4 }}>
@@ -1883,36 +1928,73 @@ export default function TradingPlatform() {
           </ChartCard>
 
           {/* MACD */}
-          <ChartCard title="MACD (12,26,9) — MOVING AVERAGE CONVERGENCE DIVERGENCE"
-            legend={[{ label: "MACD", color: "#79c0ff" }, { label: "Signal", color: "#f85149" }, { label: "Histogram", color: "#39d353" }]}>
-            <ResponsiveContainer width="100%" height={340}>
-              <ComposedChart data={macdDisplayData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+          {/* MACD — dual panel: candlesticks + EMA + arrows on top, MACD hist + signal lines below */}
+          <ChartCard
+            title="MACD (12,26,9) · CANDLES + MOMENTUM"
+            legend={[
+              { label: "Bullish candle", color: "#39d353" },
+              { label: "Bearish candle", color: "#f85149" },
+              { label: "EMA9", color: "#8b1a1a" },
+              { label: "EMA21", color: "#ffffcc" },
+              { label: "MACD", color: "#79c0ff" },
+              { label: "Signal", color: "#f85149" },
+            ]}
+          >
+            <div style={{ fontSize: 9, color: "#8b949e", marginBottom: 4 }}>
+              ▲ green = buy crossover (last 3) · ▼ red = sell crossover (last 3) · EMA lines = trend
+            </div>
+            {/* Top panel: candlesticks + EMAs + arrows */}
+            <ResponsiveContainer width="100%" height={220}>
+              <ComposedChart data={macdCandleData} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-                <XAxis dataKey="date" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} />
-                <YAxis
-                  stroke="#8b949e"
-                  fontSize={9}
-                  width={45}
-                  domain={([min, max]: [number, number]) => {
-                    const m = Math.max(Math.abs(min), Math.abs(max)) || 0.1;
-                    const z = m * 1.15;
-                    return [-z, z];
-                  }}
-                />
-                {/* Hidden right axis just for the volume overlay so it
-                    doesn't squash the MACD scale. */}
-                <YAxis yAxisId="vol" orientation="right" hide domain={[0, (dataMax: number) => dataMax * 2.2]} />
+                <XAxis dataKey="date" stroke="#8b949e" fontSize={8} tick={{ fontFamily: mono, fontSize: 8 }} hide />
+                <YAxis stroke="#8b949e" fontSize={9} width={50} domain={["auto", "auto"]} tickFormatter={(v: number) => `$${v}`} />
                 <Tooltip content={<CustomTooltip />} />
-                <ReferenceLine y={0} stroke="#30363d" />
-                {/* Volume bars rendered first so MACD lines/histogram sit on top */}
-                <Bar yAxisId="vol" dataKey="volume" fill="#c9d1d9" fillOpacity={0.35} stroke="#8b949e" strokeOpacity={0.4} name="Volume" isAnimationActive={false} />
-                <Bar dataKey="macdHist" name="Histogram">
-                  {macdDisplayData.map((d: Row, i: number) => (
-                    <Cell key={i} fill={(d.macdHist ?? 0) >= 0 ? "#39d353" : "#f85149"} fillOpacity={0.7} />
+                {/* Wick = thin transparent bar from low to high */}
+                <Bar dataKey="wickRange" stackId="wick" fill="transparent" isAnimationActive={false} maxBarSize={1} />
+                <Bar dataKey="candleBody" name="Candle" isAnimationActive={false} maxBarSize={6}>
+                  {macdCandleData.map((d, i) => (
+                    <Cell key={`c${i}`} fill={d.candleColor} />
                   ))}
                 </Bar>
-                <Line type="monotone" dataKey="macd" stroke="#79c0ff" strokeWidth={3} dot={false} name="MACD" />
-                <Line type="monotone" dataKey="macdSignal" stroke="#f85149" strokeWidth={3} dot={false} name="Signal" />
+                {/* Wick rendering — overlay thin bars at low..high using stack offset */}
+                <Line type="monotone" dataKey="ema9" stroke="#8b1a1a" strokeWidth={2} dot={false} name="EMA9" />
+                <Line type="monotone" dataKey="ema21" stroke="#ffffcc" strokeWidth={2.5} dot={false} name="EMA21" />
+                {/* Buy/sell arrows — Scatter with custom shape */}
+                <Scatter
+                  dataKey="buyArrowY"
+                  fill="#39d353"
+                  isAnimationActive={false}
+                  shape={(p: any) => p?.payload?.buyArrowY == null ? <g /> : (
+                    <polygon points={`${p.cx - 5},${p.cy} ${p.cx + 5},${p.cy} ${p.cx},${p.cy - 6}`} fill="#39d353" />
+                  )}
+                />
+                <Scatter
+                  dataKey="sellArrowY"
+                  fill="#f85149"
+                  isAnimationActive={false}
+                  shape={(p: any) => p?.payload?.sellArrowY == null ? <g /> : (
+                    <polygon points={`${p.cx - 5},${p.cy} ${p.cx + 5},${p.cy} ${p.cx},${p.cy + 6}`} fill="#f85149" />
+                  )}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+            {/* Bottom panel: MACD histogram + signal lines */}
+            <div style={{ fontSize: 9, color: "#8b949e", marginTop: 2 }}>MACD</div>
+            <ResponsiveContainer width="100%" height={120}>
+              <ComposedChart data={macdCandleData} margin={{ top: 0, right: 8, left: 0, bottom: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
+                <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} />
+                <YAxis stroke="#8b949e" fontSize={9} width={45} />
+                <Tooltip content={<CustomTooltip />} />
+                <ReferenceLine y={0} stroke="#30363d" />
+                <Bar dataKey="macdHist" name="Histogram" maxBarSize={4} isAnimationActive={false}>
+                  {macdCandleData.map((d, i) => (
+                    <Cell key={`h${i}`} fill={(d.macdHist ?? 0) >= 0 ? "#39d353" : "#f85149"} fillOpacity={0.7} />
+                  ))}
+                </Bar>
+                <Line type="monotone" dataKey="macd" stroke="#79c0ff" strokeWidth={2} dot={false} name="MACD" />
+                <Line type="monotone" dataKey="macdSignal" stroke="#f85149" strokeWidth={2} dot={false} name="Signal" />
               </ComposedChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -2000,6 +2082,95 @@ export default function TradingPlatform() {
         </div>
         </div>
       )}
+
+      {/* SCREENER overlay */}
+      {showScreener && (() => {
+        const rows: ScreenerRow[] =
+          screenerTab === "gainers" ? (screenerData?.gainers ?? []) :
+          screenerTab === "losers" ? (screenerData?.losers ?? []) :
+          (screenerData?.actives ?? []);
+        const top = screenerData?.gainers?.[0];
+        const bot = screenerData?.losers?.[0];
+        const act = screenerData?.actives?.[0];
+        const fmtVol = (v: number | null) => v == null ? "—" : v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(0)}k` : `${v}`;
+        const updated = screenerUpdatedAt ? new Date(screenerUpdatedAt).toLocaleTimeString() : "—";
+        return (
+          <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "#010409", overflowY: "auto", paddingTop: "env(safe-area-inset-top, 0px)", fontFamily: mono }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: "1px solid #21262d", position: "sticky", top: 0, background: "#010409", zIndex: 2 }}>
+              <button onClick={() => setShowScreener(false)} style={{ background: "transparent", border: "none", color: "#58a6ff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>← WATCHLIST</button>
+              <div style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 14, color: "#22d3ee", letterSpacing: 1 }}>⚡ BRYANTRADE SCREENER</div>
+              <span style={{ width: 80 }} />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", borderBottom: "1px solid #161b22", fontSize: 10, color: "#8b949e", flexWrap: "wrap" }}>
+              <span>FROM 04:00</span>
+              <button
+                onClick={() => queryClient.invalidateQueries({ queryKey: ["screener"] })}
+                style={{ background: "transparent", border: "1px solid #30363d", color: "#e6edf3", fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 3, cursor: "pointer" }}
+              >REFRESH</button>
+              <span>Updated {updated}</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "#39d353", fontWeight: 800 }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#39d353", animation: "pulse 2s infinite" }} />
+                LIVE
+              </span>
+              <span style={{ fontSize: 9, color: "#8b949e" }}>↻ {countdown}s</span>
+            </div>
+            {/* Summary strip */}
+            <div style={{ padding: "6px 14px", fontSize: 10, color: "#8b949e", borderBottom: "1px solid #161b22" }}>
+              {top && (<>TOP GAINER: <span style={{ color: "#e6edf3", fontWeight: 700 }}>{top.symbol}</span> <span style={{ color: "#39d353", fontWeight: 700 }}>+{(top.changePct ?? 0).toFixed(2)}%</span></>)}
+              {bot && (<> · TOP LOSER: <span style={{ color: "#e6edf3", fontWeight: 700 }}>{bot.symbol}</span> <span style={{ color: "#f85149", fontWeight: 700 }}>{(bot.changePct ?? 0).toFixed(2)}%</span></>)}
+              {act && (<> · MOST ACTIVE: <span style={{ color: "#e6edf3", fontWeight: 700 }}>{act.symbol}</span> {fmtVol(act.volume)} shares</>)}
+            </div>
+            {/* Tabs */}
+            <div style={{ display: "flex", borderBottom: "1px solid #21262d" }}>
+              {(["gainers", "losers", "actives"] as const).map((t) => {
+                const active = screenerTab === t;
+                const label = t === "gainers" ? "GAINERS" : t === "losers" ? "LOSERS" : "MOST ACTIVE";
+                return (
+                  <button key={t} onClick={() => setScreenerTab(t)} style={{ flex: 1, background: "transparent", border: "none", padding: "10px 8px", color: active ? "#58a6ff" : "#8b949e", borderBottom: active ? "2px solid #58a6ff" : "2px solid transparent", fontSize: 11, fontWeight: 800, cursor: "pointer", letterSpacing: 1, fontFamily: mono }}>{label}</button>
+                );
+              })}
+            </div>
+            {/* Rows */}
+            {screenerFetching && rows.length === 0 ? (
+              <div style={{ display: "flex", justifyContent: "center", padding: 40 }}>
+                <div style={{ width: 24, height: 24, border: "2px solid #58a6ff", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+              </div>
+            ) : (
+              <div>
+                {rows.map((r, i) => {
+                  const up = (r.changePct ?? 0) >= 0;
+                  return (
+                    <div key={r.symbol} style={{ padding: "10px 14px", borderBottom: "1px solid #161b22", display: "flex", alignItems: "center", gap: 10, background: i % 2 === 0 ? "#0d1117" : "#010409" }}>
+                      <span style={{ width: 22, color: "#6e7681", fontSize: 10 }}>{i + 1}</span>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: "#e6edf3" }}>{r.symbol}</div>
+                        <div style={{ fontSize: 10, color: "#8b949e", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: 13, color: "#e6edf3" }}>${r.price?.toFixed(2) ?? "—"}</div>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: up ? "#39d353" : "#f85149" }}>
+                          {up ? "+" : ""}{(r.changePct ?? 0).toFixed(2)}%
+                        </div>
+                        <div style={{ fontSize: 10, color: "#8b949e" }}>Vol {fmtVol(r.volume)}</div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          addStock({ symbol: r.symbol, name: r.name, exchange: "", type: "EQUITY" });
+                        }}
+                        style={{ fontSize: 10, color: "#39d353", border: "1px solid #39d353", background: "transparent", borderRadius: 3, padding: "2px 6px", cursor: "pointer", fontWeight: 800 }}
+                      >+ ADD</button>
+                    </div>
+                  );
+                })}
+                {rows.length === 0 && (
+                  <div style={{ padding: 20, fontSize: 11, color: "#8b949e", textAlign: "center" }}>No results.</div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Notification */}
       {notification && (

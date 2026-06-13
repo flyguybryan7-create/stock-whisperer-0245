@@ -793,3 +793,81 @@ export const getBidAsk = createServerFn({ method: "POST" })
     }
     return {};
   });
+
+// ============ Screener: gainers / losers / most actives ============
+export type ScreenerRow = {
+  symbol: string;
+  name: string;
+  price: number | null;
+  change: number | null;
+  changePct: number | null;
+  volume: number | null;
+  marketCap: number | null;
+  high: number | null;
+  low: number | null;
+  open: number | null;
+};
+
+type YahooScreenerQuote = {
+  symbol?: string;
+  shortName?: string;
+  longName?: string;
+  regularMarketPrice?: number;
+  regularMarketChange?: number;
+  regularMarketChangePercent?: number;
+  regularMarketVolume?: number;
+  marketCap?: number;
+  regularMarketDayHigh?: number;
+  regularMarketDayLow?: number;
+  regularMarketOpen?: number;
+};
+
+async function fetchYahooScreener(scrId: string, count: number, session?: "PRE" | "POST"): Promise<ScreenerRow[]> {
+  const sessionQs = session ? `&session=${session}` : "";
+  const url = `https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?scrIds=${scrId}&count=${count}&start=0${sessionQs}`;
+  try {
+    const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+    if (!res.ok) return [];
+    const json = (await res.json()) as { finance?: { result?: Array<{ quotes?: YahooScreenerQuote[] }> } };
+    const quotes = json.finance?.result?.[0]?.quotes ?? [];
+    return quotes
+      .filter((q) => q.symbol)
+      .map((q) => ({
+        symbol: q.symbol!,
+        name: q.shortName ?? q.longName ?? q.symbol!,
+        price: q.regularMarketPrice ?? null,
+        change: q.regularMarketChange ?? null,
+        changePct: q.regularMarketChangePercent ?? null,
+        volume: q.regularMarketVolume ?? null,
+        marketCap: q.marketCap ?? null,
+        high: q.regularMarketDayHigh ?? null,
+        low: q.regularMarketDayLow ?? null,
+        open: q.regularMarketOpen ?? null,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+export const fetchScreener = createServerFn({ method: "GET" }).handler(
+  async (): Promise<{ gainers: ScreenerRow[]; losers: ScreenerRow[]; actives: ScreenerRow[] }> => {
+    const [gReg, gPre, losers, actives] = await Promise.all([
+      fetchYahooScreener("day_gainers", 50),
+      fetchYahooScreener("day_gainers", 50, "PRE"),
+      fetchYahooScreener("day_losers", 25),
+      fetchYahooScreener("most_actives", 25),
+    ]);
+    // Merge pre-market into regular gainers, dedup, sort desc by changePct
+    const map = new Map<string, ScreenerRow>();
+    for (const r of [...gReg, ...gPre]) {
+      const cur = map.get(r.symbol);
+      if (!cur || (r.changePct ?? -Infinity) > (cur.changePct ?? -Infinity)) map.set(r.symbol, r);
+    }
+    const gainers = Array.from(map.values()).sort((a, b) => (b.changePct ?? 0) - (a.changePct ?? 0));
+    return {
+      gainers,
+      losers: losers.sort((a, b) => (a.changePct ?? 0) - (b.changePct ?? 0)),
+      actives: actives.sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0)),
+    };
+  },
+);
