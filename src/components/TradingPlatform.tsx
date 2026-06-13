@@ -630,16 +630,23 @@ export default function TradingPlatform() {
   });
   const live = (liveQuotes as Record<string, LiveQuote> | undefined) ?? {};
 
-  // Real-time bid/ask for the selected stock via Nasdaq's quote endpoint.
-  // This refreshes every second and is independent from the watchlist batch.
-  const { data: bidAskData } = useQuery({
-    queryKey: ["bidask", selectedStock],
-    queryFn: () => fetchBidAsk({ data: { symbol: selectedStock } }),
-    refetchInterval: 500,
-    refetchIntervalInBackground: true,
-    staleTime: 0,
-    enabled: !!selectedStock,
+  // Bid/ask now comes through getLiveQuotes (v7 endpoint returns bid/ask/bidSize/askSize)
+  // on the same 1s tick as the live price — no separate query.
+
+  // Screener — gainers / losers / most active, refresh every 15s.
+  const { data: screenerData, isFetching: screenerFetching, dataUpdatedAt: screenerUpdatedAt } = useQuery({
+    queryKey: ["screener"],
+    queryFn: () => fetchScreenerFn(),
+    refetchInterval: 15_000,
+    staleTime: 12_000,
+    enabled: showScreener,
   });
+  useEffect(() => {
+    if (!showScreener) return;
+    const id = setInterval(() => setCountdown((c) => (c <= 1 ? 15 : c - 1)), 1000);
+    return () => clearInterval(id);
+  }, [showScreener]);
+  useEffect(() => { setCountdown(15); }, [screenerUpdatedAt]);
 
   // Short interest / float — refresh every 30 min (Yahoo updates twice a month)
   const { data: shortData } = useQuery({
