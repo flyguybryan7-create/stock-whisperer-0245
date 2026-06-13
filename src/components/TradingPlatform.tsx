@@ -936,7 +936,8 @@ export default function TradingPlatform() {
   }, [intradayBars]);
 
   const chartData = chartMode === "D" ? dailyChartData : intradayRows;
-  const displayDataRaw = chartMode === "D" ? chartData.slice(-chartRange) : chartData;
+  const maxIntraBars = intradayInterval === "1m" ? 120 : intradayInterval === "5m" ? 78 : 26;
+  const displayDataRaw = chartMode === "D" ? chartData.slice(-chartRange) : chartData.slice(-maxIntraBars);
   const displayData = useMemo(() => annotateMacdSignals(displayDataRaw), [displayDataRaw]);
   const macdCurrent = useMemo(() => getCurrentMacdSignal(displayData), [displayData]);
   const selectedLiveMacdRows = useMemo(() => {
