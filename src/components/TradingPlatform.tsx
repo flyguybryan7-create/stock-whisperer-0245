@@ -2085,6 +2085,103 @@ export default function TradingPlatform() {
 
       {/* Notification */}
       {notification && (
+        null
+      )}
+      {notification && (
+        // placeholder removed
+        null
+      )}
+      {/* SCREENER overlay */}
+      {showScreener && (() => {
+        const rows: ScreenerRow[] =
+          screenerTab === "gainers" ? (screenerData?.gainers ?? []) :
+          screenerTab === "losers" ? (screenerData?.losers ?? []) :
+          (screenerData?.actives ?? []);
+        const top = screenerData?.gainers?.[0];
+        const bot = screenerData?.losers?.[0];
+        const act = screenerData?.actives?.[0];
+        const fmtVol = (v: number | null) => v == null ? "—" : v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(0)}k` : `${v}`;
+        const updated = screenerUpdatedAt ? new Date(screenerUpdatedAt).toLocaleTimeString() : "—";
+        return (
+          <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "#010409", overflowY: "auto", paddingTop: "env(safe-area-inset-top, 0px)", fontFamily: mono }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: "1px solid #21262d", position: "sticky", top: 0, background: "#010409", zIndex: 2 }}>
+              <button onClick={() => setShowScreener(false)} style={{ background: "transparent", border: "none", color: "#58a6ff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>← WATCHLIST</button>
+              <div style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 14, color: "#22d3ee", letterSpacing: 1 }}>⚡ BRYANTRADE SCREENER</div>
+              <span style={{ width: 80 }} />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", borderBottom: "1px solid #161b22", fontSize: 10, color: "#8b949e", flexWrap: "wrap" }}>
+              <span>FROM 04:00</span>
+              <button
+                onClick={() => queryClient.invalidateQueries({ queryKey: ["screener"] })}
+                style={{ background: "transparent", border: "1px solid #30363d", color: "#e6edf3", fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 3, cursor: "pointer" }}
+              >REFRESH</button>
+              <span>Updated {updated}</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "#39d353", fontWeight: 800 }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#39d353", animation: "pulse 2s infinite" }} />
+                LIVE
+              </span>
+              <span style={{ fontSize: 9, color: "#8b949e" }}>↻ {countdown}s</span>
+            </div>
+            {/* Summary strip */}
+            <div style={{ padding: "6px 14px", fontSize: 10, color: "#8b949e", borderBottom: "1px solid #161b22" }}>
+              {top && (<>TOP GAINER: <span style={{ color: "#e6edf3", fontWeight: 700 }}>{top.symbol}</span> <span style={{ color: "#39d353", fontWeight: 700 }}>+{(top.changePct ?? 0).toFixed(2)}%</span></>)}
+              {bot && (<> · TOP LOSER: <span style={{ color: "#e6edf3", fontWeight: 700 }}>{bot.symbol}</span> <span style={{ color: "#f85149", fontWeight: 700 }}>{(bot.changePct ?? 0).toFixed(2)}%</span></>)}
+              {act && (<> · MOST ACTIVE: <span style={{ color: "#e6edf3", fontWeight: 700 }}>{act.symbol}</span> {fmtVol(act.volume)} shares</>)}
+            </div>
+            {/* Tabs */}
+            <div style={{ display: "flex", borderBottom: "1px solid #21262d" }}>
+              {(["gainers", "losers", "actives"] as const).map((t) => {
+                const active = screenerTab === t;
+                const label = t === "gainers" ? "GAINERS" : t === "losers" ? "LOSERS" : "MOST ACTIVE";
+                return (
+                  <button key={t} onClick={() => setScreenerTab(t)} style={{ flex: 1, background: "transparent", border: "none", padding: "10px 8px", color: active ? "#58a6ff" : "#8b949e", borderBottom: active ? "2px solid #58a6ff" : "2px solid transparent", fontSize: 11, fontWeight: 800, cursor: "pointer", letterSpacing: 1, fontFamily: mono }}>{label}</button>
+                );
+              })}
+            </div>
+            {/* Rows */}
+            {screenerFetching && rows.length === 0 ? (
+              <div style={{ display: "flex", justifyContent: "center", padding: 40 }}>
+                <div style={{ width: 24, height: 24, border: "2px solid #58a6ff", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+              </div>
+            ) : (
+              <div>
+                {rows.map((r, i) => {
+                  const up = (r.changePct ?? 0) >= 0;
+                  return (
+                    <div key={r.symbol} style={{ padding: "10px 14px", borderBottom: "1px solid #161b22", display: "flex", alignItems: "center", gap: 10, background: i % 2 === 0 ? "#0d1117" : "#010409" }}>
+                      <span style={{ width: 22, color: "#6e7681", fontSize: 10 }}>{i + 1}</span>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: "#e6edf3" }}>{r.symbol}</div>
+                        <div style={{ fontSize: 10, color: "#8b949e", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: 13, color: "#e6edf3" }}>${r.price?.toFixed(2) ?? "—"}</div>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: up ? "#39d353" : "#f85149" }}>
+                          {up ? "+" : ""}{(r.changePct ?? 0).toFixed(2)}%
+                        </div>
+                        <div style={{ fontSize: 10, color: "#8b949e" }}>Vol {fmtVol(r.volume)}</div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          addStock({ symbol: r.symbol, name: r.name, exchange: "", type: "EQUITY" });
+                        }}
+                        style={{ fontSize: 10, color: "#39d353", border: "1px solid #39d353", background: "transparent", borderRadius: 3, padding: "2px 6px", cursor: "pointer", fontWeight: 800 }}
+                      >+ ADD</button>
+                    </div>
+                  );
+                })}
+                {rows.length === 0 && (
+                  <div style={{ padding: 20, fontSize: 11, color: "#8b949e", textAlign: "center" }}>No results.</div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Notification */}
+      {notification && (
         <div style={{ position: "fixed", top: 70, right: 16, background: "#0d1117", border: "1px solid #39d353", borderRadius: 6, padding: "10px 14px", fontSize: 11, color: "#e6edf3", animation: "slideIn 0.3s", zIndex: 101, maxWidth: 320 }}>
           {notification.msg}
         </div>
