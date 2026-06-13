@@ -960,13 +960,6 @@ export default function TradingPlatform() {
   // Show only the most recent ~3 hours on the MACD chart so the crossover
   // structure is readable. Daily mode keeps the full visible range.
   const macdDisplayData = useMemo(() => {
-    type CandleRow = Row & {
-      candleStart: number; candleBody: number; candleColor: string;
-      wickStart: number; wickRange: number;
-      buyArrowY: number | null; sellArrowY: number | null;
-      ema21?: number;
-    };
-    let base: Row[];
     if (chartMode === "D") return displayData;
     const minutesPerBar = parseInt(intradayInterval) || 5;
     const bars = Math.max(12, Math.ceil(180 / minutesPerBar));
