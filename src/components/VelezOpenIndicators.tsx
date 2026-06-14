@@ -227,16 +227,16 @@ function ChartTooltip({ active, payload, label, chartData }: any) {
 
 export default function VelezChartPanel({ candles, ticker = "DEMO", marketOpenTimestamp }: { candles?: Candle[]; ticker?: string; marketOpenTimestamp?: number }) {
   const data = candles && candles.length > 0 ? candles : [];
-  if (data.length === 0) {
-    return <div className="bg-[#0a0e14] text-gray-400 p-6 rounded-lg border border-[#1e2730] text-center text-sm">Loading {ticker} 2-minute candles…</div>;
-  }
-  const openTs = marketOpenTimestamp ?? getMarketOpenTimestamp(toMs(data[0].time));
+  const openTs = marketOpenTimestamp ?? getMarketOpenTimestamp(data[0] ? toMs(data[0].time) : Date.now());
   const velez = useMemo(() => getVelezSignal(data, { marketOpenTimestamp: openTs }), [data, openTs]);
   const sma20 = useMemo(() => calculateSMASeries(data.map((c) => c.close), 20), [data]);
   const sma200 = useMemo(() => calculateSMASeries(data.map((c) => c.close), 200), [data]);
   const cciSeries = useMemo(() => calculateCCISeries(data, 5), [data]);
   const elephants = useMemo(() => getElephantBarMarkers(data), [data]);
   const openingRange = useMemo(() => getOpeningRange(data, openTs, 20), [data, openTs]);
+  if (data.length === 0) {
+    return <div className="bg-[#0a0e14] text-gray-400 p-6 rounded-lg border border-[#1e2730] text-center text-sm">Loading {ticker} 2-minute candles…</div>;
+  }
   const chartData = data.map((c, i) => ({
     idx: i, timeLabel: formatTime(toMs(c.time)),
     close: c.close, sma20: sma20[i], sma200: sma200[i], cci: cciSeries[i],
