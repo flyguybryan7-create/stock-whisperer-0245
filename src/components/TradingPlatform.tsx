@@ -1059,25 +1059,96 @@ export default function TradingPlatform() {
     return out;
   }, [displayData]);
 
-  // Master day-trade chart data: adds running VWAP + EMA21 (ema9 already on row)
-  const masterData = useMemo(() => {
-    if (!displayData.length) return [] as Array<Row & { vwap: number; ema21: number }>;
-    let pv = 0, vv = 0;
-    const kEma21 = 2 / 22;
-    let ema21 = displayData[0].close;
-    const out: Array<Row & { vwap: number; ema21: number }> = [];
-    for (let i = 0; i < displayData.length; i++) {
-      const d = displayData[i];
-      const typical = (((d as any).high ?? d.close) + ((d as any).low ?? d.close) + d.close) / 3;
-      pv += typical * (d.volume ?? 0);
-      vv += d.volume ?? 0;
-      const vwap = vv > 0 ? pv / vv : d.close;
-      if (i === 0) ema21 = d.close;
-      else ema21 = d.close * kEma21 + ema21 * (1 - kEma21);
-      out.push({ ...d, vwap: +vwap.toFixed(2), ema21: +ema21.toFixed(2) });
+  // Master day-trade chart data: fixed 2m / 1d candles + SMA20/SMA200 +
+  // Elephant Bar / Tail Bar / signal labels (price-action approach).
+  type MasterRow = {
+    date: string;
+    open: number; high: number; low: number; close: number; volume: number;
+    candleStart: number; candleBody: number; candleColor: string;
+    wickStart: number; wickRange: number;
+    sma20: number | null; sma200: number | null;
+    bullLabelY: number | null;     // shows "BULL" below the bar
+    sellLabelY: number | null;     // shows "SELL" above the bar
+    bottomingTailY: number | null; // small ▲
+    toppingTailY: number | null;   // small ▼
+    isElephant: boolean;
+  };
+  const masterData = useMemo<MasterRow[]>(() => {
+    if (!masterBars.length) return [];
+    const bars = masterBars;
+    const closes = bars.map((b) => b.close);
+    // SMA helpers — partial SMA200 if fewer than 200 bars (user requested)
+    const sma = (i: number, period: number): number | null => {
+      const eff = Math.min(period, i + 1);
+      if (eff < 5) return null;
+      let s = 0;
+      for (let k = i - eff + 1; k <= i; k++) s += closes[k];
+      return +(s / eff).toFixed(4);
+    };
+    // Rolling 20-bar average range + volume (prior bars only)
+    const ranges = bars.map((b) => b.high - b.low);
+    const vols = bars.map((b) => b.volume ?? 0);
+    const rollingAvg = (arr: number[], i: number, win: number) => {
+      const start = Math.max(0, i - win);
+      const end = i; // exclude current bar
+      if (end <= start) return 0;
+      let s = 0;
+      for (let k = start; k < end; k++) s += arr[k];
+      return s / (end - start);
+    };
+    // Pre-compute per-bar flags
+    type Flag = { idx: number; isElephant: boolean; bullElephant: boolean; bearElephant: boolean;
+      bottomingTail: boolean; toppingTail: boolean; bull: boolean; sell: boolean; high: number; low: number };
+    const flags: Flag[] = [];
+    for (let i = 0; i < bars.length; i++) {
+      const b = bars[i];
+      const range = b.high - b.low;
+      const body = Math.abs(b.close - b.open);
+      const upperWick = b.high - Math.max(b.open, b.close);
+      const lowerWick = Math.min(b.open, b.close) - b.low;
+      const avgR = rollingAvg(ranges, i, 20);
+      const avgV = rollingAvg(vols, i, 20);
+      const isElephant = avgR > 0 && avgV > 0 && range > avgR * 1.5 && (b.volume ?? 0) > avgV * 1.5;
+      const bullElephant = isElephant && b.close > b.open;
+      const bearElephant = isElephant && b.close < b.open;
+      const tailRef = Math.max(body, range * 0.05); // avoid div-by-zero
+      const bottomingTail = lowerWick >= tailRef * 2 && lowerWick > upperWick;
+      const toppingTail = upperWick >= tailRef * 2 && upperWick > lowerWick;
+      const s20 = sma(i, 20);
+      const bull = bullElephant || (bottomingTail && s20 != null && b.close > s20);
+      const sell = bearElephant || (toppingTail && s20 != null && b.close < s20);
+      flags.push({ idx: i, isElephant, bullElephant, bearElephant, bottomingTail, toppingTail, bull, sell, high: b.high, low: b.low });
     }
-    return out;
-  }, [displayData]);
+    // Keep only last 3 BULL + 3 SELL labels
+    const keepBull = new Set<number>();
+    const keepSell = new Set<number>();
+    for (let i = flags.length - 1; i >= 0 && (keepBull.size < 3 || keepSell.size < 3); i--) {
+      if (flags[i].bull && keepBull.size < 3) keepBull.add(i);
+      else if (flags[i].sell && keepSell.size < 3) keepSell.add(i);
+    }
+    return bars.map((b, i) => {
+      const start = Math.min(b.open, b.close);
+      const body = Math.abs(b.close - b.open);
+      const offset = Math.max((b.high - b.low) * 0.5, b.close * 0.002);
+      const s20 = sma(i, 20);
+      const s200 = sma(i, 200);
+      return {
+        date: new Date(b.t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }),
+        open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume,
+        candleStart: +start.toFixed(4),
+        candleBody: +(body || (b.close * 0.0005)).toFixed(4),
+        candleColor: b.close >= b.open ? "#39d353" : "#f85149",
+        wickStart: +b.low.toFixed(4),
+        wickRange: +(b.high - b.low).toFixed(4),
+        sma20: s20, sma200: s200,
+        bullLabelY: keepBull.has(i) ? +(b.low - offset).toFixed(4) : null,
+        sellLabelY: keepSell.has(i) ? +(b.high + offset).toFixed(4) : null,
+        bottomingTailY: flags[i].bottomingTail && !keepBull.has(i) ? +(b.low - offset * 0.5).toFixed(4) : null,
+        toppingTailY: flags[i].toppingTail && !keepSell.has(i) ? +(b.high + offset * 0.5).toFixed(4) : null,
+        isElephant: flags[i].isElephant,
+      };
+    });
+  }, [masterBars]);
 
   // Decision strip — last bar metrics
   const decision = useMemo(() => {
