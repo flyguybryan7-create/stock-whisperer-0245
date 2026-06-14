@@ -625,7 +625,9 @@ export default function TradingPlatform() {
   const { data: liveQuotes } = useQuery({
     queryKey: ["live", watchlist],
     queryFn: () => fetchLive({ data: { symbols: watchlist } }),
-    refetchInterval: 1000,
+    refetchInterval: 400,
+    refetchIntervalInBackground: true,
+    staleTime: 0,
     enabled: watchlist.length > 0,
   });
   const live = (liveQuotes as Record<string, LiveQuote> | undefined) ?? {};
