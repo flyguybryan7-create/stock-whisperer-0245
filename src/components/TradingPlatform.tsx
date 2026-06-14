@@ -1870,86 +1870,75 @@ export default function TradingPlatform() {
             </div>
           </div>
 
-          {/* Price chart */}
-          <ChartCard title="PRICE · MOVING AVERAGES · BOLLINGER BANDS"
-            legend={[{ label: "SMA9", color: "#79c0ff" }, { label: "SMA15", color: "#d2a8ff" }, { label: "SMA50", color: "#ffa657" }, { label: "BB Upper/Lower", color: "#30363d" }]}>
-            <ResponsiveContainer width="100%" height={340}>
-              <ComposedChart data={displayData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-                <XAxis dataKey="date" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} />
-                <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={["auto", "auto"]} tickFormatter={(v: number) => `$${v}`} width={55} />
-                <Tooltip content={<CustomTooltip />} />
-                <Area type="monotone" dataKey="bbUpper" stroke="#30363d" fill="#30363d" fillOpacity={0.1} name="BB Upper" />
-                <Area type="monotone" dataKey="bbLower" stroke="#30363d" fill="#010409" fillOpacity={1} name="BB Lower" />
-                <Line type="monotone" dataKey="close" stroke="#e6edf3" strokeWidth={2} dot={false} name="Close" />
-                <Line type="monotone" dataKey="sma9" stroke="#79c0ff" strokeWidth={1} dot={false} name="SMA9" />
-                <Line type="monotone" dataKey="sma15" stroke="#d2a8ff" strokeWidth={1} dot={false} name="SMA15" />
-                <Line type="monotone" dataKey="sma50" stroke="#ffa657" strokeWidth={1} dot={false} name="SMA50" />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </ChartCard>
-
-          {/* BRYANTRADE MASTER day-trade chart */}
+          {/* BRYANTRADE MASTER day-trade chart — fixed 1D / 2-min candlesticks */}
           <ChartCard
             title="⚡ BRYANTRADE MASTER · DAY TRADE SIGNAL CHART"
+            titleRight={<span style={{ fontSize: 9, color: "#8b949e", marginLeft: 6 }}>OV STYLE · 1D : 2m</span>}
             legend={[
-              { label: "Buy Vol (green bar)", color: "#39d353" },
-              { label: "Sell Vol (red bar)", color: "#f85149" },
-              { label: "VWAP", color: "#ff4fa3" },
-              { label: "EMA9", color: "#79c0ff" },
-              { label: "EMA21", color: "#d2a8ff" },
-              { label: "BB Squeeze", color: "#ffa657" },
+              { label: "Bullish candle", color: "#39d353" },
+              { label: "Bearish candle", color: "#f85149" },
+              { label: "20MA", color: "#ffffcc" },
+              { label: "200MA", color: "#8b1a1a" },
+              { label: "BULL signal", color: "#39d353" },
+              { label: "SELL signal", color: "#f85149" },
             ]}
           >
-            <ResponsiveContainer width="100%" height={420}>
-              <ComposedChart data={masterData} height={300} margin={{ top: 5, right: 8, left: 0, bottom: 20 }}>
+            <ResponsiveContainer width="100%" height={380}>
+              <ComposedChart data={masterData} margin={{ top: 8, right: 8, left: 0, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-                <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} />
+                <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} interval="preserveStartEnd" minTickGap={20} />
                 <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={["auto", "auto"]} tickFormatter={(v: number) => `$${v}`} width={55} />
-                <YAxis yAxisId="vol" orientation="right" hide domain={[0, (dataMax: number) => dataMax * 3]} />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar yAxisId="vol" dataKey="volume" name="Volume" maxBarSize={4} isAnimationActive={false}>
-                  {masterData.map((d, i) => (
-                    <Cell key={i} fill={d.close >= d.open ? "#39d353" : "#f85149"} fillOpacity={0.6} />
-                  ))}
+                {/* Wick = thin colored bar from low to high */}
+                <Bar dataKey="wickStart" stackId="wick" fill="transparent" isAnimationActive={false} maxBarSize={1} />
+                <Bar dataKey="wickRange" stackId="wick" isAnimationActive={false} maxBarSize={1}>
+                  {masterData.map((d, i) => (<Cell key={`w${i}`} fill={d.candleColor} />))}
                 </Bar>
-                <Line type="monotone" dataKey="vwap" stroke="#ff4fa3" strokeWidth={2.5} dot={false} name="VWAP" />
-                <Line type="monotone" dataKey="ema9" stroke="#79c0ff" strokeWidth={2} dot={false} name="EMA9" />
-                <Line type="monotone" dataKey="ema21" stroke="#d2a8ff" strokeWidth={1.5} dot={false} name="EMA21" />
-                {(() => {
-                  const last = masterData[masterData.length - 1];
-                  if (!last || last.bbUpper == null || last.bbLower == null || !last.bbMiddle) return null;
-                  const width = (last.bbUpper - last.bbLower) / last.bbMiddle;
-                  if (width >= 0.02) return null;
-                  return (
-                    <ReferenceLine y={last.close} stroke="#ffa657" strokeDasharray="4 4"
-                      label={{ value: "SQUEEZE", fill: "#ffa657", fontSize: 9, position: "insideTopRight" }} />
-                  );
-                })()}
-                {(() => {
-                  const buys: Array<{ date: string; y: number }> = [];
-                  const sells: Array<{ date: string; y: number }> = [];
-                  for (let i = masterData.length - 1; i >= 0 && (buys.length < 3 || sells.length < 3); i--) {
-                    const d = masterData[i];
-                    if (d.macdAlert === "BUY" && buys.length < 3) buys.push({ date: d.date, y: (d as any).low ?? d.close });
-                    else if (d.macdAlert === "SELL" && sells.length < 3) sells.push({ date: d.date, y: (d as any).high ?? d.close });
-                  }
-                  return (
-                    <>
-                      <Scatter data={buys} dataKey="y" fill="#39d353" shape={(p: any) => (
-                        <polygon points={`${p.cx},${p.cy + 8} ${p.cx - 5},${p.cy + 16} ${p.cx + 5},${p.cy + 16}`} fill="#39d353" />
-                      )} isAnimationActive={false} />
-                      <Scatter data={sells} dataKey="y" fill="#f85149" shape={(p: any) => (
-                        <polygon points={`${p.cx},${p.cy - 8} ${p.cx - 5},${p.cy - 16} ${p.cx + 5},${p.cy - 16}`} fill="#f85149" />
-                      )} isAnimationActive={false} />
-                    </>
-                  );
-                })()}
+                {/* Body */}
+                <Bar dataKey="candleStart" stackId="body" fill="transparent" isAnimationActive={false} maxBarSize={7} />
+                <Bar dataKey="candleBody" stackId="body" name="Candle" isAnimationActive={false} maxBarSize={7}>
+                  {masterData.map((d, i) => (<Cell key={`b${i}`} fill={d.candleColor} />))}
+                </Bar>
+                <Line type="monotone" dataKey="sma20" stroke="#ffffcc" strokeWidth={2} dot={false} name="20MA" connectNulls />
+                <Line type="monotone" dataKey="sma200" stroke="#8b1a1a" strokeWidth={2} dot={false} name="200MA" connectNulls />
+                {/* BULL labels (green, below candle) */}
+                <Scatter
+                  dataKey="bullLabelY"
+                  isAnimationActive={false}
+                  shape={(p: any) => p?.payload?.bullLabelY == null ? <g /> : (
+                    <g>
+                      <polygon points={`${p.cx - 4},${p.cy} ${p.cx + 4},${p.cy} ${p.cx},${p.cy - 5}`} fill="#39d353" />
+                      <text x={p.cx} y={p.cy + 9} textAnchor="middle" fill="#39d353" fontSize={9} fontWeight={900}>BULL</text>
+                    </g>
+                  )}
+                />
+                {/* SELL labels (red, above candle) */}
+                <Scatter
+                  dataKey="sellLabelY"
+                  isAnimationActive={false}
+                  shape={(p: any) => p?.payload?.sellLabelY == null ? <g /> : (
+                    <g>
+                      <text x={p.cx} y={p.cy - 6} textAnchor="middle" fill="#f85149" fontSize={9} fontWeight={900}>SELL</text>
+                      <polygon points={`${p.cx - 4},${p.cy} ${p.cx + 4},${p.cy} ${p.cx},${p.cy + 5}`} fill="#f85149" />
+                    </g>
+                  )}
+                />
+                {/* Small tail markers */}
+                <Scatter dataKey="bottomingTailY" isAnimationActive={false}
+                  shape={(p: any) => p?.payload?.bottomingTailY == null ? <g /> : (
+                    <polygon points={`${p.cx - 3},${p.cy + 3} ${p.cx + 3},${p.cy + 3} ${p.cx},${p.cy - 3}`} fill="#39d353" fillOpacity={0.7} />
+                  )} />
+                <Scatter dataKey="toppingTailY" isAnimationActive={false}
+                  shape={(p: any) => p?.payload?.toppingTailY == null ? <g /> : (
+                    <polygon points={`${p.cx - 3},${p.cy - 3} ${p.cx + 3},${p.cy - 3} ${p.cx},${p.cy + 3}`} fill="#f85149" fillOpacity={0.7} />
+                  )} />
               </ComposedChart>
             </ResponsiveContainer>
             <div style={{ fontSize: 9, color: "#8b949e", padding: "4px 4px 0", lineHeight: 1.4 }}>
-              Green bars = buy volume dominance · Red bars = sell volume dominance · Pink dashed = VWAP (stay above for long bias) ·
-              Blue = EMA9 · Purple = EMA21 · Orange = BB Squeeze warning · B/S markers = MACD crossover signals
+              Green/Red candles = price action · Cream line = 20MA · Dark red line = 200MA · BULL/SELL labels = Elephant Bar + Tail Bar confirmation signals · ▲/▼ small = raw tail bars
+            </div>
+            <div style={{ fontSize: 8, color: "#6e7681", padding: "2px 4px 0", lineHeight: 1.4 }}>
+              Signal logic based on publicly documented price-action concepts (Elephant Bars, Tail Bars, MA trend confirmation) — not a verified replica of any specific paid course.
             </div>
             {/* Decision strip */}
             {(() => {
@@ -1963,17 +1952,17 @@ export default function TradingPlatform() {
                 </span>
               );
               const cTrend = decision.trend === "BULL" ? "#39d353" : decision.trend === "BEAR" ? "#f85149" : "#8b949e";
-              const cVwap  = decision.vwapPos === "ABOVE" ? "#39d353" : decision.vwapPos === "BELOW" ? "#f85149" : "#8b949e";
+              const cMA    = decision.vwapPos === "ABOVE" ? "#39d353" : decision.vwapPos === "BELOW" ? "#f85149" : "#8b949e";
               const cVol   = decision.vol === "SURGE" ? "#ffa657" : "#8b949e";
-              const cBB    = decision.bb === "SQUEEZE" ? "#ffa657" : "#8b949e";
+              const cBB    = decision.bb === "EXPANDING" ? "#ffa657" : "#8b949e";
               const cMacd  = decision.macd === "BUY" ? "#39d353" : decision.macd === "SELL" ? "#f85149" : "#e3b341";
               const cBias  = decision.bias === "STRONG BUY" ? "#39d353" : decision.bias === "STRONG SELL" ? "#f85149" : "#e3b341";
               return (
                 <div style={{ display: "flex", flexWrap: "wrap", marginTop: 8, gap: 4 }}>
                   {badge("TREND", decision.trend, cTrend)}
-                  {badge("VWAP", decision.vwapPos, cVwap)}
+                  {badge("vs 20MA", decision.vwapPos, cMA)}
                   {badge("VOL", decision.vol, cVol)}
-                  {badge("BB", decision.bb, cBB)}
+                  {badge("ELEPHANT", decision.bb, cBB)}
                   {badge("MACD", decision.macd, cMacd)}
                   {badge("BIAS", decision.bias, cBias)}
                 </div>
