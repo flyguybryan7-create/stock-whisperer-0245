@@ -1164,15 +1164,14 @@ export default function TradingPlatform() {
       };
     }
     const trend: "BULL" | "BEAR" | "—" =
-      last.ema9 != null && last.ema21 != null ? (last.ema9 >= last.ema21 ? "BULL" : "BEAR") : "—";
+      last.sma20 != null && last.sma200 != null ? (last.sma20 >= last.sma200 ? "BULL" : "BEAR") : "—";
     const vwapPos: "ABOVE" | "BELOW" | "—" =
-      last.close >= last.vwap ? "ABOVE" : "BELOW";
+      last.sma20 != null ? (last.close >= last.sma20 ? "ABOVE" : "BELOW") : "—";
     const last20 = masterData.slice(-21, -1);
     const avgVol = last20.length ? last20.reduce((s, b) => s + (b.volume ?? 0), 0) / last20.length : 0;
     const vol: "SURGE" | "NORMAL" | "—" =
       avgVol > 0 ? (((last.volume ?? 0) / avgVol) >= 2 ? "SURGE" : "NORMAL") : "—";
-    const bbWidth = last.bbUpper != null && last.bbLower != null && last.bbMiddle ? (last.bbUpper - last.bbLower) / last.bbMiddle : null;
-    const bb: "SQUEEZE" | "EXPANDING" | "—" = bbWidth == null ? "—" : bbWidth < 0.02 ? "SQUEEZE" : "EXPANDING";
+    const bb: "SQUEEZE" | "EXPANDING" | "—" = last.isElephant ? "EXPANDING" : "—";
     let bull = 0, bear = 0;
     if (trend === "BULL") bull++; else if (trend === "BEAR") bear++;
     if (vwapPos === "ABOVE") bull++; else if (vwapPos === "BELOW") bear++;
