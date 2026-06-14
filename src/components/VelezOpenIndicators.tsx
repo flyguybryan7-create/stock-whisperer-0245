@@ -90,8 +90,8 @@ export function detectElephantBar(candles: Candle[], lookback = 10, threshold = 
   const rangeRatio = avgRange > 0 ? currentRange / avgRange : 0;
   const volRatio = avgVolume > 0 ? (current.volume || 0) / avgVolume : 0;
   const isElephant = rangeRatio >= threshold || volRatio >= threshold;
-  const direction: "bullish" | "bearish" = current.close >= current.open ? "bullish" : "bearish";
-  return { isElephant, direction, rangeRatio: round2(rangeRatio), volRatio: round2(volRatio) };
+  const direction = current.close >= current.open ? "bullish" : "bearish";
+  return { isElephant, direction: direction as "bullish" | "bearish", rangeRatio: round2(rangeRatio), volRatio: round2(volRatio) };
 }
 
 export function getElephantBarMarkers(candles: Candle[], lookback = 10, threshold = 1.8) {
