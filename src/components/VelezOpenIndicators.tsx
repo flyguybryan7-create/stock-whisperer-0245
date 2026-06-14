@@ -80,8 +80,9 @@ export function getCCISignal(cci: number | null) {
   return "neutral";
 }
 
-export function detectElephantBar(candles: Candle[], lookback = 10, threshold = 1.8) {
-  if (candles.length < lookback + 1) return { isElephant: false, direction: null as null | "bullish" | "bearish", rangeRatio: 0, volRatio: 0 };
+type ElephantResult = { isElephant: boolean; direction: "bullish" | "bearish" | null; rangeRatio: number; volRatio: number };
+export function detectElephantBar(candles: Candle[], lookback = 10, threshold = 1.8): ElephantResult {
+  if (candles.length < lookback + 1) return { isElephant: false, direction: null, rangeRatio: 0, volRatio: 0 };
   const current = candles[candles.length - 1];
   const prior = candles.slice(-(lookback + 1), -1);
   const avgRange = prior.reduce((s, c) => s + (c.high - c.low), 0) / prior.length;
@@ -90,8 +91,8 @@ export function detectElephantBar(candles: Candle[], lookback = 10, threshold = 
   const rangeRatio = avgRange > 0 ? currentRange / avgRange : 0;
   const volRatio = avgVolume > 0 ? (current.volume || 0) / avgVolume : 0;
   const isElephant = rangeRatio >= threshold || volRatio >= threshold;
-  const direction = current.close >= current.open ? "bullish" : "bearish";
-  return { isElephant, direction: direction as "bullish" | "bearish", rangeRatio: round2(rangeRatio), volRatio: round2(volRatio) };
+  const direction: "bullish" | "bearish" = current.close >= current.open ? "bullish" : "bearish";
+  return { isElephant, direction, rangeRatio: round2(rangeRatio), volRatio: round2(volRatio) };
 }
 
 export function getElephantBarMarkers(candles: Candle[], lookback = 10, threshold = 1.8) {
