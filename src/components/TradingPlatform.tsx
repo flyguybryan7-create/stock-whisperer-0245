@@ -1404,6 +1404,7 @@ export default function TradingPlatform() {
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
             <div style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 16, color: "#58a6ff", letterSpacing: 1 }}>⬡ BRYANTRADE</div>
             <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 2 }}>PRO TERMINAL</div>
+            <a href="/charts" style={{ fontSize: 10, fontWeight: 800, color: "#22d3ee", letterSpacing: 1, border: "1px solid #22d3ee", padding: "2px 6px", borderRadius: 4, textDecoration: "none" }}>OV CHART</a>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {semiRiskSent && (() => {
