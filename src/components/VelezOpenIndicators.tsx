@@ -99,7 +99,7 @@ export function getElephantBarMarkers(candles: Candle[], lookback = 10, threshol
   const markers: Array<{ index: number; time: number | string; price: number; direction: "bullish" | "bearish"; rangeRatio: number; volRatio: number }> = [];
   for (let i = lookback; i < candles.length; i++) {
     const result = detectElephantBar(candles.slice(0, i + 1), lookback, threshold);
-    if (result.isElephant) {
+    if (result.isElephant && result.direction) {
       const c = candles[i];
       markers.push({ index: i, time: c.time, price: result.direction === "bullish" ? c.high : c.low, direction: result.direction, rangeRatio: result.rangeRatio, volRatio: result.volRatio });
     }
