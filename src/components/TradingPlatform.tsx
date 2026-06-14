@@ -769,6 +769,17 @@ export default function TradingPlatform() {
   const intradayBars: IntradayBar[] = intradayData ?? [];
   const dayTrade = useMemo(() => getDayTradeSignal(intradayBars), [intradayBars]);
 
+  // Master chart is locked to 2-minute / 1-day candles (OV-style first-20-min
+  // opening-range workflow). Fetched independently of the user's interval
+  // selectors so toggling 5m/15m doesn't change it.
+  const { data: masterBarsData } = useQuery({
+    queryKey: ["intraday-master-2m", selectedStock],
+    queryFn: () => fetchIntraday({ data: { symbol: selectedStock, interval: "2m", range: "1d" } }),
+    refetchInterval: 15_000,
+    enabled: !!selectedStock,
+  });
+  const masterBars: IntradayBar[] = masterBarsData ?? [];
+
   // Intraday bars for every watchlist symbol — refreshed every 3s so the
   // BUY/SELL/HOLD badges next to each ticker react to live MACD momentum.
   const { data: watchlistIntradayData } = useQuery({
