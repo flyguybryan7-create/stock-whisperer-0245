@@ -851,23 +851,42 @@ async function fetchYahooScreener(scrId: string, count: number, session?: "PRE" 
 
 export const fetchScreener = createServerFn({ method: "GET" }).handler(
   async (): Promise<{ gainers: ScreenerRow[]; losers: ScreenerRow[]; actives: ScreenerRow[] }> => {
-    const [gReg, gPre, losers, actives] = await Promise.all([
-      fetchYahooScreener("day_gainers", 50),
-      fetchYahooScreener("day_gainers", 50, "PRE"),
-      fetchYahooScreener("day_losers", 25),
-      fetchYahooScreener("most_actives", 25),
+    // Merge multiple Yahoo predefined screeners so the gainers list captures
+    // small/micro-cap and penny names too (Yahoo's day_gainers list is capped
+    // at $2B+ market cap). small_cap_gainers + aggressive_small_caps cover
+    // sub-$2B and OTC names that move on big % days.
+    const [gReg, gPre, gSmall, gAggro, losers, lSmall, actives, sActives] = await Promise.all([
+      fetchYahooScreener("day_gainers", 100),
+      fetchYahooScreener("day_gainers", 100, "PRE"),
+      fetchYahooScreener("small_cap_gainers", 100),
+      fetchYahooScreener("aggressive_small_caps", 100),
+      fetchYahooScreener("day_losers", 50),
+      fetchYahooScreener("small_cap_gainers", 50).then((rs) => rs.filter((r) => (r.changePct ?? 0) < 0)),
+      fetchYahooScreener("most_actives", 50),
+      fetchYahooScreener("most_actives_small_cap", 50),
     ]);
-    // Merge pre-market into regular gainers, dedup, sort desc by changePct
-    const map = new Map<string, ScreenerRow>();
-    for (const r of [...gReg, ...gPre]) {
-      const cur = map.get(r.symbol);
-      if (!cur || (r.changePct ?? -Infinity) > (cur.changePct ?? -Infinity)) map.set(r.symbol, r);
+    // Merge + dedup by symbol, keep the row with the strongest move
+    const gMap = new Map<string, ScreenerRow>();
+    for (const r of [...gReg, ...gPre, ...gSmall, ...gAggro]) {
+      if ((r.changePct ?? 0) <= 0) continue;
+      const cur = gMap.get(r.symbol);
+      if (!cur || (r.changePct ?? -Infinity) > (cur.changePct ?? -Infinity)) gMap.set(r.symbol, r);
     }
-    const gainers = Array.from(map.values()).sort((a, b) => (b.changePct ?? 0) - (a.changePct ?? 0));
+    const gainers = Array.from(gMap.values()).sort((a, b) => (b.changePct ?? 0) - (a.changePct ?? 0));
+    const lMap = new Map<string, ScreenerRow>();
+    for (const r of [...losers, ...lSmall]) {
+      const cur = lMap.get(r.symbol);
+      if (!cur || (r.changePct ?? Infinity) < (cur.changePct ?? Infinity)) lMap.set(r.symbol, r);
+    }
+    const aMap = new Map<string, ScreenerRow>();
+    for (const r of [...actives, ...sActives]) {
+      const cur = aMap.get(r.symbol);
+      if (!cur || (r.volume ?? 0) > (cur.volume ?? 0)) aMap.set(r.symbol, r);
+    }
     return {
       gainers,
-      losers: losers.sort((a, b) => (a.changePct ?? 0) - (b.changePct ?? 0)),
-      actives: actives.sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0)),
+      losers: Array.from(lMap.values()).sort((a, b) => (a.changePct ?? 0) - (b.changePct ?? 0)),
+      actives: Array.from(aMap.values()).sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0)),
     };
   },
 );

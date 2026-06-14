@@ -625,7 +625,9 @@ export default function TradingPlatform() {
   const { data: liveQuotes } = useQuery({
     queryKey: ["live", watchlist],
     queryFn: () => fetchLive({ data: { symbols: watchlist } }),
-    refetchInterval: 1000,
+    refetchInterval: 400,
+    refetchIntervalInBackground: true,
+    staleTime: 0,
     enabled: watchlist.length > 0,
   });
   const live = (liveQuotes as Record<string, LiveQuote> | undefined) ?? {};
@@ -766,6 +768,17 @@ export default function TradingPlatform() {
   });
   const intradayBars: IntradayBar[] = intradayData ?? [];
   const dayTrade = useMemo(() => getDayTradeSignal(intradayBars), [intradayBars]);
+
+  // Master chart is locked to 2-minute / 1-day candles (OV-style first-20-min
+  // opening-range workflow). Fetched independently of the user's interval
+  // selectors so toggling 5m/15m doesn't change it.
+  const { data: masterBarsData } = useQuery({
+    queryKey: ["intraday-master-2m", selectedStock],
+    queryFn: () => fetchIntraday({ data: { symbol: selectedStock, interval: "2m", range: "1d" } }),
+    refetchInterval: 15_000,
+    enabled: !!selectedStock,
+  });
+  const masterBars: IntradayBar[] = masterBarsData ?? [];
 
   // Intraday bars for every watchlist symbol — refreshed every 3s so the
   // BUY/SELL/HOLD badges next to each ticker react to live MACD momentum.
@@ -1046,25 +1059,96 @@ export default function TradingPlatform() {
     return out;
   }, [displayData]);
 
-  // Master day-trade chart data: adds running VWAP + EMA21 (ema9 already on row)
-  const masterData = useMemo(() => {
-    if (!displayData.length) return [] as Array<Row & { vwap: number; ema21: number }>;
-    let pv = 0, vv = 0;
-    const kEma21 = 2 / 22;
-    let ema21 = displayData[0].close;
-    const out: Array<Row & { vwap: number; ema21: number }> = [];
-    for (let i = 0; i < displayData.length; i++) {
-      const d = displayData[i];
-      const typical = (((d as any).high ?? d.close) + ((d as any).low ?? d.close) + d.close) / 3;
-      pv += typical * (d.volume ?? 0);
-      vv += d.volume ?? 0;
-      const vwap = vv > 0 ? pv / vv : d.close;
-      if (i === 0) ema21 = d.close;
-      else ema21 = d.close * kEma21 + ema21 * (1 - kEma21);
-      out.push({ ...d, vwap: +vwap.toFixed(2), ema21: +ema21.toFixed(2) });
+  // Master day-trade chart data: fixed 2m / 1d candles + SMA20/SMA200 +
+  // Elephant Bar / Tail Bar / signal labels (price-action approach).
+  type MasterRow = {
+    date: string;
+    open: number; high: number; low: number; close: number; volume: number;
+    candleStart: number; candleBody: number; candleColor: string;
+    wickStart: number; wickRange: number;
+    sma20: number | null; sma200: number | null;
+    bullLabelY: number | null;     // shows "BULL" below the bar
+    sellLabelY: number | null;     // shows "SELL" above the bar
+    bottomingTailY: number | null; // small ▲
+    toppingTailY: number | null;   // small ▼
+    isElephant: boolean;
+  };
+  const masterData = useMemo<MasterRow[]>(() => {
+    if (!masterBars.length) return [];
+    const bars = masterBars;
+    const closes = bars.map((b) => b.close);
+    // SMA helpers — partial SMA200 if fewer than 200 bars (user requested)
+    const sma = (i: number, period: number): number | null => {
+      const eff = Math.min(period, i + 1);
+      if (eff < 5) return null;
+      let s = 0;
+      for (let k = i - eff + 1; k <= i; k++) s += closes[k];
+      return +(s / eff).toFixed(4);
+    };
+    // Rolling 20-bar average range + volume (prior bars only)
+    const ranges = bars.map((b) => b.high - b.low);
+    const vols = bars.map((b) => b.volume ?? 0);
+    const rollingAvg = (arr: number[], i: number, win: number) => {
+      const start = Math.max(0, i - win);
+      const end = i; // exclude current bar
+      if (end <= start) return 0;
+      let s = 0;
+      for (let k = start; k < end; k++) s += arr[k];
+      return s / (end - start);
+    };
+    // Pre-compute per-bar flags
+    type Flag = { idx: number; isElephant: boolean; bullElephant: boolean; bearElephant: boolean;
+      bottomingTail: boolean; toppingTail: boolean; bull: boolean; sell: boolean; high: number; low: number };
+    const flags: Flag[] = [];
+    for (let i = 0; i < bars.length; i++) {
+      const b = bars[i];
+      const range = b.high - b.low;
+      const body = Math.abs(b.close - b.open);
+      const upperWick = b.high - Math.max(b.open, b.close);
+      const lowerWick = Math.min(b.open, b.close) - b.low;
+      const avgR = rollingAvg(ranges, i, 20);
+      const avgV = rollingAvg(vols, i, 20);
+      const isElephant = avgR > 0 && avgV > 0 && range > avgR * 1.5 && (b.volume ?? 0) > avgV * 1.5;
+      const bullElephant = isElephant && b.close > b.open;
+      const bearElephant = isElephant && b.close < b.open;
+      const tailRef = Math.max(body, range * 0.05); // avoid div-by-zero
+      const bottomingTail = lowerWick >= tailRef * 2 && lowerWick > upperWick;
+      const toppingTail = upperWick >= tailRef * 2 && upperWick > lowerWick;
+      const s20 = sma(i, 20);
+      const bull = bullElephant || (bottomingTail && s20 != null && b.close > s20);
+      const sell = bearElephant || (toppingTail && s20 != null && b.close < s20);
+      flags.push({ idx: i, isElephant, bullElephant, bearElephant, bottomingTail, toppingTail, bull, sell, high: b.high, low: b.low });
     }
-    return out;
-  }, [displayData]);
+    // Keep only last 3 BULL + 3 SELL labels
+    const keepBull = new Set<number>();
+    const keepSell = new Set<number>();
+    for (let i = flags.length - 1; i >= 0 && (keepBull.size < 3 || keepSell.size < 3); i--) {
+      if (flags[i].bull && keepBull.size < 3) keepBull.add(i);
+      else if (flags[i].sell && keepSell.size < 3) keepSell.add(i);
+    }
+    return bars.map((b, i) => {
+      const start = Math.min(b.open, b.close);
+      const body = Math.abs(b.close - b.open);
+      const offset = Math.max((b.high - b.low) * 0.5, b.close * 0.002);
+      const s20 = sma(i, 20);
+      const s200 = sma(i, 200);
+      return {
+        date: new Date(b.t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }),
+        open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume,
+        candleStart: +start.toFixed(4),
+        candleBody: +(body || (b.close * 0.0005)).toFixed(4),
+        candleColor: b.close >= b.open ? "#39d353" : "#f85149",
+        wickStart: +b.low.toFixed(4),
+        wickRange: +(b.high - b.low).toFixed(4),
+        sma20: s20, sma200: s200,
+        bullLabelY: keepBull.has(i) ? +(b.low - offset).toFixed(4) : null,
+        sellLabelY: keepSell.has(i) ? +(b.high + offset).toFixed(4) : null,
+        bottomingTailY: flags[i].bottomingTail && !keepBull.has(i) ? +(b.low - offset * 0.5).toFixed(4) : null,
+        toppingTailY: flags[i].toppingTail && !keepSell.has(i) ? +(b.high + offset * 0.5).toFixed(4) : null,
+        isElephant: flags[i].isElephant,
+      };
+    });
+  }, [masterBars]);
 
   // Decision strip — last bar metrics
   const decision = useMemo(() => {
@@ -1080,15 +1164,14 @@ export default function TradingPlatform() {
       };
     }
     const trend: "BULL" | "BEAR" | "—" =
-      last.ema9 != null && last.ema21 != null ? (last.ema9 >= last.ema21 ? "BULL" : "BEAR") : "—";
+      last.sma20 != null && last.sma200 != null ? (last.sma20 >= last.sma200 ? "BULL" : "BEAR") : "—";
     const vwapPos: "ABOVE" | "BELOW" | "—" =
-      last.close >= last.vwap ? "ABOVE" : "BELOW";
+      last.sma20 != null ? (last.close >= last.sma20 ? "ABOVE" : "BELOW") : "—";
     const last20 = masterData.slice(-21, -1);
     const avgVol = last20.length ? last20.reduce((s, b) => s + (b.volume ?? 0), 0) / last20.length : 0;
     const vol: "SURGE" | "NORMAL" | "—" =
       avgVol > 0 ? (((last.volume ?? 0) / avgVol) >= 2 ? "SURGE" : "NORMAL") : "—";
-    const bbWidth = last.bbUpper != null && last.bbLower != null && last.bbMiddle ? (last.bbUpper - last.bbLower) / last.bbMiddle : null;
-    const bb: "SQUEEZE" | "EXPANDING" | "—" = bbWidth == null ? "—" : bbWidth < 0.02 ? "SQUEEZE" : "EXPANDING";
+    const bb: "SQUEEZE" | "EXPANDING" | "—" = last.isElephant ? "EXPANDING" : "—";
     let bull = 0, bear = 0;
     if (trend === "BULL") bull++; else if (trend === "BEAR") bear++;
     if (vwapPos === "ABOVE") bull++; else if (vwapPos === "BELOW") bear++;
@@ -1321,6 +1404,7 @@ export default function TradingPlatform() {
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
             <div style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 16, color: "#58a6ff", letterSpacing: 1 }}>⬡ BRYANTRADE</div>
             <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 2 }}>PRO TERMINAL</div>
+            <a href="/charts" style={{ fontSize: 10, fontWeight: 800, color: "#22d3ee", letterSpacing: 1, border: "1px solid #22d3ee", padding: "2px 6px", borderRadius: 4, textDecoration: "none" }}>OV CHART</a>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {semiRiskSent && (() => {
@@ -1787,86 +1871,75 @@ export default function TradingPlatform() {
             </div>
           </div>
 
-          {/* Price chart */}
-          <ChartCard title="PRICE · MOVING AVERAGES · BOLLINGER BANDS"
-            legend={[{ label: "SMA9", color: "#79c0ff" }, { label: "SMA15", color: "#d2a8ff" }, { label: "SMA50", color: "#ffa657" }, { label: "BB Upper/Lower", color: "#30363d" }]}>
-            <ResponsiveContainer width="100%" height={340}>
-              <ComposedChart data={displayData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-                <XAxis dataKey="date" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} />
-                <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={["auto", "auto"]} tickFormatter={(v: number) => `$${v}`} width={55} />
-                <Tooltip content={<CustomTooltip />} />
-                <Area type="monotone" dataKey="bbUpper" stroke="#30363d" fill="#30363d" fillOpacity={0.1} name="BB Upper" />
-                <Area type="monotone" dataKey="bbLower" stroke="#30363d" fill="#010409" fillOpacity={1} name="BB Lower" />
-                <Line type="monotone" dataKey="close" stroke="#e6edf3" strokeWidth={2} dot={false} name="Close" />
-                <Line type="monotone" dataKey="sma9" stroke="#79c0ff" strokeWidth={1} dot={false} name="SMA9" />
-                <Line type="monotone" dataKey="sma15" stroke="#d2a8ff" strokeWidth={1} dot={false} name="SMA15" />
-                <Line type="monotone" dataKey="sma50" stroke="#ffa657" strokeWidth={1} dot={false} name="SMA50" />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </ChartCard>
-
-          {/* BRYANTRADE MASTER day-trade chart */}
+          {/* BRYANTRADE MASTER day-trade chart — fixed 1D / 2-min candlesticks */}
           <ChartCard
             title="⚡ BRYANTRADE MASTER · DAY TRADE SIGNAL CHART"
+            titleRight={<span style={{ fontSize: 9, color: "#8b949e", marginLeft: 6 }}>OV STYLE · 1D : 2m</span>}
             legend={[
-              { label: "Buy Vol (green bar)", color: "#39d353" },
-              { label: "Sell Vol (red bar)", color: "#f85149" },
-              { label: "VWAP", color: "#ff4fa3" },
-              { label: "EMA9", color: "#79c0ff" },
-              { label: "EMA21", color: "#d2a8ff" },
-              { label: "BB Squeeze", color: "#ffa657" },
+              { label: "Bullish candle", color: "#39d353" },
+              { label: "Bearish candle", color: "#f85149" },
+              { label: "20MA", color: "#ffffcc" },
+              { label: "200MA", color: "#8b1a1a" },
+              { label: "BULL signal", color: "#39d353" },
+              { label: "SELL signal", color: "#f85149" },
             ]}
           >
-            <ResponsiveContainer width="100%" height={420}>
-              <ComposedChart data={masterData} height={300} margin={{ top: 5, right: 8, left: 0, bottom: 20 }}>
+            <ResponsiveContainer width="100%" height={380}>
+              <ComposedChart data={masterData} margin={{ top: 8, right: 8, left: 0, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-                <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} />
+                <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} interval="preserveStartEnd" minTickGap={20} />
                 <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={["auto", "auto"]} tickFormatter={(v: number) => `$${v}`} width={55} />
-                <YAxis yAxisId="vol" orientation="right" hide domain={[0, (dataMax: number) => dataMax * 3]} />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar yAxisId="vol" dataKey="volume" name="Volume" maxBarSize={4} isAnimationActive={false}>
-                  {masterData.map((d, i) => (
-                    <Cell key={i} fill={d.close >= d.open ? "#39d353" : "#f85149"} fillOpacity={0.6} />
-                  ))}
+                {/* Wick = thin colored bar from low to high */}
+                <Bar dataKey="wickStart" stackId="wick" fill="transparent" isAnimationActive={false} maxBarSize={1} />
+                <Bar dataKey="wickRange" stackId="wick" isAnimationActive={false} maxBarSize={1}>
+                  {masterData.map((d, i) => (<Cell key={`w${i}`} fill={d.candleColor} />))}
                 </Bar>
-                <Line type="monotone" dataKey="vwap" stroke="#ff4fa3" strokeWidth={2.5} dot={false} name="VWAP" />
-                <Line type="monotone" dataKey="ema9" stroke="#79c0ff" strokeWidth={2} dot={false} name="EMA9" />
-                <Line type="monotone" dataKey="ema21" stroke="#d2a8ff" strokeWidth={1.5} dot={false} name="EMA21" />
-                {(() => {
-                  const last = masterData[masterData.length - 1];
-                  if (!last || last.bbUpper == null || last.bbLower == null || !last.bbMiddle) return null;
-                  const width = (last.bbUpper - last.bbLower) / last.bbMiddle;
-                  if (width >= 0.02) return null;
-                  return (
-                    <ReferenceLine y={last.close} stroke="#ffa657" strokeDasharray="4 4"
-                      label={{ value: "SQUEEZE", fill: "#ffa657", fontSize: 9, position: "insideTopRight" }} />
-                  );
-                })()}
-                {(() => {
-                  const buys: Array<{ date: string; y: number }> = [];
-                  const sells: Array<{ date: string; y: number }> = [];
-                  for (let i = masterData.length - 1; i >= 0 && (buys.length < 3 || sells.length < 3); i--) {
-                    const d = masterData[i];
-                    if (d.macdAlert === "BUY" && buys.length < 3) buys.push({ date: d.date, y: (d as any).low ?? d.close });
-                    else if (d.macdAlert === "SELL" && sells.length < 3) sells.push({ date: d.date, y: (d as any).high ?? d.close });
-                  }
-                  return (
-                    <>
-                      <Scatter data={buys} dataKey="y" fill="#39d353" shape={(p: any) => (
-                        <polygon points={`${p.cx},${p.cy + 8} ${p.cx - 5},${p.cy + 16} ${p.cx + 5},${p.cy + 16}`} fill="#39d353" />
-                      )} isAnimationActive={false} />
-                      <Scatter data={sells} dataKey="y" fill="#f85149" shape={(p: any) => (
-                        <polygon points={`${p.cx},${p.cy - 8} ${p.cx - 5},${p.cy - 16} ${p.cx + 5},${p.cy - 16}`} fill="#f85149" />
-                      )} isAnimationActive={false} />
-                    </>
-                  );
-                })()}
+                {/* Body */}
+                <Bar dataKey="candleStart" stackId="body" fill="transparent" isAnimationActive={false} maxBarSize={7} />
+                <Bar dataKey="candleBody" stackId="body" name="Candle" isAnimationActive={false} maxBarSize={7}>
+                  {masterData.map((d, i) => (<Cell key={`b${i}`} fill={d.candleColor} />))}
+                </Bar>
+                <Line type="monotone" dataKey="sma20" stroke="#ffffcc" strokeWidth={2} dot={false} name="20MA" connectNulls />
+                <Line type="monotone" dataKey="sma200" stroke="#8b1a1a" strokeWidth={2} dot={false} name="200MA" connectNulls />
+                {/* BULL labels (green, below candle) */}
+                <Scatter
+                  dataKey="bullLabelY"
+                  isAnimationActive={false}
+                  shape={(p: any) => p?.payload?.bullLabelY == null ? <g /> : (
+                    <g>
+                      <polygon points={`${p.cx - 4},${p.cy} ${p.cx + 4},${p.cy} ${p.cx},${p.cy - 5}`} fill="#39d353" />
+                      <text x={p.cx} y={p.cy + 9} textAnchor="middle" fill="#39d353" fontSize={9} fontWeight={900}>BULL</text>
+                    </g>
+                  )}
+                />
+                {/* SELL labels (red, above candle) */}
+                <Scatter
+                  dataKey="sellLabelY"
+                  isAnimationActive={false}
+                  shape={(p: any) => p?.payload?.sellLabelY == null ? <g /> : (
+                    <g>
+                      <text x={p.cx} y={p.cy - 6} textAnchor="middle" fill="#f85149" fontSize={9} fontWeight={900}>SELL</text>
+                      <polygon points={`${p.cx - 4},${p.cy} ${p.cx + 4},${p.cy} ${p.cx},${p.cy + 5}`} fill="#f85149" />
+                    </g>
+                  )}
+                />
+                {/* Small tail markers */}
+                <Scatter dataKey="bottomingTailY" isAnimationActive={false}
+                  shape={(p: any) => p?.payload?.bottomingTailY == null ? <g /> : (
+                    <polygon points={`${p.cx - 3},${p.cy + 3} ${p.cx + 3},${p.cy + 3} ${p.cx},${p.cy - 3}`} fill="#39d353" fillOpacity={0.7} />
+                  )} />
+                <Scatter dataKey="toppingTailY" isAnimationActive={false}
+                  shape={(p: any) => p?.payload?.toppingTailY == null ? <g /> : (
+                    <polygon points={`${p.cx - 3},${p.cy - 3} ${p.cx + 3},${p.cy - 3} ${p.cx},${p.cy + 3}`} fill="#f85149" fillOpacity={0.7} />
+                  )} />
               </ComposedChart>
             </ResponsiveContainer>
             <div style={{ fontSize: 9, color: "#8b949e", padding: "4px 4px 0", lineHeight: 1.4 }}>
-              Green bars = buy volume dominance · Red bars = sell volume dominance · Pink dashed = VWAP (stay above for long bias) ·
-              Blue = EMA9 · Purple = EMA21 · Orange = BB Squeeze warning · B/S markers = MACD crossover signals
+              Green/Red candles = price action · Cream line = 20MA · Dark red line = 200MA · BULL/SELL labels = Elephant Bar + Tail Bar confirmation signals · ▲/▼ small = raw tail bars
+            </div>
+            <div style={{ fontSize: 8, color: "#6e7681", padding: "2px 4px 0", lineHeight: 1.4 }}>
+              Signal logic based on publicly documented price-action concepts (Elephant Bars, Tail Bars, MA trend confirmation) — not a verified replica of any specific paid course.
             </div>
             {/* Decision strip */}
             {(() => {
@@ -1880,17 +1953,17 @@ export default function TradingPlatform() {
                 </span>
               );
               const cTrend = decision.trend === "BULL" ? "#39d353" : decision.trend === "BEAR" ? "#f85149" : "#8b949e";
-              const cVwap  = decision.vwapPos === "ABOVE" ? "#39d353" : decision.vwapPos === "BELOW" ? "#f85149" : "#8b949e";
+              const cMA    = decision.vwapPos === "ABOVE" ? "#39d353" : decision.vwapPos === "BELOW" ? "#f85149" : "#8b949e";
               const cVol   = decision.vol === "SURGE" ? "#ffa657" : "#8b949e";
-              const cBB    = decision.bb === "SQUEEZE" ? "#ffa657" : "#8b949e";
+              const cBB    = decision.bb === "EXPANDING" ? "#ffa657" : "#8b949e";
               const cMacd  = decision.macd === "BUY" ? "#39d353" : decision.macd === "SELL" ? "#f85149" : "#e3b341";
               const cBias  = decision.bias === "STRONG BUY" ? "#39d353" : decision.bias === "STRONG SELL" ? "#f85149" : "#e3b341";
               return (
                 <div style={{ display: "flex", flexWrap: "wrap", marginTop: 8, gap: 4 }}>
                   {badge("TREND", decision.trend, cTrend)}
-                  {badge("VWAP", decision.vwapPos, cVwap)}
+                  {badge("vs 20MA", decision.vwapPos, cMA)}
                   {badge("VOL", decision.vol, cVol)}
-                  {badge("BB", decision.bb, cBB)}
+                  {badge("ELEPHANT", decision.bb, cBB)}
                   {badge("MACD", decision.macd, cMacd)}
                   {badge("BIAS", decision.bias, cBias)}
                 </div>
