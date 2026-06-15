@@ -2112,7 +2112,7 @@ export default function TradingPlatform() {
               <ComposedChart data={macdCandleData} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                 <XAxis dataKey="date" stroke="#8b949e" fontSize={8} tick={{ fontFamily: mono, fontSize: 8 }} hide />
-                <YAxis stroke="#8b949e" fontSize={9} width={50} domain={["auto", "auto"]} tickFormatter={(v: number) => `$${v}`} />
+                <YAxis stroke="#8b949e" fontSize={9} width={50} domain={macdPriceDomain} allowDataOverflow tickFormatter={(v: number) => `$${v.toFixed(2)}`} />
                 <Tooltip content={<CustomTooltip />} />
                 {/* Wick = thin transparent bar from low to high */}
                 <Bar dataKey="wickRange" stackId="wick" fill="transparent" isAnimationActive={false} maxBarSize={1} />
@@ -2141,6 +2141,10 @@ export default function TradingPlatform() {
                     <polygon points={`${p.cx - 5},${p.cy} ${p.cx + 5},${p.cy} ${p.cx},${p.cy + 6}`} fill="#f85149" />
                   )}
                 />
+                {macdBrush && (
+                  <Brush dataKey="date" height={16} stroke="#58a6ff" travellerWidth={8} fill="#0d1117"
+                    startIndex={macdBrush.startIndex} endIndex={macdBrush.endIndex} />
+                )}
               </ComposedChart>
             </ResponsiveContainer>
             {/* Bottom panel: MACD histogram + signal lines */}
@@ -2159,6 +2163,10 @@ export default function TradingPlatform() {
                 </Bar>
                 <Line type="monotone" dataKey="macd" stroke="#79c0ff" strokeWidth={2} dot={false} name="MACD" />
                 <Line type="monotone" dataKey="macdSignal" stroke="#f85149" strokeWidth={2} dot={false} name="Signal" />
+                {macdBrush && (
+                  <Brush dataKey="date" height={16} stroke="#58a6ff" travellerWidth={8} fill="#0d1117"
+                    startIndex={macdBrush.startIndex} endIndex={macdBrush.endIndex} />
+                )}
               </ComposedChart>
             </ResponsiveContainer>
           </ChartCard>
