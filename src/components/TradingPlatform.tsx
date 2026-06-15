@@ -1169,6 +1169,46 @@ export default function TradingPlatform() {
     });
   }, [masterBars]);
 
+  // Auto price-domain for the OV/Master chart — never let Recharts pull in
+  // the wick-bar baseline at 0 (which compressed all candles into a thin
+  // band at the top of the canvas).
+  const masterPriceDomain = useMemo<[number, number] | ["auto", "auto"]>(() => {
+    if (!masterData.length) return ["auto", "auto"];
+    let lo = Infinity, hi = -Infinity;
+    for (const d of masterData) {
+      if (Number.isFinite(d.low)) lo = Math.min(lo, d.low);
+      if (Number.isFinite(d.high)) hi = Math.max(hi, d.high);
+    }
+    if (!Number.isFinite(lo) || !Number.isFinite(hi)) return ["auto", "auto"];
+    const pad = Math.max((hi - lo) * 0.05, hi * 0.001);
+    return [+(lo - pad).toFixed(2), +(hi + pad).toFixed(2)];
+  }, [masterData]);
+  // Same auto-domain for the MACD candlestick price panel.
+  const macdPriceDomain = useMemo<[number, number] | ["auto", "auto"]>(() => {
+    if (!macdCandleData.length) return ["auto", "auto"];
+    let lo = Infinity, hi = -Infinity;
+    for (const d of macdCandleData) {
+      const h = (d as any).high ?? d.close;
+      const l = (d as any).low ?? d.close;
+      if (Number.isFinite(l)) lo = Math.min(lo, l);
+      if (Number.isFinite(h)) hi = Math.max(hi, h);
+    }
+    if (!Number.isFinite(lo) || !Number.isFinite(hi)) return ["auto", "auto"];
+    const pad = Math.max((hi - lo) * 0.05, hi * 0.001);
+    return [+(lo - pad).toFixed(2), +(hi + pad).toFixed(2)];
+  }, [macdCandleData]);
+  // Default Brush window: most recent ~75 bars (≈2.5h on 2m).
+  const masterBrush = useMemo(() => {
+    const n = masterData.length;
+    if (n <= 90) return null;
+    return { startIndex: Math.max(0, n - 75), endIndex: n - 1 };
+  }, [masterData.length]);
+  const macdBrush = useMemo(() => {
+    const n = macdCandleData.length;
+    if (n <= 90) return null;
+    return { startIndex: Math.max(0, n - 75), endIndex: n - 1 };
+  }, [macdCandleData.length]);
+
   // Decision strip — last bar metrics
   const decision = useMemo(() => {
     const last = masterData[masterData.length - 1];
