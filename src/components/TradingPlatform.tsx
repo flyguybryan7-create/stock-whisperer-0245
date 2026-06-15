@@ -1132,10 +1132,23 @@ export default function TradingPlatform() {
       if (flags[i].bull && keepBull.size < 3) keepBull.add(i);
       else if (flags[i].sell && keepSell.size < 3) keepSell.add(i);
     }
+    // Stagger label offsets so consecutive nearby signals (within 5 bars)
+    // don't overlap — alternate 8/18px equivalents (scaled to price space).
+    const labeled = [...keepBull, ...keepSell].sort((a, b) => a - b);
+    const staggerExtra = new Map<number, number>();
+    let alt = 0;
+    for (let k = 0; k < labeled.length; k++) {
+      const idx = labeled[k];
+      const prev = k > 0 ? labeled[k - 1] : -999;
+      if (idx - prev <= 5) { alt = 1 - alt; staggerExtra.set(idx, alt); }
+      else { alt = 0; staggerExtra.set(idx, 0); }
+    }
     return bars.map((b, i) => {
       const start = Math.min(b.open, b.close);
       const body = Math.abs(b.close - b.open);
-      const offset = Math.max((b.high - b.low) * 0.5, b.close * 0.002);
+      const baseOffset = Math.max((b.high - b.low) * 0.5, b.close * 0.002);
+      const extra = staggerExtra.get(i) ? baseOffset * 1.4 : 0;
+      const offset = baseOffset + extra;
       const s20 = sma(i, 20);
       const s200 = sma(i, 200);
       return {
