@@ -949,7 +949,12 @@ export default function TradingPlatform() {
   }, [intradayBars]);
 
   const chartData = chartMode === "D" ? dailyChartData : intradayRows;
-  const maxIntraBars = intradayInterval === "1m" ? 120 : intradayInterval === "5m" ? 78 : 26;
+  // Up to 24h of look-back per interval (was capped at ~3h). The chart
+  // becomes pannable via the <Brush> below so density stays readable.
+  const maxIntraBars =
+    intradayInterval === "1m" ? 1440 :
+    intradayInterval === "5m" ? 288 :
+    intradayInterval === "15m" ? 96 : 720;
   const displayDataRaw = chartMode === "D" ? chartData.slice(-chartRange) : chartData.slice(-maxIntraBars);
   const displayData = useMemo(() => annotateMacdSignals(displayDataRaw), [displayDataRaw]);
   const macdCurrent = useMemo(() => getCurrentMacdSignal(displayData), [displayData]);
@@ -974,8 +979,9 @@ export default function TradingPlatform() {
   // structure is readable. Daily mode keeps the full visible range.
   const macdDisplayData = useMemo(() => {
     if (chartMode === "D") return displayData;
+    // 24h look-back — Brush handles default visible window.
     const minutesPerBar = parseInt(intradayInterval) || 5;
-    const bars = Math.max(12, Math.ceil(180 / minutesPerBar));
+    const bars = Math.max(12, Math.ceil((60 * 24) / minutesPerBar));
     return displayData.slice(-bars);
   }, [displayData, chartMode, intradayInterval]);
   // Candlestick-ready data: only last 6 arrow signals (3 BUY + 3 SELL) annotated,
