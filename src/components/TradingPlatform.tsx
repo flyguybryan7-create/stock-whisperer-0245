@@ -1975,7 +1975,7 @@ export default function TradingPlatform() {
               <ComposedChart data={masterData} margin={{ top: 8, right: 8, left: 0, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                 <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} interval="preserveStartEnd" minTickGap={20} />
-                <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={["auto", "auto"]} tickFormatter={(v: number) => `$${v}`} width={55} />
+                <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={masterPriceDomain} allowDataOverflow tickFormatter={(v: number) => `$${v.toFixed(2)}`} width={55} />
                 <Tooltip content={<CustomTooltip />} />
                 {/* Wick = thin colored bar from low to high */}
                 <Bar dataKey="wickStart" stackId="wick" fill="transparent" isAnimationActive={false} maxBarSize={1} />
@@ -2020,6 +2020,10 @@ export default function TradingPlatform() {
                   shape={(p: any) => p?.payload?.toppingTailY == null ? <g /> : (
                     <polygon points={`${p.cx - 3},${p.cy - 3} ${p.cx + 3},${p.cy - 3} ${p.cx},${p.cy + 3}`} fill="#f85149" fillOpacity={0.7} />
                   )} />
+                {masterBrush && (
+                  <Brush dataKey="date" height={20} stroke="#58a6ff" travellerWidth={8} fill="#0d1117"
+                    startIndex={masterBrush.startIndex} endIndex={masterBrush.endIndex} />
+                )}
               </ComposedChart>
             </ResponsiveContainer>
             <div style={{ fontSize: 9, color: "#8b949e", padding: "4px 4px 0", lineHeight: 1.4 }}>
