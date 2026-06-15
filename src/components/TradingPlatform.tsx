@@ -26,7 +26,7 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  ReferenceLine, Area, ComposedChart, Bar, Cell, Scatter,
+  ReferenceLine, Area, ComposedChart, Bar, Cell, Scatter, Brush,
 } from "recharts";
 import { useQueryClient } from "@tanstack/react-query";
 
