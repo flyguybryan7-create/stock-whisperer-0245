@@ -401,6 +401,7 @@ export default function TradingPlatform() {
   const [posDraft, setPosDraft] = useState<{ shares: string; entry: string }>({ shares: "", entry: "" });
   const [selectedStock, setSelectedStock] = useState("MRVL");
   const [showDetail, setShowDetail] = useState(false);
+  const [showBidAskDebug, setShowBidAskDebug] = useState(false);
   const [search, setSearch] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [alerts, setAlerts] = useState<Record<string, Alert[]>>({});
