@@ -1793,11 +1793,13 @@ export default function TradingPlatform() {
       {/* Detail overlay */}
       {showDetail && (
         <div style={{ position: "fixed", inset: 0, zIndex: 200, background: "#010409", overflowY: "auto", paddingTop: "env(safe-area-inset-top, 0px)" }}>
-          <button
-            type="button"
-            onClick={() => setShowDetail(false)}
-            style={{ background: "transparent", border: "none", color: "#58a6ff", fontSize: 13, fontWeight: 700, cursor: "pointer", padding: "12px 16px" }}
-          >← WATCHLIST</button>
+          <div style={{ position: "relative", zIndex: 50 }}>
+            <button
+              type="button"
+              onClick={() => setShowDetail(false)}
+              style={{ background: "transparent", border: "none", color: "#58a6ff", fontSize: 13, fontWeight: 700, cursor: "pointer", padding: "12px 16px", position: "relative", zIndex: 50 }}
+            >← WATCHLIST</button>
+          </div>
           <div style={{ padding: "6px 10px" }}>
           {/* Stock header — ultra-tight single row */}
           {(() => {
