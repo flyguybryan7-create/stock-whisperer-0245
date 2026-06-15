@@ -137,6 +137,24 @@ async function fetchYahooV7Quotes(symbols: string[]): Promise<Record<string, Liv
       marketState = "OVERNIGHT";
     }
     const change = price - prev;
+    // Sanity-check NBBO before exposing it. Yahoo's v7 endpoint occasionally
+    // returns stale or wildly out-of-range bid/ask (especially for thinly
+    // traded names). Drop anything that's null/0 or > 3% off the live mark.
+    const cleanQuote = (v: number | undefined | null): number | undefined => {
+      if (typeof v !== "number" || !Number.isFinite(v) || v <= 0) return undefined;
+      if (price > 0 && Math.abs(v - price) / price > 0.03) return undefined;
+      return v;
+    };
+    const cleanBid = cleanQuote(q.bid);
+    const cleanAsk = cleanQuote(q.ask);
+    if (process.env.NODE_ENV !== "production" && (q.bid != null || q.ask != null)) {
+      // eslint-disable-next-line no-console
+      console.log("[getLiveQuotes]", q.symbol, {
+        mark: price, rawBid: q.bid, rawAsk: q.ask,
+        cleanBid, cleanAsk, bidSize: q.bidSize, askSize: q.askSize,
+        regularMarketTime: q.regularMarketTime, marketState: q.marketState,
+      });
+    }
     out[q.symbol] = {
       symbol: q.symbol,
       price,
@@ -163,8 +181,8 @@ async function fetchYahooV7Quotes(symbols: string[]): Promise<Record<string, Liv
       dayHigh: q.regularMarketDayHigh,
       dayLow: q.regularMarketDayLow,
       open: q.regularMarketOpen,
-      bid: q.bid,
-      ask: q.ask,
+      bid: cleanBid,
+      ask: cleanAsk,
       bidSize: q.bidSize,
       askSize: q.askSize,
     };
