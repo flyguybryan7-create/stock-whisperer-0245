@@ -2106,10 +2106,10 @@ export default function TradingPlatform() {
               { label: "Oversold 20", color: "#39d353" },
             ]}
           >
-            <ResponsiveContainer width="100%" height={180}>
+            <ResponsiveContainer width="100%" height={240}>
               <ComposedChart data={flowChartData} margin={{ top: 5, right: 40, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-                <XAxis dataKey="date" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} />
+                <XAxis dataKey="date" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} interval="preserveStartEnd" minTickGap={30} />
                 <YAxis yAxisId="obv" stroke="#79c0ff" fontSize={9} width={50} tickFormatter={(v: number) => Math.abs(v) >= 1e6 ? `${(v/1e6).toFixed(1)}M` : Math.abs(v) >= 1e3 ? `${(v/1e3).toFixed(0)}k` : `${v}`} />
                 <YAxis yAxisId="mfi" orientation="right" stroke="#ffa657" fontSize={9} domain={[0, 100]} ticks={[0,20,50,80,100]} width={30} />
                 <Tooltip content={<CustomTooltip />} />
@@ -2117,6 +2117,7 @@ export default function TradingPlatform() {
                 <ReferenceLine yAxisId="mfi" y={20} stroke="#39d353" strokeDasharray="3 3" />
                 <Area yAxisId="obv" type="monotone" dataKey="obv" stroke="#79c0ff" fill="#79c0ff" fillOpacity={0.15} strokeWidth={2} name="OBV" />
                 <Line yAxisId="mfi" type="monotone" dataKey="mfi" stroke="#ffa657" strokeWidth={2} dot={false} name="MFI" />
+                <Brush dataKey="date" height={18} stroke="#58a6ff" travellerWidth={8} fill="#0d1117" />
               </ComposedChart>
             </ResponsiveContainer>
             <div style={{ fontSize: 9, color: "#8b949e", padding: "4px 4px 0", lineHeight: 1.4 }}>
@@ -2177,7 +2178,7 @@ export default function TradingPlatform() {
             </ResponsiveContainer>
             {/* Bottom panel: MACD histogram + signal lines */}
             <div style={{ fontSize: 9, color: "#8b949e", marginTop: 2 }}>MACD</div>
-            <ResponsiveContainer width="100%" height={120}>
+            <ResponsiveContainer width="100%" height={160}>
               <ComposedChart data={macdCandleData} margin={{ top: 0, right: 8, left: 0, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                 <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} />
