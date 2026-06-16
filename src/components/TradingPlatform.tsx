@@ -1849,12 +1849,16 @@ export default function TradingPlatform() {
             const bidVal = liveSel?.bid;
             const askVal = liveSel?.ask;
             const markRef = liveSel?.price ?? liveSel?.regularPrice;
-            // Sanity-check NBBO: must be > 0 AND within 3% of mark, else hide.
-            const within3 = (v: number | undefined | null) =>
-              v != null && v > 0 && markRef != null && markRef > 0 &&
-              Math.abs(v - markRef) / markRef <= 0.03;
-            const bidOk = within3(bidVal);
-            const askOk = within3(askVal);
+            // Sanity-check NBBO: regular session within 5% of mark; pre/post/overnight
+            // allow wider spreads (any positive finite value), since true NBBO can be
+            // sparse outside RTH.
+            const isRegular = (liveSel?.session ?? sess) === "REGULAR";
+            const tolerance = isRegular ? 0.05 : 0.25;
+            const within = (v: number | undefined | null) =>
+              v != null && Number.isFinite(v) && v > 0 && markRef != null && markRef > 0 &&
+              Math.abs(v - markRef) / markRef <= tolerance;
+            const bidOk = within(bidVal);
+            const askOk = within(askVal);
             const vwap = watchlistVwap[selectedStock];
             return (
               <>
