@@ -1049,6 +1049,9 @@ export default function TradingPlatform() {
         candleColor: green ? "#39d353" : "#f85149",
         wickStart: +l.toFixed(4),
         wickRange: +(h - l).toFixed(4),
+        // Single-shape candle uses [low, high] range
+        candleRange: [+l.toFixed(4), +h.toFixed(4)] as [number, number],
+        open: o, high: h, low: l,
         buyArrowY: keepBuy.has(i) ? +(l - offset).toFixed(4) : null,
         sellArrowY: keepSell.has(i) ? +(h + offset).toFixed(4) : null,
         ema21: +ema21.toFixed(4),
