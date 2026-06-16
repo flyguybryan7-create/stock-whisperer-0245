@@ -1190,6 +1190,7 @@ export default function TradingPlatform() {
         candleColor: b.close >= b.open ? "#39d353" : "#f85149",
         wickStart: +b.low.toFixed(4),
         wickRange: +(b.high - b.low).toFixed(4),
+        candleRange: [+b.low.toFixed(4), +b.high.toFixed(4)] as [number, number],
         sma20: s20, sma200: s200,
         bullLabelY: keepBull.has(i) ? +(b.low - offset).toFixed(4) : null,
         sellLabelY: keepSell.has(i) ? +(b.high + offset).toFixed(4) : null,
