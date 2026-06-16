@@ -1103,6 +1103,7 @@ export default function TradingPlatform() {
     open: number; high: number; low: number; close: number; volume: number;
     candleStart: number; candleBody: number; candleColor: string;
     wickStart: number; wickRange: number;
+    candleRange: [number, number];
     sma20: number | null; sma200: number | null;
     bullLabelY: number | null;     // shows "BULL" below the bar
     sellLabelY: number | null;     // shows "SELL" above the bar
