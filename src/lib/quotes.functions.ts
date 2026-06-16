@@ -137,12 +137,13 @@ async function fetchYahooV7Quotes(symbols: string[]): Promise<Record<string, Liv
       marketState = "OVERNIGHT";
     }
     const change = price - prev;
-    // Sanity-check NBBO before exposing it. Yahoo's v7 endpoint occasionally
-    // returns stale or wildly out-of-range bid/ask (especially for thinly
-    // traded names). Drop anything that's null/0 or > 3% off the live mark.
+    // Sanity-check NBBO. Regular-hours spreads should be tight (<5%);
+    // pre/post/overnight spreads can be wide (up to ~25%) and we still
+    // want to surface them rather than show "—".
+    const tolerance = session === "REGULAR" ? 0.05 : 0.25;
     const cleanQuote = (v: number | undefined | null): number | undefined => {
       if (typeof v !== "number" || !Number.isFinite(v) || v <= 0) return undefined;
-      if (price > 0 && Math.abs(v - price) / price > 0.03) return undefined;
+      if (price > 0 && Math.abs(v - price) / price > tolerance) return undefined;
       return v;
     };
     const cleanBid = cleanQuote(q.bid);
