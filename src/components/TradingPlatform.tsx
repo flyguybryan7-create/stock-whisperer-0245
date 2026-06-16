@@ -2009,16 +2009,8 @@ export default function TradingPlatform() {
                 <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} interval="preserveStartEnd" minTickGap={20} />
                 <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={masterPriceDomain} allowDataOverflow tickFormatter={(v: number) => `$${v.toFixed(2)}`} width={55} />
                 <Tooltip content={<CustomTooltip />} />
-                {/* Wick = thin colored bar from low to high */}
-                <Bar dataKey="wickStart" stackId="wick" fill="transparent" isAnimationActive={false} maxBarSize={1} />
-                <Bar dataKey="wickRange" stackId="wick" isAnimationActive={false} maxBarSize={1}>
-                  {masterData.map((d, i) => (<Cell key={`w${i}`} fill={d.candleColor} />))}
-                </Bar>
-                {/* Body */}
-                <Bar dataKey="candleStart" stackId="body" fill="transparent" isAnimationActive={false} maxBarSize={7} />
-                <Bar dataKey="candleBody" stackId="body" name="Candle" isAnimationActive={false} maxBarSize={7}>
-                  {masterData.map((d, i) => (<Cell key={`b${i}`} fill={d.candleColor} />))}
-                </Bar>
+                {/* True OHLC candle via custom shape — single range bar so YAxis fits the price band */}
+                <Bar dataKey="candleRange" name="Candle" isAnimationActive={false} shape={<Candle />} />
                 <Line type="monotone" dataKey="sma20" stroke="#ffffcc" strokeWidth={2} dot={false} name="20MA" connectNulls />
                 <Line type="monotone" dataKey="sma200" stroke="#8b1a1a" strokeWidth={2} dot={false} name="200MA" connectNulls />
                 {/* BULL labels (green, below candle) */}
@@ -2058,8 +2050,18 @@ export default function TradingPlatform() {
                 )}
               </ComposedChart>
             </ResponsiveContainer>
+            {/* Volume sub-panel — yellow bars rising with volume, synced X with master chart */}
+            <ResponsiveContainer width="100%" height={70}>
+              <ComposedChart data={masterData} margin={{ top: 0, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
+                <XAxis dataKey="date" stroke="#8b949e" fontSize={8} tick={{ fontFamily: mono, fontSize: 8 }} hide />
+                <YAxis stroke="#8b949e" fontSize={9} width={55} tickFormatter={(v: number) => v >= 1e6 ? `${(v/1e6).toFixed(1)}M` : v >= 1e3 ? `${(v/1e3).toFixed(0)}k` : `${v}`} />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="volume" fill="#e3b341" isAnimationActive={false} maxBarSize={7} />
+              </ComposedChart>
+            </ResponsiveContainer>
             <div style={{ fontSize: 9, color: "#8b949e", padding: "4px 4px 0", lineHeight: 1.4 }}>
-              Green/Red candles = price action · Cream line = 20MA · Dark red line = 200MA · BULL/SELL labels = Elephant Bar + Tail Bar confirmation signals · ▲/▼ small = raw tail bars
+              Green/Red candles = price action · Cream line = 20MA · Dark red line = 200MA · Yellow bars = volume · BULL/SELL labels = Elephant Bar + Tail Bar confirmation signals · ▲/▼ small = raw tail bars
             </div>
             <div style={{ fontSize: 8, color: "#6e7681", padding: "2px 4px 0", lineHeight: 1.4 }}>
               Signal logic based on publicly documented price-action concepts (Elephant Bars, Tail Bars, MA trend confirmation) — not a verified replica of any specific paid course.
