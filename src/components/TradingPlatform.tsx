@@ -30,6 +30,33 @@ import {
 } from "recharts";
 import { useQueryClient } from "@tanstack/react-query";
 
+// ============= Candlestick shape =============
+// Recharts' stacked-bar candle trick forces the YAxis to include 0, which
+// squashes intraday candles into a thin sliver. Use a single Bar with
+// dataKey="candleRange" = [low, high] and render the full candle (wick +
+// body) via a custom shape — Recharts then derives the YAxis purely from
+// the price range and the candle draws correctly.
+function Candle(props: any) {
+  const { x, y, width, height, payload } = props;
+  if (!payload || !Number.isFinite(width) || !Number.isFinite(height)) return null;
+  const { open, high, low, close } = payload;
+  if (![open, high, low, close].every((v: number) => Number.isFinite(v))) return null;
+  const range = high - low || 1;
+  const cx = x + width / 2;
+  const bodyTop = y + ((high - Math.max(open, close)) / range) * height;
+  const bodyBottom = y + ((high - Math.min(open, close)) / range) * height;
+  const bodyHeight = Math.max(1, bodyBottom - bodyTop);
+  const bodyWidth = Math.max(2, Math.min(width * 0.75, 9));
+  const bodyX = cx - bodyWidth / 2;
+  const fill = close >= open ? "#39d353" : "#f85149";
+  return (
+    <g>
+      <line x1={cx} x2={cx} y1={y} y2={y + height} stroke={fill} strokeWidth={1} />
+      <rect x={bodyX} y={bodyTop} width={bodyWidth} height={bodyHeight} fill={fill} stroke={fill} />
+    </g>
+  );
+}
+
 const DEFAULT_STOCKS = [
   "NVDA","MRVL","SMTC","TSEM","CRDO","INTC","QBTS","INFQ","HUT","ALAB","AAOI","SNOW","NVTS","MCHP","ANET",
   "CRWV","CBRS","RMBS","LSCC","MXL","AMBA","PLAB","ASYS","COHU","NLST","ACLS","STM","SATS","WDC",
