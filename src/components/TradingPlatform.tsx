@@ -2142,20 +2142,14 @@ export default function TradingPlatform() {
               ▲ green = buy crossover (last 3) · ▼ red = sell crossover (last 3) · EMA lines = trend
             </div>
             {/* Top panel: candlesticks + EMAs + arrows */}
-            <ResponsiveContainer width="100%" height={220}>
+            <ResponsiveContainer width="100%" height={260}>
               <ComposedChart data={macdCandleData} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                 <XAxis dataKey="date" stroke="#8b949e" fontSize={8} tick={{ fontFamily: mono, fontSize: 8 }} hide />
                 <YAxis stroke="#8b949e" fontSize={9} width={50} domain={macdPriceDomain} allowDataOverflow tickFormatter={(v: number) => `$${v.toFixed(2)}`} />
                 <Tooltip content={<CustomTooltip />} />
-                {/* Wick = thin transparent bar from low to high */}
-                <Bar dataKey="wickRange" stackId="wick" fill="transparent" isAnimationActive={false} maxBarSize={1} />
-                <Bar dataKey="candleBody" name="Candle" isAnimationActive={false} maxBarSize={6}>
-                  {macdCandleData.map((d, i) => (
-                    <Cell key={`c${i}`} fill={d.candleColor} />
-                  ))}
-                </Bar>
-                {/* Wick rendering — overlay thin bars at low..high using stack offset */}
+                {/* True OHLC candle via custom shape */}
+                <Bar dataKey="candleRange" name="Candle" isAnimationActive={false} shape={<Candle />} />
                 <Line type="monotone" dataKey="ema9" stroke="#8b1a1a" strokeWidth={2} dot={false} name="EMA9" />
                 <Line type="monotone" dataKey="ema21" stroke="#ffffcc" strokeWidth={2.5} dot={false} name="EMA21" />
                 {/* Buy/sell arrows — Scatter with custom shape */}
