@@ -1825,12 +1825,16 @@ export default function TradingPlatform() {
       {/* Detail overlay */}
       {showDetail && (
         <div style={{ position: "fixed", inset: 0, zIndex: 200, background: "#010409", overflowY: "auto", paddingTop: "env(safe-area-inset-top, 0px)" }}>
-          <div style={{ position: "relative", zIndex: 50 }}>
+          <div style={{ position: "relative", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <button
               type="button"
               onClick={() => setShowDetail(false)}
               style={{ background: "transparent", border: "none", color: "#58a6ff", fontSize: 13, fontWeight: 700, cursor: "pointer", padding: "12px 16px", position: "relative", zIndex: 50 }}
             >← WATCHLIST</button>
+            <a
+              href={`/charts?symbol=${encodeURIComponent(selectedStock)}`}
+              style={{ color: "#79c0ff", fontSize: 11, fontWeight: 700, textDecoration: "none", padding: "12px 16px", letterSpacing: 1 }}
+            >OV CHART →</a>
           </div>
           <div style={{ padding: "6px 10px" }}>
           {/* Stock header — ultra-tight single row */}
