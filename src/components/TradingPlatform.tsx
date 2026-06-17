@@ -2083,6 +2083,8 @@ export default function TradingPlatform() {
               { label: "Oversold 20", color: "#39d353" },
             ]}
           >
+            <div style={{ overflowX: "auto", overflowY: "hidden", WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}>
+            <div style={{ width: Math.max(360, flowChartData.length * 6), height: 240 }}>
             <ResponsiveContainer width="100%" height={240}>
               <ComposedChart data={flowChartData} margin={{ top: 5, right: 40, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
@@ -2094,9 +2096,11 @@ export default function TradingPlatform() {
                 <ReferenceLine yAxisId="mfi" y={20} stroke="#39d353" strokeDasharray="3 3" />
                 <Area yAxisId="obv" type="monotone" dataKey="obv" stroke="#79c0ff" fill="#79c0ff" fillOpacity={0.15} strokeWidth={2} name="OBV" />
                 <Line yAxisId="mfi" type="monotone" dataKey="mfi" stroke="#ffa657" strokeWidth={2} dot={false} name="MFI" />
-                <Brush dataKey="date" height={18} stroke="#58a6ff" travellerWidth={8} fill="#0d1117" />
               </ComposedChart>
             </ResponsiveContainer>
+            </div>
+            </div>
+            <div style={{ fontSize: 8, color: "#6e7681", textAlign: "center", padding: "2px 0" }}>← swipe to pan time →</div>
             <div style={{ fontSize: 9, color: "#8b949e", padding: "4px 4px 0", lineHeight: 1.4 }}>
               OBV rising → accumulation (smart money buying). OBV falling → distribution (smart money selling).
               MFI &gt; 80 → overbought warning. MFI &lt; 20 → oversold opportunity. Combines price AND volume — stronger than RSI alone.
@@ -2119,6 +2123,8 @@ export default function TradingPlatform() {
             <div style={{ fontSize: 9, color: "#8b949e", marginBottom: 4 }}>
               ▲ green = buy crossover (last 3) · ▼ red = sell crossover (last 3) · EMA lines = trend
             </div>
+            <div style={{ overflowX: "auto", overflowY: "hidden", WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}>
+            <div style={{ width: Math.max(360, macdCandleData.length * 8) }}>
             {/* Top panel: candlesticks + EMAs + arrows */}
             <ResponsiveContainer width="100%" height={260}>
               <ComposedChart data={macdCandleData} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
@@ -2147,10 +2153,6 @@ export default function TradingPlatform() {
                     <polygon points={`${p.cx - 5},${p.cy} ${p.cx + 5},${p.cy} ${p.cx},${p.cy + 6}`} fill="#f85149" />
                   )}
                 />
-                {macdBrush && (
-                  <Brush dataKey="date" height={16} stroke="#58a6ff" travellerWidth={8} fill="#0d1117"
-                    startIndex={macdBrush.startIndex} endIndex={macdBrush.endIndex} />
-                )}
               </ComposedChart>
             </ResponsiveContainer>
             {/* Bottom panel: MACD histogram + signal lines */}
@@ -2169,12 +2171,11 @@ export default function TradingPlatform() {
                 </Bar>
                 <Line type="monotone" dataKey="macd" stroke="#79c0ff" strokeWidth={2} dot={false} name="MACD" />
                 <Line type="monotone" dataKey="macdSignal" stroke="#f85149" strokeWidth={2} dot={false} name="Signal" />
-                {macdBrush && (
-                  <Brush dataKey="date" height={16} stroke="#58a6ff" travellerWidth={8} fill="#0d1117"
-                    startIndex={macdBrush.startIndex} endIndex={macdBrush.endIndex} />
-                )}
               </ComposedChart>
             </ResponsiveContainer>
+            </div>
+            </div>
+            <div style={{ fontSize: 8, color: "#6e7681", textAlign: "center", padding: "2px 0" }}>← swipe to pan time →</div>
           </ChartCard>
 
           {/* Macro market-moving news (CNBC / MarketWatch / WSJ) */}
