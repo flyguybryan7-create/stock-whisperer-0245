@@ -1849,16 +1849,9 @@ export default function TradingPlatform() {
             const bidVal = liveSel?.bid;
             const askVal = liveSel?.ask;
             const markRef = liveSel?.price ?? liveSel?.regularPrice;
-            // Sanity-check NBBO: regular session within 5% of mark; pre/post/overnight
-            // allow wider spreads (any positive finite value), since true NBBO can be
-            // sparse outside RTH.
-            const isRegular = (liveSel?.session ?? sess) === "REGULAR";
-            const tolerance = isRegular ? 0.05 : 0.25;
-            const within = (v: number | undefined | null) =>
-              v != null && Number.isFinite(v) && v > 0 && markRef != null && markRef > 0 &&
-              Math.abs(v - markRef) / markRef <= tolerance;
-            const bidOk = within(bidVal);
-            const askOk = within(askVal);
+            // Show any positive, finite quote — server already filtered junk.
+            const bidOk = bidVal != null && Number.isFinite(bidVal) && bidVal > 0;
+            const askOk = askVal != null && Number.isFinite(askVal) && askVal > 0;
             const vwap = watchlistVwap[selectedStock];
             return (
               <>
@@ -1888,27 +1881,7 @@ export default function TradingPlatform() {
                   <span title="Intraday volume-weighted average price">
                     VWAP <span style={{ color: vwap == null || headPrice == null ? "#484f58" : headPrice >= vwap ? "#39d353" : "#f85149" }}>{vwap != null ? `$${vwap.toFixed(2)}` : "—"}</span>
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => setShowBidAskDebug((v) => !v)}
-                    title="Toggle raw NBBO debug readout"
-                    style={{ background: "transparent", border: "1px solid #21262d", borderRadius: 3, padding: "1px 5px", fontSize: 9, color: "#8b949e", cursor: "pointer", fontFamily: mono }}>
-                    🐛
-                  </button>
                 </div>
-                {showBidAskDebug && (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 9, color: "#8b949e", background: "#010409", border: "1px dashed #21262d", borderRadius: 4, padding: "4px 6px", marginBottom: 6, fontFamily: mono }}>
-                    <span>mark: ${markRef?.toFixed(4) ?? "—"}</span>
-                    <span>bid: {bidVal != null ? `$${bidVal.toFixed(4)}` : "null"}</span>
-                    <span>ask: {askVal != null ? `$${askVal.toFixed(4)}` : "null"}</span>
-                    <span>bidSize: {liveSel?.bidSize ?? "—"}</span>
-                    <span>askSize: {liveSel?.askSize ?? "—"}</span>
-                    <span>tick: {liveSel?.lastTickTime ? new Date(liveSel.lastTickTime * 1000).toLocaleTimeString() : "—"}</span>
-                    <span>state: {liveSel?.marketState ?? "—"}</span>
-                    <span>bidOk: {String(bidOk)}</span>
-                    <span>askOk: {String(askOk)}</span>
-                  </div>
-                )}
                 {/* Mini stat strip */}
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 6, fontSize: 10, color: "#8b949e", lineHeight: 1.2 }}>
                   <span>RSI <span style={{ color: (last.rsi ?? 50) < 30 ? "#39d353" : (last.rsi ?? 50) > 70 ? "#f85149" : "#e6edf3", fontWeight: 700 }}>{last.rsi?.toFixed(1) ?? "—"}</span></span>
