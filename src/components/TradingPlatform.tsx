@@ -428,7 +428,6 @@ export default function TradingPlatform() {
   const [posDraft, setPosDraft] = useState<{ shares: string; entry: string }>({ shares: "", entry: "" });
   const [selectedStock, setSelectedStock] = useState("MRVL");
   const [showDetail, setShowDetail] = useState(false);
-  const [showBidAskDebug, setShowBidAskDebug] = useState(false);
   const [search, setSearch] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [alerts, setAlerts] = useState<Record<string, Alert[]>>({});
@@ -1230,18 +1229,6 @@ export default function TradingPlatform() {
     const pad = Math.max((hi - lo) * 0.05, hi * 0.001);
     return [+(lo - pad).toFixed(2), +(hi + pad).toFixed(2)];
   }, [macdCandleData]);
-  // Default Brush window: most recent ~75 bars (≈2.5h on 2m).
-  const masterBrush = useMemo(() => {
-    const n = masterData.length;
-    if (n <= 90) return null;
-    return { startIndex: Math.max(0, n - 75), endIndex: n - 1 };
-  }, [masterData.length]);
-  const macdBrush = useMemo(() => {
-    const n = macdCandleData.length;
-    if (n <= 90) return null;
-    return { startIndex: Math.max(0, n - 75), endIndex: n - 1 };
-  }, [macdCandleData.length]);
-
   // Decision strip — last bar metrics
   const decision = useMemo(() => {
     const last = masterData[masterData.length - 1];
