@@ -140,10 +140,10 @@ async function fetchYahooV7Quotes(symbols: string[]): Promise<Record<string, Liv
     // Sanity-check NBBO. Regular-hours spreads should be tight (<5%);
     // pre/post/overnight spreads can be wide (up to ~25%) and we still
     // want to surface them rather than show "—".
-    const tolerance = session === "REGULAR" ? 0.05 : 0.25;
+    // Only strip non-positive / non-finite values. Yahoo's NBBO can legitimately
+    // sit a few percent off the last trade in pre/post sessions; don't nuke it.
     const cleanQuote = (v: number | undefined | null): number | undefined => {
       if (typeof v !== "number" || !Number.isFinite(v) || v <= 0) return undefined;
-      if (price > 0 && Math.abs(v - price) / price > tolerance) return undefined;
       return v;
     };
     const cleanBid = cleanQuote(q.bid);

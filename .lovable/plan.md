@@ -1,68 +1,64 @@
-# Plan: Watchlist Grid + Detail Overlay Redesign
+## Goal
+Stop the chart squish + null bid/ask issues. One readable OV chart per stock, real candles, touch panning, accurate prices.
 
-Restructure `TradingPlatform.tsx` into a mobile-first full-screen watchlist with a fixed detail overlay, plus a faster bid/ask feed.
+## Scope of changes
 
-## 1. Layout shell (TradingPlatform.tsx)
+### 1. Remove what's broken
+- Delete the **BRYANTRADE MASTER · DAY TRADE SIGNAL CHART** card (the section starting around `TradingPlatform.tsx:2001`). That's the "trend bear" card with the squished candles.
+- Delete the top-of-page `<a href="/charts">OV CHART</a>` button and the per-stock `OV CHART →` link.
+- Delete `src/routes/charts.tsx` and the symbol-picker page entirely. OV becomes inline only.
+- Remove all `<Brush>` components from the Price / OBV / MACD charts.
 
-- Wrap the whole component in a root `div` with `paddingTop: "env(safe-area-inset-top, 0px)"` and background `#010409`.
-- Make the existing BRYANTRADE header `div` `position: "sticky", top: 0, zIndex: 100` so it stays pinned (and visible below the iPhone notch).
-- Remove the existing two-column grid (watchlist left / detail right). Watchlist becomes the full-screen base view.
+### 2. Inline OV chart (one per selected stock)
+Add a single new card inside the stock detail view (replacing the deleted Master card) titled `OV · {SYMBOL} · 1D / 1m candles`:
+- Fixed dataset: today's regular-session 1-minute bars from Yahoo (`range=1d&interval=1m`), pulled per selected stock.
+- **Thick candlesticks** rendered via a custom Recharts `shape` (real OHLC body + wick, min body height 2px, body width ≈ 70% of slot).
+- Overlays: cream 20MA line, dark-red 200MA line, yellow volume bars in a 60px sub-panel below.
+- Signals: green `BULL` label 8px under candle low, red `SELL` label 8px over candle high (Elephant Bar + Tail Bar logic already in `VelezOpenIndicators.tsx` — reuse `getElephantBarMarkers`).
+- Y-axis: dynamic domain `[min(low)*0.998, max(high)*1.002]` with 2-decimal `$` ticks.
+- X-axis: HH:MM ticks, `minTickGap=60`.
+- Legend row + disclaimer text as user specified.
 
-## 2. Detail overlay
+### 3. Touch panning instead of sliders
+Wrap each chart's `<ResponsiveContainer>` in a horizontally scrollable div:
+```tsx
+<div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}>
+  <div style={{ width: Math.max(containerWidth, bars.length * 6) }}>
+    <ResponsiveContainer ...>
+```
+This gives finger-drag pan across the full day; no Brush component anywhere.
 
-- New state: `const [showDetail, setShowDetail] = useState(false)`.
-- Extract the current right-panel detail JSX (chart, quote header, bid/ask, options, etc.) into a fixed overlay:
-  - `position: "fixed", inset: 0, zIndex: 200, background: "#010409", overflowY: "auto"`.
-  - Rendered only when `showDetail`.
-  - Top bar: `← WATCHLIST` button (transparent, `#58a6ff`, 13px/700, padding `12px 16px`) that calls `setShowDetail(false)`.
-- In `onWatchlistRowClick`, after `setSelectedStock(sym)` call `setShowDetail(true)` (reorder-mode branch unchanged — no overlay open).
+### 4. OBV chart → minute-by-minute + pannable
+- Switch OBV data source from current `intradayInterval` to fixed 1-minute bars (same Yahoo fetch as OV).
+- Apply the same scrollable-wrapper pattern from step 3. Remove its `<Brush>`.
 
-## 3. 3×4 tile grid
+### 5. Bid/Ask accuracy (Yahoo Finance, sub-second)
+In `src/lib/quotes.functions.ts`:
+- Replace current single-call logic with a **fallback chain** per symbol:
+  1. Yahoo `v7/finance/quote` (returns `bid`, `ask`, `bidSize`, `askSize`, `regularMarketPrice`)
+  2. If `bid==null || ask==null || bid==0 || ask==0`: fall back to `v8/finance/chart?range=1d&interval=1m` last bar's close ± half typical spread
+  3. If still missing: synthesize bid = mark − 0.01, ask = mark + 0.01 and flag `synthetic: true`
+- Cache for 800ms (sub-second refresh).
+- Add server-side log line `[quotes] sym=NVDA src=v7 bid=… ask=… age=…ms` so we can verify in logs.
+- Remove the "3%/25% sanity check" that was silently nuking valid wide spreads.
+- Remove the 🐛 debug toggle UI in `TradingPlatform.tsx`.
 
-- Replace vertical watchlist list with:
-  - Container: `overflowY: "auto", maxHeight: "calc(100vh - env(safe-area-inset-top, 0px) - 49px)"`.
-  - Grid: `display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, padding: "8px"`.
-- Each tile: `height: 90, position: "relative", padding: "8px 10px", borderRadius: 6, overflow: "hidden"`.
-- Below the grid: `▼ more` label, `#8b949e`, `fontSize: 9`, `textAlign: "center"`.
+### 6. Keep working
+- 1D/2D/5D/14D/30D/60D/90D/120D and 1m/5m/15m selectors for the **main Price / Bollinger** chart stay exactly as they are (no Brush, but otherwise unchanged).
+- MACD chart stays (no Brush, dynamic Y-domain), but no longer has the duplicate candle panel — just histogram + signal lines.
 
-## 4. Tile content (4 rows)
-
-- **Row 1**: tiny `✕` remove button (fontSize 10, `#6e7681`) + ticker bold 15px white on left; existing reorder `⋮⋮`/`✕` button + `⊕` drop indicator on right. Keep all reorder logic (`reorderModeSym`, `toggleReorderMode`, `onWatchlistRowClick`) untouched.
-- **Row 2**: `stockNames[sym]` truncated (`ellipsis/nowrap/overflow:hidden`), 10px `#8b949e`, marginTop 2.
-- **Row 3**: live price bold 13px `#e6edf3` + `+$X.XX`/`-$X.XX` + `(+X.XX%)` in `#39d353`/`#f85149`, all 11px on one line, marginTop 3.
-- **Row 4**: `$` button (existing inline position editor unchanged). If `pos` exists: `{shares}sh @ ${entry}` in `#8b949e` 9px + P&L `(price-entry)*shares` as `+$X.XX (+X.XX%)` colored green/red. If no position: just the muted `$` button.
-- Remove drag handle from inside tile body (reorder ⋮⋮ on Row 1 right stays).
-- Remove the `{sig}` BUY/SELL/HOLD text span — signal is communicated by background flash.
-- Options flow badge (`C↑`/`P↓`/`UNU`) moved to Row 4 at 9px alongside/replacing the old VWAP slot.
-
-## 5. MACD-driven flashing
-
-- Tile `animation` prop:
-  - BUY → `"flashBuy 1.4s ease-in-out infinite"`
-  - SELL → `"flashSell 1.4s ease-in-out infinite"`
-  - HOLD → `"flashHold 2s ease-in-out infinite"`
-- Add to the existing `<style>` block:
-  - `@keyframes flashHold { 0%,100% { background: rgba(227,179,65,0.12); } 50% { background: rgba(227,179,65,0.03); } }`
-  - Confirm/keep existing `flashBuy`/`flashSell` keyframes (add if missing using same pattern with `#39d353` / `#f85149` rgba).
-- Reorder highlight: when `reorderModeSym === sym`, override border to `2px solid #d2a8ff`.
-
-## 6. Viewport meta + body styles
-
-- Update `index.html` `<meta name="viewport">` to `width=device-width, initial-scale=1, viewport-fit=cover`.
-- In the component's `<style>` block add `body { padding-top: env(safe-area-inset-top, 0px); background: #010409; }`.
-
-## 7. Fastest bid/ask (quotes.functions.ts + TradingPlatform)
-
-- Rewrite `getBidAsk` to call `https://query2.finance.yahoo.com/v8/finance/quote?symbols=${symbol}&fields=bid,ask,bidSize,askSize,regularMarketPrice,regularMarketPreviousClose`.
-- Parse `quoteResponse.result[0]` → return `{ bid, ask, bidSize, askSize }` (null on miss).
-- In `TradingPlatform`, change the `bidask` `useQuery` to `refetchInterval: 250`, `staleTime: 0`, keep `refetchIntervalInBackground: true`.
+## Technical details
+- Custom candle: `const Candle = ({ x, y, width, height, payload }) => { const { o,h,l,c } = payload; const color = c>=o ? '#26a641' : '#f85149'; ... }` passed as `shape={<Candle />}` on a `<Bar dataKey="hlRange" />` with custom `y` mapping.
+- Touch panning width formula: `barCount * pxPerBar` where `pxPerBar = 6` for 1m bars (giving ~2340px for a 390-bar regular session, ~6× viewport scroll).
+- Yahoo v7 endpoint: `https://query1.finance.yahoo.com/v7/finance/quote?symbols=...&fields=bid,ask,bidSize,askSize,regularMarketPrice,marketState` (already used elsewhere in the file).
 
 ## Files touched
+- `src/components/TradingPlatform.tsx` — delete Master card, delete OV button, delete all Brushes, add inline OV card, wrap charts in scroll container, switch OBV to 1m, remove bid/ask debug row.
+- `src/lib/quotes.functions.ts` — rewrite bid/ask fetch with fallback chain + 800ms cache + logging.
+- `src/routes/charts.tsx` — delete.
+- `src/components/VelezOpenIndicators.tsx` — keep `getElephantBarMarkers` + helpers, but the `VelezChartPanel` component is no longer imported anywhere (leave file for the helpers).
 
-- `src/components/TradingPlatform.tsx` — major edit (layout, overlay, grid, tile, flash, styles).
-- `src/lib/quotes.functions.ts` — rewrite `getBidAsk`.
-- `index.html` — viewport meta tag.
-
-## Out of scope
-
-No backend/auth/schema changes. No edits to other routes or components.
+## Out of scope (ask if you want these too)
+- After-hours / pre-market overlay on the OV chart.
+- Real-time streaming (currently polled).
+- Replacing Recharts with a true financial-charting library (TradingView lightweight-charts) — bigger lift; tell me if you want that swap instead of the custom shape.

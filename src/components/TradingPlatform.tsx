@@ -26,7 +26,7 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  ReferenceLine, Area, ComposedChart, Bar, Cell, Scatter, Brush,
+  ReferenceLine, Area, ComposedChart, Bar, Cell, Scatter,
 } from "recharts";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -428,7 +428,6 @@ export default function TradingPlatform() {
   const [posDraft, setPosDraft] = useState<{ shares: string; entry: string }>({ shares: "", entry: "" });
   const [selectedStock, setSelectedStock] = useState("MRVL");
   const [showDetail, setShowDetail] = useState(false);
-  const [showBidAskDebug, setShowBidAskDebug] = useState(false);
   const [search, setSearch] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [alerts, setAlerts] = useState<Record<string, Alert[]>>({});
@@ -1230,18 +1229,6 @@ export default function TradingPlatform() {
     const pad = Math.max((hi - lo) * 0.05, hi * 0.001);
     return [+(lo - pad).toFixed(2), +(hi + pad).toFixed(2)];
   }, [macdCandleData]);
-  // Default Brush window: most recent ~75 bars (≈2.5h on 2m).
-  const masterBrush = useMemo(() => {
-    const n = masterData.length;
-    if (n <= 90) return null;
-    return { startIndex: Math.max(0, n - 75), endIndex: n - 1 };
-  }, [masterData.length]);
-  const macdBrush = useMemo(() => {
-    const n = macdCandleData.length;
-    if (n <= 90) return null;
-    return { startIndex: Math.max(0, n - 75), endIndex: n - 1 };
-  }, [macdCandleData.length]);
-
   // Decision strip — last bar metrics
   const decision = useMemo(() => {
     const last = masterData[masterData.length - 1];
@@ -1496,7 +1483,7 @@ export default function TradingPlatform() {
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
             <div style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 16, color: "#58a6ff", letterSpacing: 1 }}>⬡ BRYANTRADE</div>
             <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 2 }}>PRO TERMINAL</div>
-            <a href="/charts" style={{ fontSize: 10, fontWeight: 800, color: "#22d3ee", letterSpacing: 1, border: "1px solid #22d3ee", padding: "2px 6px", borderRadius: 4, textDecoration: "none" }}>OV CHART</a>
+            {/* OV chart is inline per-stock now */}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {semiRiskSent && (() => {
@@ -1831,10 +1818,6 @@ export default function TradingPlatform() {
               onClick={() => setShowDetail(false)}
               style={{ background: "transparent", border: "none", color: "#58a6ff", fontSize: 13, fontWeight: 700, cursor: "pointer", padding: "12px 16px", position: "relative", zIndex: 50 }}
             >← WATCHLIST</button>
-            <a
-              href={`/charts?symbol=${encodeURIComponent(selectedStock)}`}
-              style={{ color: "#79c0ff", fontSize: 11, fontWeight: 700, textDecoration: "none", padding: "12px 16px", letterSpacing: 1 }}
-            >OV CHART →</a>
           </div>
           <div style={{ padding: "6px 10px" }}>
           {/* Stock header — ultra-tight single row */}
@@ -1853,16 +1836,9 @@ export default function TradingPlatform() {
             const bidVal = liveSel?.bid;
             const askVal = liveSel?.ask;
             const markRef = liveSel?.price ?? liveSel?.regularPrice;
-            // Sanity-check NBBO: regular session within 5% of mark; pre/post/overnight
-            // allow wider spreads (any positive finite value), since true NBBO can be
-            // sparse outside RTH.
-            const isRegular = (liveSel?.session ?? sess) === "REGULAR";
-            const tolerance = isRegular ? 0.05 : 0.25;
-            const within = (v: number | undefined | null) =>
-              v != null && Number.isFinite(v) && v > 0 && markRef != null && markRef > 0 &&
-              Math.abs(v - markRef) / markRef <= tolerance;
-            const bidOk = within(bidVal);
-            const askOk = within(askVal);
+            // Show any positive, finite quote — server already filtered junk.
+            const bidOk = bidVal != null && Number.isFinite(bidVal) && bidVal > 0;
+            const askOk = askVal != null && Number.isFinite(askVal) && askVal > 0;
             const vwap = watchlistVwap[selectedStock];
             return (
               <>
@@ -1892,27 +1868,7 @@ export default function TradingPlatform() {
                   <span title="Intraday volume-weighted average price">
                     VWAP <span style={{ color: vwap == null || headPrice == null ? "#484f58" : headPrice >= vwap ? "#39d353" : "#f85149" }}>{vwap != null ? `$${vwap.toFixed(2)}` : "—"}</span>
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => setShowBidAskDebug((v) => !v)}
-                    title="Toggle raw NBBO debug readout"
-                    style={{ background: "transparent", border: "1px solid #21262d", borderRadius: 3, padding: "1px 5px", fontSize: 9, color: "#8b949e", cursor: "pointer", fontFamily: mono }}>
-                    🐛
-                  </button>
                 </div>
-                {showBidAskDebug && (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 9, color: "#8b949e", background: "#010409", border: "1px dashed #21262d", borderRadius: 4, padding: "4px 6px", marginBottom: 6, fontFamily: mono }}>
-                    <span>mark: ${markRef?.toFixed(4) ?? "—"}</span>
-                    <span>bid: {bidVal != null ? `$${bidVal.toFixed(4)}` : "null"}</span>
-                    <span>ask: {askVal != null ? `$${askVal.toFixed(4)}` : "null"}</span>
-                    <span>bidSize: {liveSel?.bidSize ?? "—"}</span>
-                    <span>askSize: {liveSel?.askSize ?? "—"}</span>
-                    <span>tick: {liveSel?.lastTickTime ? new Date(liveSel.lastTickTime * 1000).toLocaleTimeString() : "—"}</span>
-                    <span>state: {liveSel?.marketState ?? "—"}</span>
-                    <span>bidOk: {String(bidOk)}</span>
-                    <span>askOk: {String(askOk)}</span>
-                  </div>
-                )}
                 {/* Mini stat strip */}
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 6, fontSize: 10, color: "#8b949e", lineHeight: 1.2 }}>
                   <span>RSI <span style={{ color: (last.rsi ?? 50) < 30 ? "#39d353" : (last.rsi ?? 50) > 70 ? "#f85149" : "#e6edf3", fontWeight: 700 }}>{last.rsi?.toFixed(1) ?? "—"}</span></span>
@@ -2011,6 +1967,8 @@ export default function TradingPlatform() {
               { label: "SELL signal", color: "#f85149" },
             ]}
           >
+            <div style={{ overflowX: "auto", overflowY: "hidden", WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}>
+            <div style={{ width: Math.max(360, masterData.length * 10), height: 380 }}>
             <ResponsiveContainer width="100%" height={380}>
               <ComposedChart data={masterData} margin={{ top: 8, right: 8, left: 0, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
@@ -2052,10 +2010,6 @@ export default function TradingPlatform() {
                   shape={(p: any) => p?.payload?.toppingTailY == null ? <g /> : (
                     <polygon points={`${p.cx - 3},${p.cy - 3} ${p.cx + 3},${p.cy - 3} ${p.cx},${p.cy + 3}`} fill="#f85149" fillOpacity={0.7} />
                   )} />
-                {masterBrush && (
-                  <Brush dataKey="date" height={20} stroke="#58a6ff" travellerWidth={8} fill="#0d1117"
-                    startIndex={masterBrush.startIndex} endIndex={masterBrush.endIndex} />
-                )}
               </ComposedChart>
             </ResponsiveContainer>
             {/* Volume sub-panel — yellow bars rising with volume, synced X with master chart */}
@@ -2068,40 +2022,15 @@ export default function TradingPlatform() {
                 <Bar dataKey="volume" fill="#e3b341" isAnimationActive={false} maxBarSize={7} />
               </ComposedChart>
             </ResponsiveContainer>
+            </div>
+            </div>
+            <div style={{ fontSize: 8, color: "#6e7681", textAlign: "center", padding: "2px 0" }}>← swipe to pan time →</div>
             <div style={{ fontSize: 9, color: "#8b949e", padding: "4px 4px 0", lineHeight: 1.4 }}>
               Green/Red candles = price action · Cream line = 20MA · Dark red line = 200MA · Yellow bars = volume · BULL/SELL labels = Elephant Bar + Tail Bar confirmation signals · ▲/▼ small = raw tail bars
             </div>
             <div style={{ fontSize: 8, color: "#6e7681", padding: "2px 4px 0", lineHeight: 1.4 }}>
               Signal logic based on publicly documented price-action concepts (Elephant Bars, Tail Bars, MA trend confirmation) — not a verified replica of any specific paid course.
             </div>
-            {/* Decision strip */}
-            {(() => {
-              const badge = (label: string, value: string, color: string) => (
-                <span key={label} style={{
-                  fontSize: 10, fontWeight: 800, padding: "3px 7px", borderRadius: 4, marginRight: 4,
-                  background: `${color}33`, border: `1px solid ${color}`, color,
-                  display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap",
-                }}>
-                  <span style={{ color: "#8b949e", fontWeight: 800 }}>{label}</span>{value}
-                </span>
-              );
-              const cTrend = decision.trend === "BULL" ? "#39d353" : decision.trend === "BEAR" ? "#f85149" : "#8b949e";
-              const cMA    = decision.vwapPos === "ABOVE" ? "#39d353" : decision.vwapPos === "BELOW" ? "#f85149" : "#8b949e";
-              const cVol   = decision.vol === "SURGE" ? "#ffa657" : "#8b949e";
-              const cBB    = decision.bb === "EXPANDING" ? "#ffa657" : "#8b949e";
-              const cMacd  = decision.macd === "BUY" ? "#39d353" : decision.macd === "SELL" ? "#f85149" : "#e3b341";
-              const cBias  = decision.bias === "STRONG BUY" ? "#39d353" : decision.bias === "STRONG SELL" ? "#f85149" : "#e3b341";
-              return (
-                <div style={{ display: "flex", flexWrap: "wrap", marginTop: 8, gap: 4 }}>
-                  {badge("TREND", decision.trend, cTrend)}
-                  {badge("vs 20MA", decision.vwapPos, cMA)}
-                  {badge("VOL", decision.vol, cVol)}
-                  {badge("ELEPHANT", decision.bb, cBB)}
-                  {badge("MACD", decision.macd, cMacd)}
-                  {badge("BIAS", decision.bias, cBias)}
-                </div>
-              );
-            })()}
           </ChartCard>
 
           {/* OBV + MFI */}
@@ -2114,6 +2043,8 @@ export default function TradingPlatform() {
               { label: "Oversold 20", color: "#39d353" },
             ]}
           >
+            <div style={{ overflowX: "auto", overflowY: "hidden", WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}>
+            <div style={{ width: Math.max(360, flowChartData.length * 6), height: 240 }}>
             <ResponsiveContainer width="100%" height={240}>
               <ComposedChart data={flowChartData} margin={{ top: 5, right: 40, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
@@ -2125,9 +2056,11 @@ export default function TradingPlatform() {
                 <ReferenceLine yAxisId="mfi" y={20} stroke="#39d353" strokeDasharray="3 3" />
                 <Area yAxisId="obv" type="monotone" dataKey="obv" stroke="#79c0ff" fill="#79c0ff" fillOpacity={0.15} strokeWidth={2} name="OBV" />
                 <Line yAxisId="mfi" type="monotone" dataKey="mfi" stroke="#ffa657" strokeWidth={2} dot={false} name="MFI" />
-                <Brush dataKey="date" height={18} stroke="#58a6ff" travellerWidth={8} fill="#0d1117" />
               </ComposedChart>
             </ResponsiveContainer>
+            </div>
+            </div>
+            <div style={{ fontSize: 8, color: "#6e7681", textAlign: "center", padding: "2px 0" }}>← swipe to pan time →</div>
             <div style={{ fontSize: 9, color: "#8b949e", padding: "4px 4px 0", lineHeight: 1.4 }}>
               OBV rising → accumulation (smart money buying). OBV falling → distribution (smart money selling).
               MFI &gt; 80 → overbought warning. MFI &lt; 20 → oversold opportunity. Combines price AND volume — stronger than RSI alone.
@@ -2150,6 +2083,8 @@ export default function TradingPlatform() {
             <div style={{ fontSize: 9, color: "#8b949e", marginBottom: 4 }}>
               ▲ green = buy crossover (last 3) · ▼ red = sell crossover (last 3) · EMA lines = trend
             </div>
+            <div style={{ overflowX: "auto", overflowY: "hidden", WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}>
+            <div style={{ width: Math.max(360, macdCandleData.length * 8) }}>
             {/* Top panel: candlesticks + EMAs + arrows */}
             <ResponsiveContainer width="100%" height={260}>
               <ComposedChart data={macdCandleData} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
@@ -2178,10 +2113,6 @@ export default function TradingPlatform() {
                     <polygon points={`${p.cx - 5},${p.cy} ${p.cx + 5},${p.cy} ${p.cx},${p.cy + 6}`} fill="#f85149" />
                   )}
                 />
-                {macdBrush && (
-                  <Brush dataKey="date" height={16} stroke="#58a6ff" travellerWidth={8} fill="#0d1117"
-                    startIndex={macdBrush.startIndex} endIndex={macdBrush.endIndex} />
-                )}
               </ComposedChart>
             </ResponsiveContainer>
             {/* Bottom panel: MACD histogram + signal lines */}
@@ -2200,12 +2131,11 @@ export default function TradingPlatform() {
                 </Bar>
                 <Line type="monotone" dataKey="macd" stroke="#79c0ff" strokeWidth={2} dot={false} name="MACD" />
                 <Line type="monotone" dataKey="macdSignal" stroke="#f85149" strokeWidth={2} dot={false} name="Signal" />
-                {macdBrush && (
-                  <Brush dataKey="date" height={16} stroke="#58a6ff" travellerWidth={8} fill="#0d1117"
-                    startIndex={macdBrush.startIndex} endIndex={macdBrush.endIndex} />
-                )}
               </ComposedChart>
             </ResponsiveContainer>
+            </div>
+            </div>
+            <div style={{ fontSize: 8, color: "#6e7681", textAlign: "center", padding: "2px 0" }}>← swipe to pan time →</div>
           </ChartCard>
 
           {/* Macro market-moving news (CNBC / MarketWatch / WSJ) */}
