@@ -1496,7 +1496,7 @@ export default function TradingPlatform() {
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
             <div style={{ fontFamily: "Orbitron, sans-serif", fontWeight: 900, fontSize: 16, color: "#58a6ff", letterSpacing: 1 }}>⬡ BRYANTRADE</div>
             <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 2 }}>PRO TERMINAL</div>
-            <a href="/charts" style={{ fontSize: 10, fontWeight: 800, color: "#22d3ee", letterSpacing: 1, border: "1px solid #22d3ee", padding: "2px 6px", borderRadius: 4, textDecoration: "none" }}>OV CHART</a>
+            {/* OV chart is inline per-stock now */}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {semiRiskSent && (() => {
@@ -1831,10 +1831,6 @@ export default function TradingPlatform() {
               onClick={() => setShowDetail(false)}
               style={{ background: "transparent", border: "none", color: "#58a6ff", fontSize: 13, fontWeight: 700, cursor: "pointer", padding: "12px 16px", position: "relative", zIndex: 50 }}
             >← WATCHLIST</button>
-            <a
-              href={`/charts?symbol=${encodeURIComponent(selectedStock)}`}
-              style={{ color: "#79c0ff", fontSize: 11, fontWeight: 700, textDecoration: "none", padding: "12px 16px", letterSpacing: 1 }}
-            >OV CHART →</a>
           </div>
           <div style={{ padding: "6px 10px" }}>
           {/* Stock header — ultra-tight single row */}
