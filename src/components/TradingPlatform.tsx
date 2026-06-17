@@ -2007,6 +2007,8 @@ export default function TradingPlatform() {
               { label: "SELL signal", color: "#f85149" },
             ]}
           >
+            <div style={{ overflowX: "auto", overflowY: "hidden", WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}>
+            <div style={{ width: Math.max(360, masterData.length * 10), height: 380 }}>
             <ResponsiveContainer width="100%" height={380}>
               <ComposedChart data={masterData} margin={{ top: 8, right: 8, left: 0, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
@@ -2048,10 +2050,6 @@ export default function TradingPlatform() {
                   shape={(p: any) => p?.payload?.toppingTailY == null ? <g /> : (
                     <polygon points={`${p.cx - 3},${p.cy - 3} ${p.cx + 3},${p.cy - 3} ${p.cx},${p.cy + 3}`} fill="#f85149" fillOpacity={0.7} />
                   )} />
-                {masterBrush && (
-                  <Brush dataKey="date" height={20} stroke="#58a6ff" travellerWidth={8} fill="#0d1117"
-                    startIndex={masterBrush.startIndex} endIndex={masterBrush.endIndex} />
-                )}
               </ComposedChart>
             </ResponsiveContainer>
             {/* Volume sub-panel — yellow bars rising with volume, synced X with master chart */}
@@ -2064,40 +2062,15 @@ export default function TradingPlatform() {
                 <Bar dataKey="volume" fill="#e3b341" isAnimationActive={false} maxBarSize={7} />
               </ComposedChart>
             </ResponsiveContainer>
+            </div>
+            </div>
+            <div style={{ fontSize: 8, color: "#6e7681", textAlign: "center", padding: "2px 0" }}>← swipe to pan time →</div>
             <div style={{ fontSize: 9, color: "#8b949e", padding: "4px 4px 0", lineHeight: 1.4 }}>
               Green/Red candles = price action · Cream line = 20MA · Dark red line = 200MA · Yellow bars = volume · BULL/SELL labels = Elephant Bar + Tail Bar confirmation signals · ▲/▼ small = raw tail bars
             </div>
             <div style={{ fontSize: 8, color: "#6e7681", padding: "2px 4px 0", lineHeight: 1.4 }}>
               Signal logic based on publicly documented price-action concepts (Elephant Bars, Tail Bars, MA trend confirmation) — not a verified replica of any specific paid course.
             </div>
-            {/* Decision strip */}
-            {(() => {
-              const badge = (label: string, value: string, color: string) => (
-                <span key={label} style={{
-                  fontSize: 10, fontWeight: 800, padding: "3px 7px", borderRadius: 4, marginRight: 4,
-                  background: `${color}33`, border: `1px solid ${color}`, color,
-                  display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap",
-                }}>
-                  <span style={{ color: "#8b949e", fontWeight: 800 }}>{label}</span>{value}
-                </span>
-              );
-              const cTrend = decision.trend === "BULL" ? "#39d353" : decision.trend === "BEAR" ? "#f85149" : "#8b949e";
-              const cMA    = decision.vwapPos === "ABOVE" ? "#39d353" : decision.vwapPos === "BELOW" ? "#f85149" : "#8b949e";
-              const cVol   = decision.vol === "SURGE" ? "#ffa657" : "#8b949e";
-              const cBB    = decision.bb === "EXPANDING" ? "#ffa657" : "#8b949e";
-              const cMacd  = decision.macd === "BUY" ? "#39d353" : decision.macd === "SELL" ? "#f85149" : "#e3b341";
-              const cBias  = decision.bias === "STRONG BUY" ? "#39d353" : decision.bias === "STRONG SELL" ? "#f85149" : "#e3b341";
-              return (
-                <div style={{ display: "flex", flexWrap: "wrap", marginTop: 8, gap: 4 }}>
-                  {badge("TREND", decision.trend, cTrend)}
-                  {badge("vs 20MA", decision.vwapPos, cMA)}
-                  {badge("VOL", decision.vol, cVol)}
-                  {badge("ELEPHANT", decision.bb, cBB)}
-                  {badge("MACD", decision.macd, cMacd)}
-                  {badge("BIAS", decision.bias, cBias)}
-                </div>
-              );
-            })()}
           </ChartCard>
 
           {/* OBV + MFI */}
