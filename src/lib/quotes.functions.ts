@@ -626,6 +626,18 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
         }
       })
     );
+    for (const sym of symbols) {
+      const q = out[sym];
+      if (!q) continue;
+      if (q.bid == null || q.ask == null) {
+        const spread = makeBidAsk(q.price ?? q.regularPrice ?? q.previousClose);
+        out[sym] = { ...q, bid: spread.bid, ask: spread.ask, syntheticBidAsk: true };
+      }
+      if (process.env.NODE_ENV !== "production") {
+        console.log(`[quotes] sym=${sym} src=${out[sym].syntheticBidAsk ? "synthetic" : "v7"} bid=${out[sym].bid} ask=${out[sym].ask} age=${out[sym].lastTickTime ? Date.now() - out[sym].lastTickTime! * 1000 : 0}ms`);
+      }
+    }
+    liveQuoteCache = { key: cacheKey, at: Date.now(), data: out };
     return out;
   });
 

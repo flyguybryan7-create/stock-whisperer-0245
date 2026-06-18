@@ -1081,7 +1081,7 @@ export default function TradingPlatform() {
 
   // OBV + MFI(14) per bar — for the flow chart
   const flowChartData = useMemo(() => {
-    if (!displayData.length) return [] as Array<Row & { obv: number; mfi: number | null; tp: number }>;
+    if (!displayData.length) return [] as Array<Row & { obv: number; obvPlot: number; mfi: number | null; tp: number }>;
     const tps = displayData.map((d) => (((d as any).high ?? d.close) + ((d as any).low ?? d.close) + d.close) / 3);
     let obv = 0;
     const out: Array<Row & { obv: number; mfi: number | null; tp: number }> = [];
@@ -1105,18 +1105,20 @@ export default function TradingPlatform() {
       }
       out.push({ ...d, obv: +obv.toFixed(0), mfi, tp: +tps[i].toFixed(2) });
     }
-    return out;
+    const anchor = out[Math.max(0, out.length - 40)]?.obv ?? 0;
+    return out.map((d) => ({ ...d, obvPlot: d.obv - anchor }));
   }, [displayData]);
 
-  // Master day-trade chart data: fixed 2m / 1d candles + SMA20/SMA200 +
-  // Elephant Bar / Tail Bar / signal labels (price-action approach).
+  // Price chart data follows the selected timeframe buttons and adds
+  // OV-style signal labels on top of real OHLC candles.
   type MasterRow = {
     date: string;
     open: number; high: number; low: number; close: number; volume: number;
     candleStart: number; candleBody: number; candleColor: string;
     wickStart: number; wickRange: number;
     candleRange: [number, number];
-    sma20: number | null; sma200: number | null;
+    sma20: number | null; sma200: number | null; sma9: number | null; sma15: number | null;
+    bbUpper: number | null; bbMiddle: number | null; bbLower: number | null;
     bullLabelY: number | null;     // shows "BULL" below the bar
     sellLabelY: number | null;     // shows "SELL" above the bar
     bottomingTailY: number | null; // small ▲
@@ -1210,7 +1212,8 @@ export default function TradingPlatform() {
         wickStart: +low.toFixed(4),
         wickRange: +(high - low).toFixed(4),
         candleRange: [+low.toFixed(4), +high.toFixed(4)] as [number, number],
-        sma20: s20, sma200: s200,
+        sma20: s20, sma200: s200, sma9: b.sma9 ?? null, sma15: b.sma15 ?? null,
+        bbUpper: b.bbUpper ?? null, bbMiddle: b.bbMiddle ?? null, bbLower: b.bbLower ?? null,
         bullLabelY: keepBull.has(i) ? +(low - offset).toFixed(4) : null,
         sellLabelY: keepSell.has(i) ? +(high + offset).toFixed(4) : null,
         bottomingTailY: flags[i].bottomingTail && !keepBull.has(i) ? +(low - offset * 0.5).toFixed(4) : null,
@@ -1224,15 +1227,12 @@ export default function TradingPlatform() {
   // the wick-bar baseline at 0 (which compressed all candles into a thin
   // band at the top of the canvas).
   const masterPriceDomain = useMemo<[number, number] | ["auto", "auto"]>(() => {
-    const recent = chartMode === "D" ? masterData.length : 90;
-    return getTightPriceDomain(
-      masterData.map((d) => ({ ...d, low: d.bullLabelY ?? d.bottomingTailY ?? d.low, high: d.sellLabelY ?? d.toppingTailY ?? d.high })),
-      recent,
-    );
+    const recent = chartMode === "D" ? masterData.length : 40;
+    return getTightPriceDomain(masterData, recent);
   }, [masterData, chartMode]);
   // Same auto-domain for the MACD candlestick price panel.
   const macdPriceDomain = useMemo<[number, number] | ["auto", "auto"]>(() => {
-    const recent = chartMode === "D" ? macdCandleData.length : 90;
+    const recent = chartMode === "D" ? macdCandleData.length : 40;
     return getTightPriceDomain(macdCandleData, recent);
   }, [macdCandleData, chartMode]);
   const macdOscDomain = useMemo<[number, number] | ["auto", "auto"]>(() => {
@@ -1245,8 +1245,8 @@ export default function TradingPlatform() {
   }, [macdCandleData, chartMode]);
   const flowObvDomain = useMemo<[number, number] | ["auto", "auto"]>(() => {
     if (!flowChartData.length) return ["auto", "auto"];
-    const sample = flowChartData.slice(chartMode === "D" ? 0 : Math.max(0, flowChartData.length - 90));
-    const vals = sample.map((d) => d.obv).filter((v) => Number.isFinite(v));
+    const sample = flowChartData.slice(chartMode === "D" ? 0 : Math.max(0, flowChartData.length - 40));
+    const vals = sample.map((d) => d.obvPlot).filter((v) => Number.isFinite(v));
     if (!vals.length) return ["auto", "auto"];
     const lo = Math.min(...vals);
     const hi = Math.max(...vals);
@@ -1891,12 +1891,12 @@ export default function TradingPlatform() {
                     <span style={{ fontSize: 8, fontWeight: 700, color: sessColor, border: `1px solid ${sessColor}`, borderRadius: 3, padding: "1px 4px", lineHeight: 1 }}>● {sessLabel}</span>
                   )}
                 </div>
-                {/* Row 2: BID  ASK  VWAP — real values only, never synthetic */}
+                {/* Row 2: BID  ASK  VWAP */}
                 <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 6, fontSize: 11, fontWeight: 700, color: "#8b949e", lineHeight: 1 }}>
-                  <span title={`Bid${liveSel?.bidSize != null ? ` × ${liveSel.bidSize}` : ""}`}>
+                  <span title={`Bid${liveSel?.bidSize != null ? ` × ${liveSel.bidSize}` : ""}${liveSel?.syntheticBidAsk ? " · estimated from latest Yahoo chart bar" : ""}`}>
                     BID <span style={{ color: bidOk ? "#f85149" : "#484f58" }}>{bidOk ? `$${bidVal!.toFixed(2)}` : "—"}</span>
                   </span>
-                  <span title={`Ask${liveSel?.askSize != null ? ` × ${liveSel.askSize}` : ""}`}>
+                  <span title={`Ask${liveSel?.askSize != null ? ` × ${liveSel.askSize}` : ""}${liveSel?.syntheticBidAsk ? " · estimated from latest Yahoo chart bar" : ""}`}>
                     ASK <span style={{ color: askOk ? "#39d353" : "#484f58" }}>{askOk ? `$${askVal!.toFixed(2)}` : "—"}</span>
                   </span>
                   <span title="Intraday volume-weighted average price">
@@ -2011,8 +2011,12 @@ export default function TradingPlatform() {
                 <Tooltip content={<CustomTooltip />} />
                 {/* True OHLC candle via custom shape — single range bar so YAxis fits the price band */}
                 <Bar dataKey="candleRange" name="Candle" isAnimationActive={false} shape={<Candle />} />
+                <Line type="monotone" dataKey="sma9" stroke="#79c0ff" strokeWidth={1.8} dot={false} name="SMA9" connectNulls />
+                <Line type="monotone" dataKey="sma15" stroke="#d2a8ff" strokeWidth={1.5} dot={false} name="SMA15" connectNulls />
                 <Line type="monotone" dataKey="sma20" stroke="#ffffcc" strokeWidth={2} dot={false} name="20MA" connectNulls />
                 <Line type="monotone" dataKey="sma200" stroke="#8b1a1a" strokeWidth={2} dot={false} name="200MA" connectNulls />
+                <Line type="monotone" dataKey="bbUpper" stroke="#6e7681" strokeWidth={1} strokeDasharray="3 3" dot={false} name="BB Upper" connectNulls />
+                <Line type="monotone" dataKey="bbLower" stroke="#6e7681" strokeWidth={1} strokeDasharray="3 3" dot={false} name="BB Lower" connectNulls />
                 {/* BULL labels (green, below candle) */}
                 <Scatter
                   dataKey="bullLabelY"
@@ -2088,7 +2092,7 @@ export default function TradingPlatform() {
                 <Tooltip content={<CustomTooltip />} />
                 <ReferenceLine yAxisId="mfi" y={80} stroke="#f85149" strokeDasharray="3 3" />
                 <ReferenceLine yAxisId="mfi" y={20} stroke="#39d353" strokeDasharray="3 3" />
-                <Area yAxisId="obv" type="monotone" dataKey="obv" stroke="#79c0ff" fill="#79c0ff" fillOpacity={0.15} strokeWidth={2} name="OBV" />
+                <Area yAxisId="obv" type="monotone" dataKey="obvPlot" stroke="#79c0ff" fill="#79c0ff" fillOpacity={0.15} strokeWidth={2} name="OBV" />
                 <Line yAxisId="mfi" type="monotone" dataKey="mfi" stroke="#ffa657" strokeWidth={2} dot={false} name="MFI" />
               </ComposedChart>
             </ResponsiveContainer>
