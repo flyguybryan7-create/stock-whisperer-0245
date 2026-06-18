@@ -9,6 +9,8 @@ let yahooAuthCooldownUntil = 0;
 const YAHOO_AUTH_COOLDOWN_MS = 10 * 60 * 1000; // 10 min
 const YAHOO_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+const LIVE_QUOTE_CACHE_MS = 800;
+let liveQuoteCache: { key: string; at: number; data: Record<string, LiveQuote> } | undefined;
 
 async function getYahooAuth(): Promise<{ cookie: string; crumb: string } | null> {
   if (yahooAuth && Date.now() - yahooAuth.at < YAHOO_AUTH_TTL_MS) {
@@ -86,6 +88,7 @@ type YahooQuoteV7 = {
   ask?: number;
   bidSize?: number;
   askSize?: number;
+  syntheticBidAsk?: boolean;
 };
 
 async function fetchYahooV7Quotes(symbols: string[]): Promise<Record<string, LiveQuote>> {
@@ -189,6 +192,19 @@ async function fetchYahooV7Quotes(symbols: string[]): Promise<Record<string, Liv
     };
   }
   return out;
+}
+
+function roundQuotePrice(value: number) {
+  return value >= 1 ? Math.round(value * 100) / 100 : Math.round(value * 10_000) / 10_000;
+}
+
+function makeBidAsk(mark: number, recentRanges: number[] = []) {
+  const avgRange = recentRanges.length ? recentRanges.reduce((s, v) => s + v, 0) / recentRanges.length : 0;
+  const halfSpread = Math.max(0.005, Math.min(Math.max(mark * 0.0008, avgRange * 0.08), Math.max(mark * 0.01, 0.02)));
+  return {
+    bid: roundQuotePrice(Math.max(0.0001, mark - halfSpread)),
+    ask: roundQuotePrice(mark + halfSpread),
+  };
 }
 
 type YahooChart = {
@@ -337,6 +353,7 @@ export type LiveQuote = {
   ask?: number;
   bidSize?: number;
   askSize?: number;
+  syntheticBidAsk?: boolean;
 };
 
 // ============ Intraday 1-minute candles for day-trade signals ============
@@ -403,15 +420,19 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
   })
   .handler(async ({ data }): Promise<Record<string, LiveQuote>> => {
     if (data.symbols.length === 0) return {};
+    const symbols = [...new Set(data.symbols.map((s) => s.toUpperCase()))];
+    const cacheKey = symbols.slice().sort().join(",");
+    if (liveQuoteCache?.key === cacheKey && Date.now() - liveQuoteCache.at < LIVE_QUOTE_CACHE_MS) {
+      return liveQuoteCache.data;
+    }
     // Primary: Yahoo's v7 quote endpoint (same data their website ticks live,
     // including postMarketPrice during extended hours). Free, requires crumb.
     const out: Record<string, LiveQuote> = {};
-    let remaining = data.symbols;
+    let remaining = symbols;
     try {
-      const v7 = await fetchYahooV7Quotes(data.symbols);
+      const v7 = await fetchYahooV7Quotes(symbols);
       Object.assign(out, v7);
-      remaining = data.symbols.filter((s) => !v7[s]);
-      if (remaining.length === 0) return out;
+      remaining = symbols.filter((s) => !v7[s] || v7[s].bid == null || v7[s].ask == null);
     } catch {
       /* fall through to chart for all symbols */
     }
@@ -453,7 +474,10 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
           };
           const r = json.chart.result?.[0];
           if (!r) return;
-          const closes = r.indicators.quote[0]?.close ?? [];
+          const quote = r.indicators.quote[0];
+          const closes = quote?.close ?? [];
+          const highs = quote?.high ?? [];
+          const lows = quote?.low ?? [];
           const ts = r.timestamp ?? [];
           // Find the most recent non-null tick
           let lastIdx = -1;
@@ -466,6 +490,7 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
           if (lastIdx === -1 || prevClose === 0) {
             // Fallback to regular price
             if (regularPrice != null) {
+              const spread = makeBidAsk(regularPrice);
               out[sym] = {
                 symbol: sym,
                 price: regularPrice,
@@ -475,6 +500,9 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
                 marketState: "CLOSED",
                 session: "CLOSED",
                 regularPrice: regularPrice ?? undefined,
+                bid: spread.bid,
+                ask: spread.ask,
+                syntheticBidAsk: true,
               };
             }
             return;
@@ -521,6 +549,15 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
               }
             }
           }
+          const recentRanges: number[] = [];
+          for (let i = Math.max(0, lastIdx - 20); i <= lastIdx; i++) {
+            const h = highs[i]; const l = lows[i];
+            if (h != null && l != null && h >= l) recentRanges.push(h - l);
+          }
+          const prior = out[sym];
+          const spread = prior?.bid != null && prior?.ask != null
+            ? { bid: prior.bid, ask: prior.ask }
+            : makeBidAsk(lastPrice, recentRanges);
           const change = lastPrice - prevClose;
           out[sym] = {
             symbol: sym,
@@ -575,7 +612,15 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
               }
               return undefined;
             })(),
+            bid: spread.bid,
+            ask: spread.ask,
+            bidSize: prior?.bidSize,
+            askSize: prior?.askSize,
+            syntheticBidAsk: prior?.bid != null && prior?.ask != null ? false : true,
           };
+          if (process.env.NODE_ENV !== "production") {
+            console.log(`[quotes] sym=${sym} src=${prior?.bid != null && prior?.ask != null ? "v7" : "v8-spread"} bid=${spread.bid} ask=${spread.ask} age=${Date.now() - lastTs * 1000}ms`);
+          }
         } catch {
           /* skip */
         }
