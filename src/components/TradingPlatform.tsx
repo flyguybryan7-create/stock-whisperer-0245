@@ -78,6 +78,27 @@ function getTightPriceDomain<T extends { low?: number; high?: number; close?: nu
   return [Math.floor((lo - pad) * 100) / 100, Math.ceil((hi + pad) * 100) / 100];
 }
 
+/**
+ * Build a "nice" tick array for a price Y axis so increments are always
+ * cents/dollars at a human-readable step (0.01, 0.05, 0.10, 0.25, 0.50,
+ * 1, 2, 5, 10, 25, 50, 100, …). Recharts' auto-ticks can pick ugly
+ * irrationals when the domain is tight; this enforces clean lines.
+ */
+function niceTicks(domain: [number, number] | ["auto", "auto"], target = 6): number[] | undefined {
+  if (!Array.isArray(domain) || domain[0] === "auto" || domain[1] === "auto") return undefined;
+  const [lo, hi] = domain as [number, number];
+  const span = hi - lo;
+  if (!(span > 0)) return undefined;
+  const rawStep = span / target;
+  const steps = [0.01, 0.02, 0.05, 0.10, 0.25, 0.50, 1, 2, 5, 10, 25, 50, 100, 250, 500];
+  let step = steps[steps.length - 1];
+  for (const s of steps) if (s >= rawStep) { step = s; break; }
+  const start = Math.ceil(lo / step) * step;
+  const out: number[] = [];
+  for (let v = start; v <= hi + 1e-9 && out.length < 12; v += step) out.push(Math.round(v / 0.01) * 0.01);
+  return out.length >= 2 ? out : undefined;
+}
+
 const DEFAULT_STOCKS = [
   "NVDA","MRVL","SMTC","TSEM","CRDO","INTC","QBTS","INFQ","HUT","ALAB","AAOI","SNOW","NVTS","MCHP","ANET",
   "CRWV","CBRS","RMBS","LSCC","MXL","AMBA","PLAB","ASYS","COHU","NLST","ACLS","STM","SATS","WDC",
