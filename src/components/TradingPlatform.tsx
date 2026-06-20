@@ -2071,7 +2071,7 @@ export default function TradingPlatform() {
                   shape={(p: any) => p?.payload?.bullLabelY == null ? <g /> : (
                     <g>
                       <polygon points={`${p.cx - 4},${p.cy} ${p.cx + 4},${p.cy} ${p.cx},${p.cy - 5}`} fill="#39d353" />
-                      <text x={p.cx} y={p.cy + 9} textAnchor="middle" fill="#39d353" fontSize={9} fontWeight={900}>BULL</text>
+                      <text x={p.cx} y={p.cy + 9} textAnchor="middle" fill="#39d353" fontSize={9} fontWeight={900}>BUY</text>
                     </g>
                   )}
                 />
