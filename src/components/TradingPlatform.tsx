@@ -872,7 +872,7 @@ export default function TradingPlatform() {
       for (const r of results) Object.assign(items, r?.items ?? {});
       return { items, asOf: Date.now() };
     },
-    refetchInterval: 10_000,
+    refetchInterval: 2_000,
     refetchIntervalInBackground: true,
     staleTime: 8_000,
     enabled: watchlist.length > 0,
