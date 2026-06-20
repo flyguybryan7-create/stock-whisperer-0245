@@ -12,6 +12,13 @@ export type OptionsActivity = {
   unusual: boolean; // total vol >= 1.5x total OI (heavy fresh flow)
   intensity: number; // 0..1 — used for flash strength
   expiry: string | null;
+  // Highest-volume strike on each side (CBOE-listed via Nasdaq feed) +
+  // share of that side's volume targeting that strike. Lets the UI show
+  // e.g. "C $320 · 70%" meaning 70% of today's call volume is at $320.
+  topCallStrike: number | null;
+  topCallPct: number | null;
+  topPutStrike: number | null;
+  topPutPct: number | null;
 };
 
 export type OptionsActivityResponse = {
@@ -47,18 +54,37 @@ async function fetchChain(symbol: string): Promise<OptionsActivity | null> {
       callOi = 0,
       putOi = 0;
     let firstExpiry: string | null = null;
+    // Per-strike call/put volume buckets to find the dominant target strike.
+    const callByStrike = new Map<number, number>();
+    const putByStrike = new Map<number, number>();
     const num = (v: any) => {
       if (v == null || v === "--" || v === "") return 0;
       const n = Number(String(v).replace(/,/g, ""));
       return Number.isFinite(n) ? n : 0;
     };
     for (const row of rows) {
-      callVolume += num(row?.c_Volume);
-      putVolume += num(row?.p_Volume);
+      const cv = num(row?.c_Volume);
+      const pv = num(row?.p_Volume);
+      callVolume += cv;
+      putVolume += pv;
       callOi += num(row?.c_Openinterest);
       putOi += num(row?.p_Openinterest);
+      const strike = num(row?.strike);
+      if (strike > 0) {
+        if (cv > 0) callByStrike.set(strike, (callByStrike.get(strike) ?? 0) + cv);
+        if (pv > 0) putByStrike.set(strike, (putByStrike.get(strike) ?? 0) + pv);
+      }
       if (!firstExpiry && row?.expiryDate) firstExpiry = String(row.expiryDate);
     }
+    const pickTop = (m: Map<number, number>, total: number) => {
+      if (total <= 0 || m.size === 0) return { strike: null as number | null, pct: null as number | null };
+      let bestStrike = 0;
+      let bestVol = 0;
+      for (const [k, v] of m) if (v > bestVol) { bestVol = v; bestStrike = k; }
+      return { strike: bestStrike || null, pct: bestStrike ? bestVol / total : null };
+    };
+    const topCall = pickTop(callByStrike, callVolume);
+    const topPut = pickTop(putByStrike, putVolume);
     const totalVol = callVolume + putVolume;
     const totalOi = callOi + putOi;
     const pcRatio = callVolume > 0 ? putVolume / callVolume : null;
@@ -80,6 +106,10 @@ async function fetchChain(symbol: string): Promise<OptionsActivity | null> {
       unusual,
       intensity,
       expiry: firstExpiry,
+      topCallStrike: topCall.strike,
+      topCallPct: topCall.pct,
+      topPutStrike: topPut.strike,
+      topPutPct: topPut.pct,
     };
   } catch (e) {
     console.error("[options] error", symbol, e);

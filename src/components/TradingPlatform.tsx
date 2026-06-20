@@ -78,6 +78,30 @@ function getTightPriceDomain<T extends { low?: number; high?: number; close?: nu
   return [Math.floor((lo - pad) * 100) / 100, Math.ceil((hi + pad) * 100) / 100];
 }
 
+/**
+ * Build a "nice" tick array for a price Y axis so increments are always
+ * cents/dollars at a human-readable step (0.01, 0.05, 0.10, 0.25, 0.50,
+ * 1, 2, 5, 10, 25, 50, 100, …). Recharts' auto-ticks can pick ugly
+ * irrationals when the domain is tight; this enforces clean lines.
+ */
+function niceTicks(domain: [number, number] | ["auto", "auto"] | unknown, target = 6): number[] | undefined {
+  if (!Array.isArray(domain)) return undefined;
+  const [a, b] = domain as [unknown, unknown];
+  if (typeof a !== "number" || typeof b !== "number") return undefined;
+  const lo = a;
+  const hi = b;
+  const span = hi - lo;
+  if (!(span > 0)) return undefined;
+  const rawStep = span / target;
+  const steps = [0.01, 0.02, 0.05, 0.10, 0.25, 0.50, 1, 2, 5, 10, 25, 50, 100, 250, 500];
+  let step = steps[steps.length - 1];
+  for (const s of steps) if (s >= rawStep) { step = s; break; }
+  const start = Math.ceil(lo / step) * step;
+  const out: number[] = [];
+  for (let v = start; v <= hi + 1e-9 && out.length < 12; v += step) out.push(Math.round(v / 0.01) * 0.01);
+  return out.length >= 2 ? out : undefined;
+}
+
 const DEFAULT_STOCKS = [
   "NVDA","MRVL","SMTC","TSEM","CRDO","INTC","QBTS","INFQ","HUT","ALAB","AAOI","SNOW","NVTS","MCHP","ANET",
   "CRWV","CBRS","RMBS","LSCC","MXL","AMBA","PLAB","ASYS","COHU","NLST","ACLS","STM","SATS","WDC",
@@ -1948,6 +1972,29 @@ export default function TradingPlatform() {
                       )}
                     </span>
                   )}
+                  {(() => {
+                    const oa = optionsActivity[selectedStock];
+                    if (!oa) return null;
+                    const hasCall = oa.topCallStrike != null && oa.topCallPct != null;
+                    const hasPut = oa.topPutStrike != null && oa.topPutPct != null;
+                    if (!hasCall && !hasPut) return null;
+                    return (
+                      <span style={{ display: "flex", gap: 10, flexBasis: "100%" }}>
+                        {hasCall && (
+                          <span title={`${(oa.topCallPct! * 100).toFixed(0)}% of today's call volume on this name is at the $${oa.topCallStrike} strike (CBOE-listed, via Nasdaq option-chain feed).`}>
+                            CALL TGT <span style={{ color: "#39d353", fontWeight: 800 }}>${oa.topCallStrike!.toFixed(2)}</span>
+                            <span style={{ color: "#39d353", marginLeft: 3 }}>· {(oa.topCallPct! * 100).toFixed(0)}%</span>
+                          </span>
+                        )}
+                        {hasPut && (
+                          <span title={`${(oa.topPutPct! * 100).toFixed(0)}% of today's put volume on this name is at the $${oa.topPutStrike} strike (CBOE-listed, via Nasdaq option-chain feed).`}>
+                            PUT TGT <span style={{ color: "#f85149", fontWeight: 800 }}>${oa.topPutStrike!.toFixed(2)}</span>
+                            <span style={{ color: "#f85149", marginLeft: 3 }}>· {(oa.topPutPct! * 100).toFixed(0)}%</span>
+                          </span>
+                        )}
+                      </span>
+                    );
+                  })()}
                   {liveSel?.preMarketPrice != null && (
                     <span>Pre <span style={{ color: (liveSel.preMarketChangePercent ?? 0) >= 0 ? "#39d353" : "#f85149" }}>${liveSel.preMarketPrice.toFixed(2)}</span></span>
                   )}
@@ -1997,17 +2044,17 @@ export default function TradingPlatform() {
               { label: "Bearish candle", color: "#f85149" },
               { label: "20MA", color: "#ffffcc" },
               { label: "200MA", color: "#8b1a1a" },
-              { label: "BULL signal", color: "#39d353" },
+              { label: "BUY signal", color: "#39d353" },
               { label: "SELL signal", color: "#f85149" },
             ]}
           >
-            <div ref={masterScrollRef} style={{ overflowX: "auto", overflowY: "hidden", WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}>
-            <div style={{ width: masterChartWidth, height: 430 }}>
+            <div ref={masterScrollRef} style={{ width: "100%" }}>
+            <div style={{ width: "100%", height: 430 }}>
             <ResponsiveContainer width="100%" height={430}>
               <ComposedChart data={masterData} margin={{ top: 8, right: 8, left: 0, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-                <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} interval={chartMode === "INTRADAY" ? 0 : "preserveStartEnd"} minTickGap={8} />
-                <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={masterPriceDomain} allowDataOverflow tickCount={7} tickFormatter={(v: number) => `$${v.toFixed(2)}`} width={55} />
+                <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} interval="preserveStartEnd" minTickGap={28} />
+                <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={masterPriceDomain} allowDataOverflow ticks={niceTicks(masterPriceDomain, 7)} tickFormatter={(v: number) => `$${v.toFixed(2)}`} width={58} />
                 <Tooltip content={<CustomTooltip />} />
                 {/* True OHLC candle via custom shape — single range bar so YAxis fits the price band */}
                 <Bar dataKey="candleRange" name="Candle" isAnimationActive={false} shape={<Candle />} />
@@ -2024,7 +2071,7 @@ export default function TradingPlatform() {
                   shape={(p: any) => p?.payload?.bullLabelY == null ? <g /> : (
                     <g>
                       <polygon points={`${p.cx - 4},${p.cy} ${p.cx + 4},${p.cy} ${p.cx},${p.cy - 5}`} fill="#39d353" />
-                      <text x={p.cx} y={p.cy + 9} textAnchor="middle" fill="#39d353" fontSize={9} fontWeight={900}>BULL</text>
+                      <text x={p.cx} y={p.cy + 9} textAnchor="middle" fill="#39d353" fontSize={9} fontWeight={900}>BUY</text>
                     </g>
                   )}
                 />
@@ -2064,116 +2111,11 @@ export default function TradingPlatform() {
             </div>
             <div style={{ fontSize: 8, color: "#6e7681", textAlign: "center", padding: "2px 0" }}>showing latest market time · drag only to review earlier bars</div>
             <div style={{ fontSize: 9, color: "#8b949e", padding: "4px 4px 0", lineHeight: 1.4 }}>
-              Green/Red candles = price action · Cream line = 20MA · Dark red line = 200MA · Yellow bars = volume · BULL/SELL labels = Elephant Bar + Tail Bar confirmation signals · ▲/▼ small = raw tail bars
+              Green/Red candles = price action · Cream line = 20MA · Dark red line = 200MA · Yellow bars = volume · BUY/SELL labels = Elephant Bar + Tail Bar confirmation signals · ▲/▼ small = raw tail bars
             </div>
             <div style={{ fontSize: 8, color: "#6e7681", padding: "2px 4px 0", lineHeight: 1.4 }}>
               Signal logic based on publicly documented price-action concepts (Elephant Bars, Tail Bars, MA trend confirmation) — not a verified replica of any specific paid course.
             </div>
-          </ChartCard>
-
-          {/* OBV + MFI */}
-          <ChartCard
-            title="OBV · ON-BALANCE VOLUME + MONEY FLOW INDEX"
-            legend={[
-              { label: "OBV (smart money flow)", color: "#79c0ff" },
-              { label: "MFI (price+volume pressure)", color: "#ffa657" },
-              { label: "Overbought 80", color: "#f85149" },
-              { label: "Oversold 20", color: "#39d353" },
-            ]}
-          >
-            <div ref={flowScrollRef} style={{ overflowX: "auto", overflowY: "hidden", WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}>
-            <div style={{ width: flowChartWidth, height: 280 }}>
-            <ResponsiveContainer width="100%" height={280}>
-              <ComposedChart data={flowChartData} margin={{ top: 5, right: 40, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-                <XAxis dataKey="date" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} interval={chartMode === "INTRADAY" ? 0 : "preserveStartEnd"} minTickGap={14} />
-                <YAxis yAxisId="obv" stroke="#79c0ff" fontSize={9} width={58} domain={flowObvDomain} allowDataOverflow tickCount={5} tickFormatter={(v: number) => Math.abs(v) >= 1e6 ? `${(v/1e6).toFixed(1)}M` : Math.abs(v) >= 1e3 ? `${(v/1e3).toFixed(0)}k` : `${v}`} />
-                <YAxis yAxisId="mfi" orientation="right" stroke="#ffa657" fontSize={9} domain={[0, 100]} ticks={[0,20,50,80,100]} width={30} />
-                <Tooltip content={<CustomTooltip />} />
-                <ReferenceLine yAxisId="mfi" y={80} stroke="#f85149" strokeDasharray="3 3" />
-                <ReferenceLine yAxisId="mfi" y={20} stroke="#39d353" strokeDasharray="3 3" />
-                <Area yAxisId="obv" type="monotone" dataKey="obvPlot" stroke="#79c0ff" fill="#79c0ff" fillOpacity={0.15} strokeWidth={2} name="OBV" />
-                <Line yAxisId="mfi" type="monotone" dataKey="mfi" stroke="#ffa657" strokeWidth={2} dot={false} name="MFI" />
-              </ComposedChart>
-            </ResponsiveContainer>
-            </div>
-            </div>
-            <div style={{ fontSize: 8, color: "#6e7681", textAlign: "center", padding: "2px 0" }}>showing latest market time · OBV is centered to the active range</div>
-            <div style={{ fontSize: 9, color: "#8b949e", padding: "4px 4px 0", lineHeight: 1.4 }}>
-              OBV rising → accumulation (smart money buying). OBV falling → distribution (smart money selling).
-              MFI &gt; 80 → overbought warning. MFI &lt; 20 → oversold opportunity. Combines price AND volume — stronger than RSI alone.
-            </div>
-          </ChartCard>
-
-          {/* MACD */}
-          {/* MACD — dual panel: candlesticks + EMA + arrows on top, MACD hist + signal lines below */}
-          <ChartCard
-            title="MACD (12,26,9) · CANDLES + MOMENTUM"
-            legend={[
-              { label: "Bullish candle", color: "#39d353" },
-              { label: "Bearish candle", color: "#f85149" },
-              { label: "EMA9", color: "#8b1a1a" },
-              { label: "EMA21", color: "#ffffcc" },
-              { label: "MACD", color: "#79c0ff" },
-              { label: "Signal", color: "#f85149" },
-            ]}
-          >
-            <div style={{ fontSize: 9, color: "#8b949e", marginBottom: 4 }}>
-              ▲ green = buy crossover (last 3) · ▼ red = sell crossover (last 3) · EMA lines = trend
-            </div>
-            <div ref={macdScrollRef} style={{ overflowX: "auto", overflowY: "hidden", WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}>
-            <div style={{ width: macdChartWidth }}>
-            {/* Top panel: candlesticks + EMAs + arrows */}
-            <ResponsiveContainer width="100%" height={260}>
-              <ComposedChart data={macdCandleData} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-                <XAxis dataKey="date" stroke="#8b949e" fontSize={8} tick={{ fontFamily: mono, fontSize: 8 }} hide interval={chartMode === "INTRADAY" ? 0 : "preserveStartEnd"} />
-                <YAxis stroke="#8b949e" fontSize={9} width={55} domain={macdPriceDomain} allowDataOverflow tickCount={7} tickFormatter={(v: number) => `$${v.toFixed(2)}`} />
-                <Tooltip content={<CustomTooltip />} />
-                {/* True OHLC candle via custom shape */}
-                <Bar dataKey="candleRange" name="Candle" isAnimationActive={false} shape={<Candle />} />
-                <Line type="monotone" dataKey="ema9" stroke="#8b1a1a" strokeWidth={2} dot={false} name="EMA9" />
-                <Line type="monotone" dataKey="ema21" stroke="#ffffcc" strokeWidth={2.5} dot={false} name="EMA21" />
-                {/* Buy/sell arrows — Scatter with custom shape */}
-                <Scatter
-                  dataKey="buyArrowY"
-                  fill="#39d353"
-                  isAnimationActive={false}
-                  shape={(p: any) => p?.payload?.buyArrowY == null ? <g /> : (
-                    <polygon points={`${p.cx - 5},${p.cy} ${p.cx + 5},${p.cy} ${p.cx},${p.cy - 6}`} fill="#39d353" />
-                  )}
-                />
-                <Scatter
-                  dataKey="sellArrowY"
-                  fill="#f85149"
-                  isAnimationActive={false}
-                  shape={(p: any) => p?.payload?.sellArrowY == null ? <g /> : (
-                    <polygon points={`${p.cx - 5},${p.cy} ${p.cx + 5},${p.cy} ${p.cx},${p.cy + 6}`} fill="#f85149" />
-                  )}
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
-            {/* Bottom panel: MACD histogram + signal lines */}
-            <div style={{ fontSize: 9, color: "#8b949e", marginTop: 2 }}>MACD</div>
-            <ResponsiveContainer width="100%" height={160}>
-              <ComposedChart data={macdCandleData} margin={{ top: 0, right: 8, left: 0, bottom: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-                <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} interval={chartMode === "INTRADAY" ? 0 : "preserveStartEnd"} minTickGap={8} />
-                <YAxis stroke="#8b949e" fontSize={9} width={45} domain={macdOscDomain} allowDataOverflow tickCount={5} />
-                <Tooltip content={<CustomTooltip />} />
-                <ReferenceLine y={0} stroke="#30363d" />
-                <Bar dataKey="macdHist" name="Histogram" maxBarSize={4} isAnimationActive={false}>
-                  {macdCandleData.map((d, i) => (
-                    <Cell key={`h${i}`} fill={(d.macdHist ?? 0) >= 0 ? "#39d353" : "#f85149"} fillOpacity={0.7} />
-                  ))}
-                </Bar>
-                <Line type="monotone" dataKey="macd" stroke="#79c0ff" strokeWidth={2} dot={false} name="MACD" />
-                <Line type="monotone" dataKey="macdSignal" stroke="#f85149" strokeWidth={2} dot={false} name="Signal" />
-              </ComposedChart>
-            </ResponsiveContainer>
-            </div>
-            </div>
-            <div style={{ fontSize: 8, color: "#6e7681", textAlign: "center", padding: "2px 0" }}>showing latest market time · drag only to inspect older candles</div>
           </ChartCard>
 
           {/* Macro market-moving news (CNBC / MarketWatch / WSJ) */}
