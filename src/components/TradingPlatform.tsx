@@ -2044,17 +2044,17 @@ export default function TradingPlatform() {
               { label: "Bearish candle", color: "#f85149" },
               { label: "20MA", color: "#ffffcc" },
               { label: "200MA", color: "#8b1a1a" },
-              { label: "BULL signal", color: "#39d353" },
+              { label: "BUY signal", color: "#39d353" },
               { label: "SELL signal", color: "#f85149" },
             ]}
           >
-            <div ref={masterScrollRef} style={{ overflowX: "auto", overflowY: "hidden", WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}>
-            <div style={{ width: masterChartWidth, height: 430 }}>
+            <div ref={masterScrollRef} style={{ width: "100%" }}>
+            <div style={{ width: "100%", height: 430 }}>
             <ResponsiveContainer width="100%" height={430}>
               <ComposedChart data={masterData} margin={{ top: 8, right: 8, left: 0, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-                <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} interval={chartMode === "INTRADAY" ? 0 : "preserveStartEnd"} minTickGap={8} />
-                <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={masterPriceDomain} allowDataOverflow tickCount={7} tickFormatter={(v: number) => `$${v.toFixed(2)}`} width={55} />
+                <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} interval="preserveStartEnd" minTickGap={28} />
+                <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={masterPriceDomain} allowDataOverflow ticks={niceTicks(masterPriceDomain, 7)} tickFormatter={(v: number) => `$${v.toFixed(2)}`} width={58} />
                 <Tooltip content={<CustomTooltip />} />
                 {/* True OHLC candle via custom shape — single range bar so YAxis fits the price band */}
                 <Bar dataKey="candleRange" name="Candle" isAnimationActive={false} shape={<Candle />} />
