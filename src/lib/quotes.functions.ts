@@ -9,7 +9,10 @@ let yahooAuthCooldownUntil = 0;
 const YAHOO_AUTH_COOLDOWN_MS = 10 * 60 * 1000; // 10 min
 const YAHOO_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
-const LIVE_QUOTE_CACHE_MS = 800;
+// Keep the upstream cache short so the header bid/ask reflects the
+// freshest snapshot we can pull. (Yahoo's free feed is best-effort, not
+// a real NBBO tape — true millisecond bid/ask requires a paid provider.)
+const LIVE_QUOTE_CACHE_MS = 250;
 let liveQuoteCache: { key: string; at: number; data: Record<string, LiveQuote> } | undefined;
 
 async function getYahooAuth(): Promise<{ cookie: string; crumb: string } | null> {
