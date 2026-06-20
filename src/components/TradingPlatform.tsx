@@ -872,7 +872,7 @@ export default function TradingPlatform() {
       for (const r of results) Object.assign(items, r?.items ?? {});
       return { items, asOf: Date.now() };
     },
-    refetchInterval: 10_000,
+    refetchInterval: 2_000,
     refetchIntervalInBackground: true,
     staleTime: 8_000,
     enabled: watchlist.length > 0,
@@ -2048,12 +2048,12 @@ export default function TradingPlatform() {
               { label: "SELL signal", color: "#f85149" },
             ]}
           >
-            <div ref={masterScrollRef} style={{ width: "100%" }}>
-            <div style={{ width: "100%", height: 430 }}>
+            <div ref={masterScrollRef} style={{ width: "100%", overflowX: "auto", WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}>
+            <div style={{ width: masterChartWidth, height: 430 }}>
             <ResponsiveContainer width="100%" height={430}>
               <ComposedChart data={masterData} margin={{ top: 8, right: 8, left: 0, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-                <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} interval="preserveStartEnd" minTickGap={28} />
+                <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} interval="preserveStartEnd" minTickGap={20} />
                 <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={masterPriceDomain} allowDataOverflow ticks={niceTicks(masterPriceDomain, 7)} tickFormatter={(v: number) => `$${v.toFixed(2)}`} width={58} />
                 <Tooltip content={<CustomTooltip />} />
                 {/* True OHLC candle via custom shape — single range bar so YAxis fits the price band */}
@@ -2109,13 +2109,65 @@ export default function TradingPlatform() {
             </ResponsiveContainer>
             </div>
             </div>
-            <div style={{ fontSize: 8, color: "#6e7681", textAlign: "center", padding: "2px 0" }}>showing latest market time · drag only to review earlier bars</div>
-            <div style={{ fontSize: 9, color: "#8b949e", padding: "4px 4px 0", lineHeight: 1.4 }}>
-              Green/Red candles = price action · Cream line = 20MA · Dark red line = 200MA · Yellow bars = volume · BUY/SELL labels = Elephant Bar + Tail Bar confirmation signals · ▲/▼ small = raw tail bars
+            <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "3px 0" }}>← swipe to pan time · live edge on right →</div>
+          </ChartCard>
+
+          {/* MACD candlestick + oscillator — restored as its own chart */}
+          <ChartCard
+            title="📊 MACD MOMENTUM · CANDLES + OSCILLATOR"
+            titleRight={<span style={{ fontSize: 9, color: "#8b949e", marginLeft: 6 }}>{chartMode === "D" ? `${chartRange}D` : `${intradayRange} : ${intradayInterval}`}</span>}
+            legend={[
+              { label: "Bullish candle", color: "#39d353" },
+              { label: "Bearish candle", color: "#f85149" },
+              { label: "EMA21", color: "#79c0ff" },
+              { label: "MACD", color: "#58a6ff" },
+              { label: "Signal", color: "#f0883e" },
+              { label: "BUY", color: "#39d353" },
+              { label: "SELL", color: "#f85149" },
+            ]}
+          >
+            <div ref={macdScrollRef} style={{ width: "100%", overflowX: "auto", WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}>
+              <div style={{ width: macdChartWidth }}>
+                <ResponsiveContainer width="100%" height={300}>
+                  <ComposedChart data={macdCandleData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
+                    <XAxis dataKey="date" stroke="#8b949e" fontSize={8} tick={{ fontFamily: mono, fontSize: 8 }} interval="preserveStartEnd" minTickGap={20} hide />
+                    <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={macdPriceDomain} allowDataOverflow ticks={niceTicks(macdPriceDomain, 6)} tickFormatter={(v: number) => `$${v.toFixed(2)}`} width={58} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar dataKey="candleRange" name="Candle" isAnimationActive={false} shape={<Candle />} />
+                    <Line type="monotone" dataKey="ema21" stroke="#79c0ff" strokeWidth={1.5} dot={false} name="EMA21" connectNulls />
+                    <Scatter dataKey="buyArrowY" isAnimationActive={false}
+                      shape={(p: any) => p?.payload?.buyArrowY == null ? <g /> : (
+                        <g>
+                          <polygon points={`${p.cx - 5},${p.cy} ${p.cx + 5},${p.cy} ${p.cx},${p.cy - 7}`} fill="#39d353" />
+                          <text x={p.cx} y={p.cy + 11} textAnchor="middle" fill="#39d353" fontSize={9} fontWeight={900}>BUY</text>
+                        </g>
+                      )} />
+                    <Scatter dataKey="sellArrowY" isAnimationActive={false}
+                      shape={(p: any) => p?.payload?.sellArrowY == null ? <g /> : (
+                        <g>
+                          <text x={p.cx} y={p.cy - 8} textAnchor="middle" fill="#f85149" fontSize={9} fontWeight={900}>SELL</text>
+                          <polygon points={`${p.cx - 5},${p.cy} ${p.cx + 5},${p.cy} ${p.cx},${p.cy + 7}`} fill="#f85149" />
+                        </g>
+                      )} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+                <ResponsiveContainer width="100%" height={150}>
+                  <ComposedChart data={macdCandleData} margin={{ top: 0, right: 8, left: 0, bottom: 16 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
+                    <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} interval="preserveStartEnd" minTickGap={20} />
+                    <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={macdOscDomain} width={58} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar dataKey="macdHist" name="Hist" isAnimationActive={false} maxBarSize={6}
+                      shape={(p: any) => <rect x={p.x} y={p.y} width={p.width} height={p.height} fill={(p.payload?.macdHist ?? 0) >= 0 ? "#39d353" : "#f85149"} />}
+                    />
+                    <Line type="monotone" dataKey="macd" stroke="#58a6ff" strokeWidth={1.5} dot={false} name="MACD" connectNulls />
+                    <Line type="monotone" dataKey="macdSignal" stroke="#f0883e" strokeWidth={1.5} dot={false} name="Signal" connectNulls />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
             </div>
-            <div style={{ fontSize: 8, color: "#6e7681", padding: "2px 4px 0", lineHeight: 1.4 }}>
-              Signal logic based on publicly documented price-action concepts (Elephant Bars, Tail Bars, MA trend confirmation) — not a verified replica of any specific paid course.
-            </div>
+            <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "3px 0" }}>← swipe to pan · BUY/SELL arrows = MACD crossovers</div>
           </ChartCard>
 
           {/* Macro market-moving news (CNBC / MarketWatch / WSJ) */}
