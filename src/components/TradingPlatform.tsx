@@ -84,9 +84,12 @@ function getTightPriceDomain<T extends { low?: number; high?: number; close?: nu
  * 1, 2, 5, 10, 25, 50, 100, …). Recharts' auto-ticks can pick ugly
  * irrationals when the domain is tight; this enforces clean lines.
  */
-function niceTicks(domain: [number, number] | ["auto", "auto"], target = 6): number[] | undefined {
-  if (!Array.isArray(domain) || domain[0] === "auto" || domain[1] === "auto") return undefined;
-  const [lo, hi] = domain as [number, number];
+function niceTicks(domain: [number, number] | ["auto", "auto"] | unknown, target = 6): number[] | undefined {
+  if (!Array.isArray(domain)) return undefined;
+  const [a, b] = domain as [unknown, unknown];
+  if (typeof a !== "number" || typeof b !== "number") return undefined;
+  const lo = a;
+  const hi = b;
   const span = hi - lo;
   if (!(span > 0)) return undefined;
   const rawStep = span / target;
