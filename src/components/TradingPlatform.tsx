@@ -1972,6 +1972,29 @@ export default function TradingPlatform() {
                       )}
                     </span>
                   )}
+                  {(() => {
+                    const oa = optionsActivity[selectedStock];
+                    if (!oa) return null;
+                    const hasCall = oa.topCallStrike != null && oa.topCallPct != null;
+                    const hasPut = oa.topPutStrike != null && oa.topPutPct != null;
+                    if (!hasCall && !hasPut) return null;
+                    return (
+                      <span style={{ display: "flex", gap: 10, flexBasis: "100%" }}>
+                        {hasCall && (
+                          <span title={`${(oa.topCallPct! * 100).toFixed(0)}% of today's call volume on this name is at the $${oa.topCallStrike} strike (CBOE-listed, via Nasdaq option-chain feed).`}>
+                            CALL TGT <span style={{ color: "#39d353", fontWeight: 800 }}>${oa.topCallStrike!.toFixed(2)}</span>
+                            <span style={{ color: "#39d353", marginLeft: 3 }}>· {(oa.topCallPct! * 100).toFixed(0)}%</span>
+                          </span>
+                        )}
+                        {hasPut && (
+                          <span title={`${(oa.topPutPct! * 100).toFixed(0)}% of today's put volume on this name is at the $${oa.topPutStrike} strike (CBOE-listed, via Nasdaq option-chain feed).`}>
+                            PUT TGT <span style={{ color: "#f85149", fontWeight: 800 }}>${oa.topPutStrike!.toFixed(2)}</span>
+                            <span style={{ color: "#f85149", marginLeft: 3 }}>· {(oa.topPutPct! * 100).toFixed(0)}%</span>
+                          </span>
+                        )}
+                      </span>
+                    );
+                  })()}
                   {liveSel?.preMarketPrice != null && (
                     <span>Pre <span style={{ color: (liveSel.preMarketChangePercent ?? 0) >= 0 ? "#39d353" : "#f85149" }}>${liveSel.preMarketPrice.toFixed(2)}</span></span>
                   )}
