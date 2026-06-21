@@ -2062,8 +2062,8 @@ export default function TradingPlatform() {
               { label: "SELL signal", color: "#f85149" },
             ]}
           >
-            <div ref={masterScrollRef} style={{ width: "100%" }}>
-            <div style={{ width: "100%", height: 430 }}>
+            <div ref={masterScrollRef} style={{ width: "100%", overflowX: "auto", WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}>
+            <div style={{ width: masterChartWidth, height: 430 }}>
             <ResponsiveContainer width="100%" height={430}>
               <ComposedChart data={masterData} margin={{ top: 8, right: 8, left: 0, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
@@ -2111,6 +2111,8 @@ export default function TradingPlatform() {
               </ComposedChart>
             </ResponsiveContainer>
             {/* Volume sub-panel — yellow bars rising with volume, synced X with master chart */}
+            </div>
+            <div style={{ width: masterChartWidth, height: 78 }}>
             <ResponsiveContainer width="100%" height={78}>
               <ComposedChart data={masterData} margin={{ top: 0, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
@@ -2121,7 +2123,7 @@ export default function TradingPlatform() {
             </ResponsiveContainer>
             </div>
             </div>
-            <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "3px 0" }}>full {chartMode === "D" ? `${chartRange}D` : `${intradayRange} · ${intradayInterval}`} window · fitted to screen</div>
+            <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "3px 0" }}>full {chartMode === "D" ? `${chartRange}D` : `${intradayRange} · ${intradayInterval}`} window · swipe ↔ to pan time</div>
           </ChartCard>
 
           {/* MACD candlestick + oscillator — restored as its own chart */}
