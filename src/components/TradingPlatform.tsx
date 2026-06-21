@@ -1250,15 +1250,16 @@ export default function TradingPlatform() {
   // Auto price-domain for the OV/Master chart — never let Recharts pull in
   // the wick-bar baseline at 0 (which compressed all candles into a thin
   // band at the top of the canvas).
-  const masterPriceDomain = useMemo<[number, number] | ["auto", "auto"]>(() => {
-    const recent = chartMode === "D" ? masterData.length : 40;
-    return getTightPriceDomain(masterData, recent);
-  }, [masterData, chartMode]);
-  // Same auto-domain for the MACD candlestick price panel.
-  const macdPriceDomain = useMemo<[number, number] | ["auto", "auto"]>(() => {
-    const recent = chartMode === "D" ? macdCandleData.length : 40;
-    return getTightPriceDomain(macdCandleData, recent);
-  }, [macdCandleData, chartMode]);
+  // Fit the Y-axis to the ENTIRE selected timeframe so the whole chart is
+  // visible at once — no horizontal scrolling, no clipped SELL signals.
+  const masterPriceDomain = useMemo<[number, number] | ["auto", "auto"]>(
+    () => getTightPriceDomain(masterData, masterData.length),
+    [masterData],
+  );
+  const macdPriceDomain = useMemo<[number, number] | ["auto", "auto"]>(
+    () => getTightPriceDomain(macdCandleData, macdCandleData.length),
+    [macdCandleData],
+  );
   const macdOscDomain = useMemo<[number, number] | ["auto", "auto"]>(() => {
     if (!macdCandleData.length) return ["auto", "auto"];
     const sample = macdCandleData.slice(chartMode === "D" ? 0 : Math.max(0, macdCandleData.length - 90));
