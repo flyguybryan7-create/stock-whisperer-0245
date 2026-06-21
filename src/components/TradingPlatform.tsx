@@ -1279,7 +1279,11 @@ export default function TradingPlatform() {
     const half = Math.max((hi - lo) / 2, Math.max(Math.abs(mid) * 0.03, 1));
     return [Math.floor(mid - half * 1.2), Math.ceil(mid + half * 1.2)];
   }, [flowChartData, chartMode]);
-  const pxPerBar = chartMode === "D" ? 18 : intradayInterval === "1m" ? 16 : intradayInterval === "2m" ? 18 : intradayInterval === "5m" ? 22 : 28;
+  // Per-bar pixel width. Intraday minute charts need wider candles so
+  // each tick on the X axis is clearly a single minute when the user
+  // scrolls horizontally. The chart canvas grows past the viewport on
+  // purpose — the wrapping div is scrollable.
+  const pxPerBar = chartMode === "D" ? 22 : intradayInterval === "1m" ? 26 : intradayInterval === "2m" ? 28 : intradayInterval === "5m" ? 32 : 38;
   const masterChartWidth = Math.max(360, masterData.length * pxPerBar);
   const flowChartWidth = Math.max(360, flowChartData.length * Math.max(10, pxPerBar * 0.8));
   const macdChartWidth = Math.max(360, macdCandleData.length * pxPerBar);
