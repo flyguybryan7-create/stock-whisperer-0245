@@ -2140,8 +2140,8 @@ export default function TradingPlatform() {
               { label: "SELL", color: "#f85149" },
             ]}
           >
-            <div ref={macdScrollRef} style={{ width: "100%" }}>
-              <div style={{ width: "100%" }}>
+            <div ref={macdScrollRef} style={{ width: "100%", overflowX: "auto", WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}>
+              <div style={{ width: macdChartWidth }}>
                 <ResponsiveContainer width="100%" height={300}>
                   <ComposedChart data={macdCandleData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
