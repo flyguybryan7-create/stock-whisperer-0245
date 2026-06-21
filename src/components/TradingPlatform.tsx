@@ -1979,11 +1979,9 @@ export default function TradingPlatform() {
                   )}
                   {(() => {
                     const oa = optionsActivity[selectedStock];
-                    if (!oa) return null;
-                    const hasCall = oa.topCallStrike != null && oa.topCallPct != null;
-                    const hasPut = oa.topPutStrike != null && oa.topPutPct != null;
-                    if (!hasCall && !hasPut) return null;
-                    const fmtExp = (s: string | null) => {
+                    const hasCall = !!(oa && oa.topCallStrike != null && oa.topCallPct != null);
+                    const hasPut = !!(oa && oa.topPutStrike != null && oa.topPutPct != null);
+                    const fmtExp = (s: string | null | undefined) => {
                       if (!s) return "";
                       const d = new Date(s);
                       if (isNaN(d.getTime())) return "";
@@ -1991,21 +1989,31 @@ export default function TradingPlatform() {
                       const yr = String(d.getFullYear()).slice(-2);
                       return ` (${mo} '${yr})`;
                     };
-                    const exp = fmtExp(oa.expiry);
+                    const exp = fmtExp(oa?.expiry);
                     return (
-                      <span style={{ display: "flex", gap: 10, flexBasis: "100%" }}>
-                        {hasCall && (
-                          <span title={`${(oa.topCallPct! * 100).toFixed(0)}% of today's call volume on this name is at the $${oa.topCallStrike} strike${oa.expiry ? ` expiring ${oa.expiry}` : ""} (CBOE-listed, via Nasdaq option-chain feed).`}>
-                            CALL TGT <span style={{ color: "#39d353", fontWeight: 800 }}>${oa.topCallStrike!.toFixed(2)}</span>
-                            <span style={{ color: "#39d353", marginLeft: 3 }}>· {(oa.topCallPct! * 100).toFixed(0)}%{exp}</span>
-                          </span>
-                        )}
-                        {hasPut && (
-                          <span title={`${(oa.topPutPct! * 100).toFixed(0)}% of today's put volume on this name is at the $${oa.topPutStrike} strike${oa.expiry ? ` expiring ${oa.expiry}` : ""} (CBOE-listed, via Nasdaq option-chain feed).`}>
-                            PUT TGT <span style={{ color: "#f85149", fontWeight: 800 }}>${oa.topPutStrike!.toFixed(2)}</span>
-                            <span style={{ color: "#f85149", marginLeft: 3 }}>· {(oa.topPutPct! * 100).toFixed(0)}%{exp}</span>
-                          </span>
-                        )}
+                      <span style={{ display: "flex", gap: 10, flexBasis: "100%", flexWrap: "wrap" }}>
+                        <span title={hasCall ? `${(oa!.topCallPct! * 100).toFixed(0)}% of today's call volume targets the $${oa!.topCallStrike} strike${oa!.expiry ? ` expiring ${oa!.expiry}` : ""} (CBOE via Nasdaq).` : "Top CBOE call strike — loading…"}>
+                          CALL TGT{" "}
+                          {hasCall ? (
+                            <>
+                              <span style={{ color: "#39d353", fontWeight: 800 }}>${oa!.topCallStrike!.toFixed(2)}</span>
+                              <span style={{ color: "#39d353", marginLeft: 3 }}>· {(oa!.topCallPct! * 100).toFixed(0)}%{exp}</span>
+                            </>
+                          ) : (
+                            <span style={{ color: "#6e7681" }}>—</span>
+                          )}
+                        </span>
+                        <span title={hasPut ? `${(oa!.topPutPct! * 100).toFixed(0)}% of today's put volume targets the $${oa!.topPutStrike} strike${oa!.expiry ? ` expiring ${oa!.expiry}` : ""} (CBOE via Nasdaq).` : "Top CBOE put strike — loading…"}>
+                          PUT TGT{" "}
+                          {hasPut ? (
+                            <>
+                              <span style={{ color: "#f85149", fontWeight: 800 }}>${oa!.topPutStrike!.toFixed(2)}</span>
+                              <span style={{ color: "#f85149", marginLeft: 3 }}>· {(oa!.topPutPct! * 100).toFixed(0)}%{exp}</span>
+                            </>
+                          ) : (
+                            <span style={{ color: "#6e7681" }}>—</span>
+                          )}
+                        </span>
                       </span>
                     );
                   })()}
