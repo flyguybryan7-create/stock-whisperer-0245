@@ -1279,11 +1279,7 @@ export default function TradingPlatform() {
     const half = Math.max((hi - lo) / 2, Math.max(Math.abs(mid) * 0.03, 1));
     return [Math.floor(mid - half * 1.2), Math.ceil(mid + half * 1.2)];
   }, [flowChartData, chartMode]);
-  // Per-bar pixel width. Intraday minute charts need wider candles so
-  // each tick on the X axis is clearly a single minute when the user
-  // scrolls horizontally. The chart canvas grows past the viewport on
-  // purpose — the wrapping div is scrollable.
-  const pxPerBar = chartMode === "D" ? 22 : intradayInterval === "1m" ? 26 : intradayInterval === "2m" ? 28 : intradayInterval === "5m" ? 32 : 38;
+  const pxPerBar = chartMode === "D" ? 18 : intradayInterval === "1m" ? 16 : intradayInterval === "2m" ? 18 : intradayInterval === "5m" ? 22 : 28;
   const masterChartWidth = Math.max(360, masterData.length * pxPerBar);
   const flowChartWidth = Math.max(360, flowChartData.length * Math.max(10, pxPerBar * 0.8));
   const macdChartWidth = Math.max(360, macdCandleData.length * pxPerBar);
@@ -1979,9 +1975,11 @@ export default function TradingPlatform() {
                   )}
                   {(() => {
                     const oa = optionsActivity[selectedStock];
-                    const hasCall = !!(oa && oa.topCallStrike != null && oa.topCallPct != null);
-                    const hasPut = !!(oa && oa.topPutStrike != null && oa.topPutPct != null);
-                    const fmtExp = (s: string | null | undefined) => {
+                    if (!oa) return null;
+                    const hasCall = oa.topCallStrike != null && oa.topCallPct != null;
+                    const hasPut = oa.topPutStrike != null && oa.topPutPct != null;
+                    if (!hasCall && !hasPut) return null;
+                    const fmtExp = (s: string | null) => {
                       if (!s) return "";
                       const d = new Date(s);
                       if (isNaN(d.getTime())) return "";
@@ -1989,31 +1987,21 @@ export default function TradingPlatform() {
                       const yr = String(d.getFullYear()).slice(-2);
                       return ` (${mo} '${yr})`;
                     };
-                    const exp = fmtExp(oa?.expiry);
+                    const exp = fmtExp(oa.expiry);
                     return (
-                      <span style={{ display: "flex", gap: 10, flexBasis: "100%", flexWrap: "wrap" }}>
-                        <span title={hasCall ? `${(oa!.topCallPct! * 100).toFixed(0)}% of today's call volume targets the $${oa!.topCallStrike} strike${oa!.expiry ? ` expiring ${oa!.expiry}` : ""} (CBOE via Nasdaq).` : "Top CBOE call strike — loading…"}>
-                          CALL TGT{" "}
-                          {hasCall ? (
-                            <>
-                              <span style={{ color: "#39d353", fontWeight: 800 }}>${oa!.topCallStrike!.toFixed(2)}</span>
-                              <span style={{ color: "#39d353", marginLeft: 3 }}>· {(oa!.topCallPct! * 100).toFixed(0)}%{exp}</span>
-                            </>
-                          ) : (
-                            <span style={{ color: "#6e7681" }}>—</span>
-                          )}
-                        </span>
-                        <span title={hasPut ? `${(oa!.topPutPct! * 100).toFixed(0)}% of today's put volume targets the $${oa!.topPutStrike} strike${oa!.expiry ? ` expiring ${oa!.expiry}` : ""} (CBOE via Nasdaq).` : "Top CBOE put strike — loading…"}>
-                          PUT TGT{" "}
-                          {hasPut ? (
-                            <>
-                              <span style={{ color: "#f85149", fontWeight: 800 }}>${oa!.topPutStrike!.toFixed(2)}</span>
-                              <span style={{ color: "#f85149", marginLeft: 3 }}>· {(oa!.topPutPct! * 100).toFixed(0)}%{exp}</span>
-                            </>
-                          ) : (
-                            <span style={{ color: "#6e7681" }}>—</span>
-                          )}
-                        </span>
+                      <span style={{ display: "flex", gap: 10, flexBasis: "100%" }}>
+                        {hasCall && (
+                          <span title={`${(oa.topCallPct! * 100).toFixed(0)}% of today's call volume on this name is at the $${oa.topCallStrike} strike${oa.expiry ? ` expiring ${oa.expiry}` : ""} (CBOE-listed, via Nasdaq option-chain feed).`}>
+                            CALL TGT <span style={{ color: "#39d353", fontWeight: 800 }}>${oa.topCallStrike!.toFixed(2)}</span>
+                            <span style={{ color: "#39d353", marginLeft: 3 }}>· {(oa.topCallPct! * 100).toFixed(0)}%{exp}</span>
+                          </span>
+                        )}
+                        {hasPut && (
+                          <span title={`${(oa.topPutPct! * 100).toFixed(0)}% of today's put volume on this name is at the $${oa.topPutStrike} strike${oa.expiry ? ` expiring ${oa.expiry}` : ""} (CBOE-listed, via Nasdaq option-chain feed).`}>
+                            PUT TGT <span style={{ color: "#f85149", fontWeight: 800 }}>${oa.topPutStrike!.toFixed(2)}</span>
+                            <span style={{ color: "#f85149", marginLeft: 3 }}>· {(oa.topPutPct! * 100).toFixed(0)}%{exp}</span>
+                          </span>
+                        )}
                       </span>
                     );
                   })()}
@@ -2070,8 +2058,8 @@ export default function TradingPlatform() {
               { label: "SELL signal", color: "#f85149" },
             ]}
           >
-            <div ref={masterScrollRef} style={{ width: "100%", overflowX: "auto", WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}>
-            <div style={{ width: masterChartWidth, height: 430 }}>
+            <div ref={masterScrollRef} style={{ width: "100%" }}>
+            <div style={{ width: "100%", height: 430 }}>
             <ResponsiveContainer width="100%" height={430}>
               <ComposedChart data={masterData} margin={{ top: 8, right: 8, left: 0, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
@@ -2119,8 +2107,6 @@ export default function TradingPlatform() {
               </ComposedChart>
             </ResponsiveContainer>
             {/* Volume sub-panel — yellow bars rising with volume, synced X with master chart */}
-            </div>
-            <div style={{ width: masterChartWidth, height: 78 }}>
             <ResponsiveContainer width="100%" height={78}>
               <ComposedChart data={masterData} margin={{ top: 0, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
@@ -2131,7 +2117,7 @@ export default function TradingPlatform() {
             </ResponsiveContainer>
             </div>
             </div>
-            <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "3px 0" }}>full {chartMode === "D" ? `${chartRange}D` : `${intradayRange} · ${intradayInterval}`} window · swipe ↔ to pan time</div>
+            <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "3px 0" }}>full {chartMode === "D" ? `${chartRange}D` : `${intradayRange} · ${intradayInterval}`} window · fitted to screen</div>
           </ChartCard>
 
           {/* MACD candlestick + oscillator — restored as its own chart */}
@@ -2148,8 +2134,8 @@ export default function TradingPlatform() {
               { label: "SELL", color: "#f85149" },
             ]}
           >
-            <div ref={macdScrollRef} style={{ width: "100%", overflowX: "auto", WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}>
-              <div style={{ width: macdChartWidth }}>
+            <div ref={macdScrollRef} style={{ width: "100%" }}>
+              <div style={{ width: "100%" }}>
                 <ResponsiveContainer width="100%" height={300}>
                   <ComposedChart data={macdCandleData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
