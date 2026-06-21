@@ -1979,18 +1979,27 @@ export default function TradingPlatform() {
                     const hasCall = oa.topCallStrike != null && oa.topCallPct != null;
                     const hasPut = oa.topPutStrike != null && oa.topPutPct != null;
                     if (!hasCall && !hasPut) return null;
+                    const fmtExp = (s: string | null) => {
+                      if (!s) return "";
+                      const d = new Date(s);
+                      if (isNaN(d.getTime())) return "";
+                      const mo = d.toLocaleString("en-US", { month: "short" });
+                      const yr = String(d.getFullYear()).slice(-2);
+                      return ` (${mo} '${yr})`;
+                    };
+                    const exp = fmtExp(oa.expiry);
                     return (
                       <span style={{ display: "flex", gap: 10, flexBasis: "100%" }}>
                         {hasCall && (
-                          <span title={`${(oa.topCallPct! * 100).toFixed(0)}% of today's call volume on this name is at the $${oa.topCallStrike} strike (CBOE-listed, via Nasdaq option-chain feed).`}>
+                          <span title={`${(oa.topCallPct! * 100).toFixed(0)}% of today's call volume on this name is at the $${oa.topCallStrike} strike${oa.expiry ? ` expiring ${oa.expiry}` : ""} (CBOE-listed, via Nasdaq option-chain feed).`}>
                             CALL TGT <span style={{ color: "#39d353", fontWeight: 800 }}>${oa.topCallStrike!.toFixed(2)}</span>
-                            <span style={{ color: "#39d353", marginLeft: 3 }}>· {(oa.topCallPct! * 100).toFixed(0)}%</span>
+                            <span style={{ color: "#39d353", marginLeft: 3 }}>· {(oa.topCallPct! * 100).toFixed(0)}%{exp}</span>
                           </span>
                         )}
                         {hasPut && (
-                          <span title={`${(oa.topPutPct! * 100).toFixed(0)}% of today's put volume on this name is at the $${oa.topPutStrike} strike (CBOE-listed, via Nasdaq option-chain feed).`}>
+                          <span title={`${(oa.topPutPct! * 100).toFixed(0)}% of today's put volume on this name is at the $${oa.topPutStrike} strike${oa.expiry ? ` expiring ${oa.expiry}` : ""} (CBOE-listed, via Nasdaq option-chain feed).`}>
                             PUT TGT <span style={{ color: "#f85149", fontWeight: 800 }}>${oa.topPutStrike!.toFixed(2)}</span>
-                            <span style={{ color: "#f85149", marginLeft: 3 }}>· {(oa.topPutPct! * 100).toFixed(0)}%</span>
+                            <span style={{ color: "#f85149", marginLeft: 3 }}>· {(oa.topPutPct! * 100).toFixed(0)}%{exp}</span>
                           </span>
                         )}
                       </span>
