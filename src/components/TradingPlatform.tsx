@@ -1227,8 +1227,9 @@ export default function TradingPlatform() {
       const start = Math.min(open, b.close);
       const body = Math.abs(b.close - open);
       // Keep BUY/SELL labels glued to the candle so they're readable on phones.
-      const baseOffset = Math.max((high - low) * 0.12, b.close * 0.0008);
-      const extra = staggerExtra.get(i) ? baseOffset * 1.2 : 0;
+      // Glue BUY/SELL arrows right against the wick tip — tiny offset only.
+      const baseOffset = Math.max((high - low) * 0.04, b.close * 0.0002);
+      const extra = staggerExtra.get(i) ? baseOffset * 0.8 : 0;
       const offset = baseOffset + extra;
       const s20 = sma(i, 20);
       const s200 = sma(i, 200);
