@@ -1226,8 +1226,9 @@ export default function TradingPlatform() {
       const low = (b as any).low ?? b.close;
       const start = Math.min(open, b.close);
       const body = Math.abs(b.close - open);
-      const baseOffset = Math.max((high - low) * 0.5, b.close * 0.002);
-      const extra = staggerExtra.get(i) ? baseOffset * 1.4 : 0;
+      // Keep BUY/SELL labels glued to the candle so they're readable on phones.
+      const baseOffset = Math.max((high - low) * 0.12, b.close * 0.0008);
+      const extra = staggerExtra.get(i) ? baseOffset * 1.2 : 0;
       const offset = baseOffset + extra;
       const s20 = sma(i, 20);
       const s200 = sma(i, 200);
@@ -1282,7 +1283,8 @@ export default function TradingPlatform() {
     const half = Math.max((hi - lo) / 2, Math.max(Math.abs(mid) * 0.03, 1));
     return [Math.floor(mid - half * 1.2), Math.ceil(mid + half * 1.2)];
   }, [flowChartData, chartMode]);
-  const pxPerBar = chartMode === "D" ? 18 : intradayInterval === "1m" ? 16 : intradayInterval === "2m" ? 18 : intradayInterval === "5m" ? 22 : 28;
+  const pxPerBarBase = chartMode === "D" ? 18 : intradayInterval === "1m" ? 16 : intradayInterval === "2m" ? 18 : intradayInterval === "5m" ? 22 : 28;
+  const pxPerBar = Math.max(6, Math.round(pxPerBarBase * chartZoom));
   const masterChartWidth = Math.max(360, masterData.length * pxPerBar);
   const flowChartWidth = Math.max(360, flowChartData.length * Math.max(10, pxPerBar * 0.8));
   const macdChartWidth = Math.max(360, macdCandleData.length * pxPerBar);
