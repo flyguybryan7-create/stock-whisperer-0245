@@ -125,18 +125,25 @@ async function fetchChain(symbol: string): Promise<OptionsActivity | null> {
     today.setHours(0, 0, 0, 0);
     const MS_DAY = 86400000;
     const parseExp = (s: string): { dte: number | null; label: string } => {
-      // Nasdaq returns formats like "12/19/2025" or "2025-12-19".
+      // Nasdaq returns formats like "12/19/2025", "12/19/25", or "2025-12-19".
       let d: Date | null = null;
-      const slash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      const slash4 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      const slash2 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
       const dash = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-      if (slash) d = new Date(+slash[3], +slash[1] - 1, +slash[2]);
-      else if (dash) d = new Date(+dash[1], +dash[2] - 1, +dash[3]);
+      if (slash4) d = new Date(+slash4[3], +slash4[1] - 1, +slash4[2]);
+      else if (slash2) {
+        // Pivot 2-digit years: 00-79 -> 2000s, 80-99 -> 1900s.
+        const yy = +slash2[3];
+        const yyyy = yy < 80 ? 2000 + yy : 1900 + yy;
+        d = new Date(yyyy, +slash2[1] - 1, +slash2[2]);
+      } else if (dash) d = new Date(+dash[1], +dash[2] - 1, +dash[3]);
       else {
         const t = Date.parse(s);
         if (!Number.isNaN(t)) d = new Date(t);
       }
       if (!d || Number.isNaN(d.getTime())) return { dte: null, label: s };
-      const dte = Math.max(0, Math.round((d.getTime() - today.getTime()) / MS_DAY));
+      // Allow negative DTE so we can filter out stale/expired contracts upstream.
+      const dte = Math.round((d.getTime() - today.getTime()) / MS_DAY);
       const month = d.toLocaleString("en-US", { month: "short" });
       const yr = String(d.getFullYear()).slice(-2);
       return { dte, label: `${month} '${yr}` };
@@ -158,7 +165,13 @@ async function fetchChain(symbol: string): Promise<OptionsActivity | null> {
           topPutPct: tp.pct,
         };
       })
-      .filter((e) => e.callVolume + e.putVolume > 0)
+      // Show only contracts expiring from today up to 366 days out
+      // (per user spec: selectable up to a year). Drop anything with a
+      // missing/garbled date or already-expired DTE.
+      .filter((e) =>
+        e.callVolume + e.putVolume > 0 &&
+        e.dte != null && e.dte >= 0 && e.dte <= 366,
+      )
       .sort((a, b) => (a.dte ?? 1e9) - (b.dte ?? 1e9));
     const totalVol = callVolume + putVolume;
     const totalOi = callOi + putOi;
