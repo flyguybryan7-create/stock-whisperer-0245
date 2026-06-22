@@ -485,6 +485,10 @@ export default function TradingPlatform() {
   const [chartMode, setChartMode] = useState<"D" | "INTRADAY">("INTRADAY");
   const [intradayRange, setIntradayRange] = useState<"1D" | "2D" | "5D">("1D");
   const [intradayInterval, setIntradayInterval] = useState<"1m" | "2m" | "5m" | "15m">("1m");
+  // User-tweakable zoom multiplier for chart bar width (pinch / +/- buttons).
+  const [chartZoom, setChartZoom] = useState(1);
+  // Per-symbol selected option expiry for the CALL/PUT TGT badges.
+  const [selectedExpiry, setSelectedExpiry] = useState<Record<string, string>>({});
   const [pushPerm, setPushPerm] = useState<PushPermission>("default");
   const [pushBusy, setPushBusy] = useState(false);
   const lastPushSignal = useRef<Record<string, "BUY" | "SELL">>({});
@@ -1222,8 +1226,9 @@ export default function TradingPlatform() {
       const low = (b as any).low ?? b.close;
       const start = Math.min(open, b.close);
       const body = Math.abs(b.close - open);
-      const baseOffset = Math.max((high - low) * 0.5, b.close * 0.002);
-      const extra = staggerExtra.get(i) ? baseOffset * 1.4 : 0;
+      // Keep BUY/SELL labels glued to the candle so they're readable on phones.
+      const baseOffset = Math.max((high - low) * 0.12, b.close * 0.0008);
+      const extra = staggerExtra.get(i) ? baseOffset * 1.2 : 0;
       const offset = baseOffset + extra;
       const s20 = sma(i, 20);
       const s200 = sma(i, 200);
@@ -1278,7 +1283,8 @@ export default function TradingPlatform() {
     const half = Math.max((hi - lo) / 2, Math.max(Math.abs(mid) * 0.03, 1));
     return [Math.floor(mid - half * 1.2), Math.ceil(mid + half * 1.2)];
   }, [flowChartData, chartMode]);
-  const pxPerBar = chartMode === "D" ? 18 : intradayInterval === "1m" ? 16 : intradayInterval === "2m" ? 18 : intradayInterval === "5m" ? 22 : 28;
+  const pxPerBarBase = chartMode === "D" ? 18 : intradayInterval === "1m" ? 16 : intradayInterval === "2m" ? 18 : intradayInterval === "5m" ? 22 : 28;
+  const pxPerBar = Math.max(6, Math.round(pxPerBarBase * chartZoom));
   const masterChartWidth = Math.max(360, masterData.length * pxPerBar);
   const flowChartWidth = Math.max(360, flowChartData.length * Math.max(10, pxPerBar * 0.8));
   const macdChartWidth = Math.max(360, macdCandleData.length * pxPerBar);
@@ -1975,21 +1981,48 @@ export default function TradingPlatform() {
                   {(() => {
                     const oa = optionsActivity[selectedStock];
                     if (!oa) return null;
-                    const hasCall = oa.topCallStrike != null && oa.topCallPct != null;
-                    const hasPut = oa.topPutStrike != null && oa.topPutPct != null;
-                    if (!hasCall && !hasPut) return null;
+                    const buckets = oa.expiries ?? [];
+                    const chosenKey = selectedExpiry[selectedStock];
+                    const bucket = (chosenKey && buckets.find((b) => b.expiry === chosenKey)) || buckets[0];
+                    const view = bucket ?? {
+                      label: "All",
+                      dte: null as number | null,
+                      topCallStrike: oa.topCallStrike,
+                      topCallPct: oa.topCallPct,
+                      topPutStrike: oa.topPutStrike,
+                      topPutPct: oa.topPutPct,
+                    };
+                    const hasCall = view.topCallStrike != null && view.topCallPct != null;
+                    const hasPut = view.topPutStrike != null && view.topPutPct != null;
+                    if (!hasCall && !hasPut && buckets.length === 0) return null;
                     return (
-                      <span style={{ display: "flex", gap: 10, flexBasis: "100%" }}>
+                      <span style={{ display: "flex", gap: 10, flexBasis: "100%", flexWrap: "wrap", alignItems: "center" }}>
+                        {buckets.length > 0 && (
+                          <select
+                            value={bucket?.expiry ?? ""}
+                            onChange={(e) => setSelectedExpiry((prev) => ({ ...prev, [selectedStock]: e.target.value }))}
+                            title="CBOE option expiry to evaluate"
+                            style={{ background: "#0d1117", color: "#e6edf3", border: "1px solid #21262d", borderRadius: 4, fontSize: 10, padding: "2px 4px", fontFamily: mono }}
+                          >
+                            {buckets.slice(0, 25).map((b) => (
+                              <option key={b.expiry} value={b.expiry}>
+                                {b.label}{b.dte != null ? ` · ${b.dte}d` : ""}
+                              </option>
+                            ))}
+                          </select>
+                        )}
                         {hasCall && (
-                          <span title={`${(oa.topCallPct! * 100).toFixed(0)}% of today's call volume on this name is at the $${oa.topCallStrike} strike (CBOE-listed, via Nasdaq option-chain feed).`}>
-                            CALL TGT <span style={{ color: "#39d353", fontWeight: 800 }}>${oa.topCallStrike!.toFixed(2)}</span>
-                            <span style={{ color: "#39d353", marginLeft: 3 }}>· {(oa.topCallPct! * 100).toFixed(0)}%</span>
+                          <span title={`${(view.topCallPct! * 100).toFixed(0)}% of ${view.label} call volume at $${view.topCallStrike} (CBOE).`}>
+                            CALL TGT <span style={{ color: "#39d353", fontWeight: 800 }}>${view.topCallStrike!.toFixed(2)}</span>
+                            <span style={{ color: "#39d353", marginLeft: 3 }}>· {(view.topCallPct! * 100).toFixed(0)}%</span>
+                            <span style={{ color: "#8b949e", marginLeft: 4 }}>({view.label}{view.dte != null ? ` · ${view.dte}d` : ""})</span>
                           </span>
                         )}
                         {hasPut && (
-                          <span title={`${(oa.topPutPct! * 100).toFixed(0)}% of today's put volume on this name is at the $${oa.topPutStrike} strike (CBOE-listed, via Nasdaq option-chain feed).`}>
-                            PUT TGT <span style={{ color: "#f85149", fontWeight: 800 }}>${oa.topPutStrike!.toFixed(2)}</span>
-                            <span style={{ color: "#f85149", marginLeft: 3 }}>· {(oa.topPutPct! * 100).toFixed(0)}%</span>
+                          <span title={`${(view.topPutPct! * 100).toFixed(0)}% of ${view.label} put volume at $${view.topPutStrike} (CBOE).`}>
+                            PUT TGT <span style={{ color: "#f85149", fontWeight: 800 }}>${view.topPutStrike!.toFixed(2)}</span>
+                            <span style={{ color: "#f85149", marginLeft: 3 }}>· {(view.topPutPct! * 100).toFixed(0)}%</span>
+                            <span style={{ color: "#8b949e", marginLeft: 4 }}>({view.label}{view.dte != null ? ` · ${view.dte}d` : ""})</span>
                           </span>
                         )}
                       </span>
@@ -2038,7 +2071,17 @@ export default function TradingPlatform() {
           {/* Price chart — follows the selected range/interval buttons */}
           <ChartCard
             title="⚡ PRICE · MOVING AVERAGES · BOLLINGER / OV SIGNALS"
-            titleRight={<span style={{ fontSize: 9, color: "#8b949e", marginLeft: 6 }}>{chartMode === "D" ? `${chartRange}D` : `${intradayRange} : ${intradayInterval}`} · live edge</span>}
+            titleRight={
+              <span style={{ display: "inline-flex", gap: 6, alignItems: "center", marginLeft: 6 }}>
+                <span style={{ fontSize: 9, color: "#8b949e" }}>{chartMode === "D" ? `${chartRange}D` : `${intradayRange} : ${intradayInterval}`} · live edge</span>
+                <button onClick={() => setChartZoom((z) => Math.max(0.4, +(z / 1.25).toFixed(2)))}
+                  title="Zoom out" style={{ background: "transparent", border: "1px solid #21262d", borderRadius: 4, color: "#8b949e", fontSize: 11, lineHeight: 1, padding: "2px 6px", cursor: "pointer", fontFamily: mono }}>−</button>
+                <button onClick={() => setChartZoom(1)}
+                  title="Reset zoom" style={{ background: "transparent", border: "1px solid #21262d", borderRadius: 4, color: "#8b949e", fontSize: 9, padding: "2px 5px", cursor: "pointer", fontFamily: mono }}>{Math.round(chartZoom * 100)}%</button>
+                <button onClick={() => setChartZoom((z) => Math.min(4, +(z * 1.25).toFixed(2)))}
+                  title="Zoom in" style={{ background: "transparent", border: "1px solid #21262d", borderRadius: 4, color: "#8b949e", fontSize: 11, lineHeight: 1, padding: "2px 6px", cursor: "pointer", fontFamily: mono }}>+</button>
+              </span>
+            }
             legend={[
               { label: "Bullish candle", color: "#39d353" },
               { label: "Bearish candle", color: "#f85149" },
@@ -2048,14 +2091,43 @@ export default function TradingPlatform() {
               { label: "SELL signal", color: "#f85149" },
             ]}
           >
-            <div ref={masterScrollRef} style={{ width: "100%", overflowX: "auto", WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}>
+            <div style={{ position: "relative" }}>
+            {/* Sticky Y-axis overlay so dollar prices stay visible while user pans. */}
+            <div style={{ position: "absolute", left: 0, top: 0, width: 58, height: 430, pointerEvents: "none", zIndex: 2, background: "linear-gradient(to right, #0d1117 70%, rgba(13,17,23,0))" }}>
+              <ResponsiveContainer width="100%" height={430}>
+                <ComposedChart data={masterData} margin={{ top: 8, right: 0, left: 0, bottom: 20 }}>
+                  <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={masterPriceDomain} allowDataOverflow ticks={niceTicks(masterPriceDomain, 7)} tickFormatter={(v: number) => `$${v.toFixed(2)}`} width={58} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+            <div ref={masterScrollRef}
+              onTouchStart={(e) => {
+                if (e.touches.length === 2) {
+                  const dx = e.touches[0].clientX - e.touches[1].clientX;
+                  const dy = e.touches[0].clientY - e.touches[1].clientY;
+                  (e.currentTarget as any)._pinchStart = Math.hypot(dx, dy);
+                  (e.currentTarget as any)._pinchZoom = chartZoom;
+                }
+              }}
+              onTouchMove={(e) => {
+                const el: any = e.currentTarget;
+                if (e.touches.length === 2 && el._pinchStart) {
+                  e.preventDefault();
+                  const dx = e.touches[0].clientX - e.touches[1].clientX;
+                  const dy = e.touches[0].clientY - e.touches[1].clientY;
+                  const dist = Math.hypot(dx, dy);
+                  const ratio = dist / el._pinchStart;
+                  setChartZoom(Math.max(0.4, Math.min(4, +(el._pinchZoom * ratio).toFixed(2))));
+                }
+              }}
+              onTouchEnd={(e) => { (e.currentTarget as any)._pinchStart = 0; }}
+              style={{ width: "100%", overflowX: "auto", WebkitOverflowScrolling: "touch", touchAction: "pan-x pinch-zoom" }}>
             <div style={{ width: masterChartWidth, height: 430 }}>
             <ResponsiveContainer width="100%" height={430}>
               <ComposedChart data={masterData} margin={{ top: 8, right: 8, left: 0, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                 <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} interval="preserveStartEnd" minTickGap={20} />
-                <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={masterPriceDomain} allowDataOverflow ticks={niceTicks(masterPriceDomain, 7)} tickFormatter={(v: number) => `$${v.toFixed(2)}`} width={58} />
-                <Tooltip content={<CustomTooltip />} />
+                <YAxis stroke="transparent" fontSize={9} tick={false} domain={masterPriceDomain} allowDataOverflow width={58} axisLine={false} tickLine={false} />
                 {/* True OHLC candle via custom shape — single range bar so YAxis fits the price band */}
                 <Bar dataKey="candleRange" name="Candle" isAnimationActive={false} shape={<Candle />} />
                 <Line type="monotone" dataKey="sma9" stroke="#79c0ff" strokeWidth={1.8} dot={false} name="SMA9" connectNulls />
@@ -2103,13 +2175,13 @@ export default function TradingPlatform() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                 <XAxis dataKey="date" stroke="#8b949e" fontSize={8} tick={{ fontFamily: mono, fontSize: 8 }} hide />
                 <YAxis stroke="#8b949e" fontSize={9} width={55} tickFormatter={(v: number) => v >= 1e6 ? `${(v/1e6).toFixed(1)}M` : v >= 1e3 ? `${(v/1e3).toFixed(0)}k` : `${v}`} />
-                <Tooltip content={<CustomTooltip />} />
                 <Bar dataKey="volume" fill="#e3b341" isAnimationActive={false} maxBarSize={7} />
               </ComposedChart>
             </ResponsiveContainer>
             </div>
             </div>
-            <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "3px 0" }}>← swipe to pan time · live edge on right →</div>
+            </div>
+            <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "3px 0" }}>← swipe to pan · pinch or ± to zoom · live edge on right →</div>
           </ChartCard>
 
           {/* MACD candlestick + oscillator — restored as its own chart */}
@@ -2133,7 +2205,6 @@ export default function TradingPlatform() {
                     <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                     <XAxis dataKey="date" stroke="#8b949e" fontSize={8} tick={{ fontFamily: mono, fontSize: 8 }} interval="preserveStartEnd" minTickGap={20} hide />
                     <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={macdPriceDomain} allowDataOverflow ticks={niceTicks(macdPriceDomain, 6)} tickFormatter={(v: number) => `$${v.toFixed(2)}`} width={58} />
-                    <Tooltip content={<CustomTooltip />} />
                     <Bar dataKey="candleRange" name="Candle" isAnimationActive={false} shape={<Candle />} />
                     <Line type="monotone" dataKey="ema21" stroke="#79c0ff" strokeWidth={1.5} dot={false} name="EMA21" connectNulls />
                     <Scatter dataKey="buyArrowY" isAnimationActive={false}
@@ -2157,7 +2228,6 @@ export default function TradingPlatform() {
                     <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                     <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} interval="preserveStartEnd" minTickGap={20} />
                     <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={macdOscDomain} width={58} />
-                    <Tooltip content={<CustomTooltip />} />
                     <Bar dataKey="macdHist" name="Hist" isAnimationActive={false} maxBarSize={6}
                       shape={(p: any) => <rect x={p.x} y={p.y} width={p.width} height={p.height} fill={(p.payload?.macdHist ?? 0) >= 0 ? "#39d353" : "#f85149"} />}
                     />
