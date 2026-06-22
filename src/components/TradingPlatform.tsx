@@ -2178,7 +2178,6 @@ export default function TradingPlatform() {
                     <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                     <XAxis dataKey="date" stroke="#8b949e" fontSize={8} tick={{ fontFamily: mono, fontSize: 8 }} interval="preserveStartEnd" minTickGap={20} hide />
                     <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={macdPriceDomain} allowDataOverflow ticks={niceTicks(macdPriceDomain, 6)} tickFormatter={(v: number) => `$${v.toFixed(2)}`} width={58} />
-                    <Tooltip content={<CustomTooltip />} />
                     <Bar dataKey="candleRange" name="Candle" isAnimationActive={false} shape={<Candle />} />
                     <Line type="monotone" dataKey="ema21" stroke="#79c0ff" strokeWidth={1.5} dot={false} name="EMA21" connectNulls />
                     <Scatter dataKey="buyArrowY" isAnimationActive={false}
@@ -2202,7 +2201,6 @@ export default function TradingPlatform() {
                     <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                     <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} interval="preserveStartEnd" minTickGap={20} />
                     <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={macdOscDomain} width={58} />
-                    <Tooltip content={<CustomTooltip />} />
                     <Bar dataKey="macdHist" name="Hist" isAnimationActive={false} maxBarSize={6}
                       shape={(p: any) => <rect x={p.x} y={p.y} width={p.width} height={p.height} fill={(p.payload?.macdHist ?? 0) >= 0 ? "#39d353" : "#f85149"} />}
                     />
