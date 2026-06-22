@@ -2044,7 +2044,17 @@ export default function TradingPlatform() {
           {/* Price chart — follows the selected range/interval buttons */}
           <ChartCard
             title="⚡ PRICE · MOVING AVERAGES · BOLLINGER / OV SIGNALS"
-            titleRight={<span style={{ fontSize: 9, color: "#8b949e", marginLeft: 6 }}>{chartMode === "D" ? `${chartRange}D` : `${intradayRange} : ${intradayInterval}`} · live edge</span>}
+            titleRight={
+              <span style={{ display: "inline-flex", gap: 6, alignItems: "center", marginLeft: 6 }}>
+                <span style={{ fontSize: 9, color: "#8b949e" }}>{chartMode === "D" ? `${chartRange}D` : `${intradayRange} : ${intradayInterval}`} · live edge</span>
+                <button onClick={() => setChartZoom((z) => Math.max(0.4, +(z / 1.25).toFixed(2)))}
+                  title="Zoom out" style={{ background: "transparent", border: "1px solid #21262d", borderRadius: 4, color: "#8b949e", fontSize: 11, lineHeight: 1, padding: "2px 6px", cursor: "pointer", fontFamily: mono }}>−</button>
+                <button onClick={() => setChartZoom(1)}
+                  title="Reset zoom" style={{ background: "transparent", border: "1px solid #21262d", borderRadius: 4, color: "#8b949e", fontSize: 9, padding: "2px 5px", cursor: "pointer", fontFamily: mono }}>{Math.round(chartZoom * 100)}%</button>
+                <button onClick={() => setChartZoom((z) => Math.min(4, +(z * 1.25).toFixed(2)))}
+                  title="Zoom in" style={{ background: "transparent", border: "1px solid #21262d", borderRadius: 4, color: "#8b949e", fontSize: 11, lineHeight: 1, padding: "2px 6px", cursor: "pointer", fontFamily: mono }}>+</button>
+              </span>
+            }
             legend={[
               { label: "Bullish candle", color: "#39d353" },
               { label: "Bearish candle", color: "#f85149" },
@@ -2054,14 +2064,43 @@ export default function TradingPlatform() {
               { label: "SELL signal", color: "#f85149" },
             ]}
           >
-            <div ref={masterScrollRef} style={{ width: "100%", overflowX: "auto", WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}>
+            <div style={{ position: "relative" }}>
+            {/* Sticky Y-axis overlay so dollar prices stay visible while user pans. */}
+            <div style={{ position: "absolute", left: 0, top: 0, width: 58, height: 430, pointerEvents: "none", zIndex: 2, background: "linear-gradient(to right, #0d1117 70%, rgba(13,17,23,0))" }}>
+              <ResponsiveContainer width="100%" height={430}>
+                <ComposedChart data={masterData} margin={{ top: 8, right: 0, left: 0, bottom: 20 }}>
+                  <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={masterPriceDomain} allowDataOverflow ticks={niceTicks(masterPriceDomain, 7)} tickFormatter={(v: number) => `$${v.toFixed(2)}`} width={58} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+            <div ref={masterScrollRef}
+              onTouchStart={(e) => {
+                if (e.touches.length === 2) {
+                  const dx = e.touches[0].clientX - e.touches[1].clientX;
+                  const dy = e.touches[0].clientY - e.touches[1].clientY;
+                  (e.currentTarget as any)._pinchStart = Math.hypot(dx, dy);
+                  (e.currentTarget as any)._pinchZoom = chartZoom;
+                }
+              }}
+              onTouchMove={(e) => {
+                const el: any = e.currentTarget;
+                if (e.touches.length === 2 && el._pinchStart) {
+                  e.preventDefault();
+                  const dx = e.touches[0].clientX - e.touches[1].clientX;
+                  const dy = e.touches[0].clientY - e.touches[1].clientY;
+                  const dist = Math.hypot(dx, dy);
+                  const ratio = dist / el._pinchStart;
+                  setChartZoom(Math.max(0.4, Math.min(4, +(el._pinchZoom * ratio).toFixed(2))));
+                }
+              }}
+              onTouchEnd={(e) => { (e.currentTarget as any)._pinchStart = 0; }}
+              style={{ width: "100%", overflowX: "auto", WebkitOverflowScrolling: "touch", touchAction: "pan-x pinch-zoom" }}>
             <div style={{ width: masterChartWidth, height: 430 }}>
             <ResponsiveContainer width="100%" height={430}>
               <ComposedChart data={masterData} margin={{ top: 8, right: 8, left: 0, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                 <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} interval="preserveStartEnd" minTickGap={20} />
-                <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={masterPriceDomain} allowDataOverflow ticks={niceTicks(masterPriceDomain, 7)} tickFormatter={(v: number) => `$${v.toFixed(2)}`} width={58} />
-                <Tooltip content={<CustomTooltip />} />
+                <YAxis stroke="transparent" fontSize={9} tick={false} domain={masterPriceDomain} allowDataOverflow width={58} axisLine={false} tickLine={false} />
                 {/* True OHLC candle via custom shape — single range bar so YAxis fits the price band */}
                 <Bar dataKey="candleRange" name="Candle" isAnimationActive={false} shape={<Candle />} />
                 <Line type="monotone" dataKey="sma9" stroke="#79c0ff" strokeWidth={1.8} dot={false} name="SMA9" connectNulls />
@@ -2109,13 +2148,13 @@ export default function TradingPlatform() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                 <XAxis dataKey="date" stroke="#8b949e" fontSize={8} tick={{ fontFamily: mono, fontSize: 8 }} hide />
                 <YAxis stroke="#8b949e" fontSize={9} width={55} tickFormatter={(v: number) => v >= 1e6 ? `${(v/1e6).toFixed(1)}M` : v >= 1e3 ? `${(v/1e3).toFixed(0)}k` : `${v}`} />
-                <Tooltip content={<CustomTooltip />} />
                 <Bar dataKey="volume" fill="#e3b341" isAnimationActive={false} maxBarSize={7} />
               </ComposedChart>
             </ResponsiveContainer>
             </div>
             </div>
-            <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "3px 0" }}>← swipe to pan time · live edge on right →</div>
+            </div>
+            <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "3px 0" }}>← swipe to pan · pinch or ± to zoom · live edge on right →</div>
           </ChartCard>
 
           {/* MACD candlestick + oscillator — restored as its own chart */}
