@@ -19,6 +19,21 @@ export type OptionsActivity = {
   topCallPct: number | null;
   topPutStrike: number | null;
   topPutPct: number | null;
+  // Per-expiry breakdown so the UI can let the user pick the timeframe.
+  // expiries[0] is the nearest expiry (lowest DTE).
+  expiries: ExpiryBucket[];
+};
+
+export type ExpiryBucket = {
+  expiry: string;          // YYYY-MM-DD (or original string from feed)
+  dte: number | null;      // calendar days to expiry
+  label: string;           // friendly label, e.g. "Jan '27"
+  callVolume: number;
+  putVolume: number;
+  topCallStrike: number | null;
+  topCallPct: number | null;
+  topPutStrike: number | null;
+  topPutPct: number | null;
 };
 
 export type OptionsActivityResponse = {
@@ -57,6 +72,14 @@ async function fetchChain(symbol: string): Promise<OptionsActivity | null> {
     // Per-strike call/put volume buckets to find the dominant target strike.
     const callByStrike = new Map<number, number>();
     const putByStrike = new Map<number, number>();
+    // Per-expiry buckets so the dashboard can let users pick the DTE window.
+    type Bucket = {
+      expiry: string;
+      callVol: number; putVol: number;
+      callByStrike: Map<number, number>;
+      putByStrike: Map<number, number>;
+    };
+    const byExpiry = new Map<string, Bucket>();
     const num = (v: any) => {
       if (v == null || v === "--" || v === "") return 0;
       const n = Number(String(v).replace(/,/g, ""));
@@ -75,6 +98,18 @@ async function fetchChain(symbol: string): Promise<OptionsActivity | null> {
         if (pv > 0) putByStrike.set(strike, (putByStrike.get(strike) ?? 0) + pv);
       }
       if (!firstExpiry && row?.expiryDate) firstExpiry = String(row.expiryDate);
+      const exp = row?.expiryDate ? String(row.expiryDate) : null;
+      if (exp && strike > 0) {
+        let b = byExpiry.get(exp);
+        if (!b) {
+          b = { expiry: exp, callVol: 0, putVol: 0, callByStrike: new Map(), putByStrike: new Map() };
+          byExpiry.set(exp, b);
+        }
+        b.callVol += cv;
+        b.putVol += pv;
+        if (cv > 0) b.callByStrike.set(strike, (b.callByStrike.get(strike) ?? 0) + cv);
+        if (pv > 0) b.putByStrike.set(strike, (b.putByStrike.get(strike) ?? 0) + pv);
+      }
     }
     const pickTop = (m: Map<number, number>, total: number) => {
       if (total <= 0 || m.size === 0) return { strike: null as number | null, pct: null as number | null };
@@ -85,6 +120,46 @@ async function fetchChain(symbol: string): Promise<OptionsActivity | null> {
     };
     const topCall = pickTop(callByStrike, callVolume);
     const topPut = pickTop(putByStrike, putVolume);
+    // Build expiry buckets sorted by DTE (nearest first).
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const MS_DAY = 86400000;
+    const parseExp = (s: string): { dte: number | null; label: string } => {
+      // Nasdaq returns formats like "12/19/2025" or "2025-12-19".
+      let d: Date | null = null;
+      const slash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      const dash = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+      if (slash) d = new Date(+slash[3], +slash[1] - 1, +slash[2]);
+      else if (dash) d = new Date(+dash[1], +dash[2] - 1, +dash[3]);
+      else {
+        const t = Date.parse(s);
+        if (!Number.isNaN(t)) d = new Date(t);
+      }
+      if (!d || Number.isNaN(d.getTime())) return { dte: null, label: s };
+      const dte = Math.max(0, Math.round((d.getTime() - today.getTime()) / MS_DAY));
+      const month = d.toLocaleString("en-US", { month: "short" });
+      const yr = String(d.getFullYear()).slice(-2);
+      return { dte, label: `${month} '${yr}` };
+    };
+    const expiries: ExpiryBucket[] = Array.from(byExpiry.values())
+      .map((b) => {
+        const tc = pickTop(b.callByStrike, b.callVol);
+        const tp = pickTop(b.putByStrike, b.putVol);
+        const { dte, label } = parseExp(b.expiry);
+        return {
+          expiry: b.expiry,
+          dte,
+          label,
+          callVolume: b.callVol,
+          putVolume: b.putVol,
+          topCallStrike: tc.strike,
+          topCallPct: tc.pct,
+          topPutStrike: tp.strike,
+          topPutPct: tp.pct,
+        };
+      })
+      .filter((e) => e.callVolume + e.putVolume > 0)
+      .sort((a, b) => (a.dte ?? 1e9) - (b.dte ?? 1e9));
     const totalVol = callVolume + putVolume;
     const totalOi = callOi + putOi;
     const pcRatio = callVolume > 0 ? putVolume / callVolume : null;
@@ -110,6 +185,7 @@ async function fetchChain(symbol: string): Promise<OptionsActivity | null> {
       topCallPct: topCall.pct,
       topPutStrike: topPut.strike,
       topPutPct: topPut.pct,
+      expiries,
     };
   } catch (e) {
     console.error("[options] error", symbol, e);
