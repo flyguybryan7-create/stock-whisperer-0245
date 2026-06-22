@@ -1981,21 +1981,48 @@ export default function TradingPlatform() {
                   {(() => {
                     const oa = optionsActivity[selectedStock];
                     if (!oa) return null;
-                    const hasCall = oa.topCallStrike != null && oa.topCallPct != null;
-                    const hasPut = oa.topPutStrike != null && oa.topPutPct != null;
-                    if (!hasCall && !hasPut) return null;
+                    const buckets = oa.expiries ?? [];
+                    const chosenKey = selectedExpiry[selectedStock];
+                    const bucket = (chosenKey && buckets.find((b) => b.expiry === chosenKey)) || buckets[0];
+                    const view = bucket ?? {
+                      label: "All",
+                      dte: null as number | null,
+                      topCallStrike: oa.topCallStrike,
+                      topCallPct: oa.topCallPct,
+                      topPutStrike: oa.topPutStrike,
+                      topPutPct: oa.topPutPct,
+                    };
+                    const hasCall = view.topCallStrike != null && view.topCallPct != null;
+                    const hasPut = view.topPutStrike != null && view.topPutPct != null;
+                    if (!hasCall && !hasPut && buckets.length === 0) return null;
                     return (
-                      <span style={{ display: "flex", gap: 10, flexBasis: "100%" }}>
+                      <span style={{ display: "flex", gap: 10, flexBasis: "100%", flexWrap: "wrap", alignItems: "center" }}>
+                        {buckets.length > 0 && (
+                          <select
+                            value={bucket?.expiry ?? ""}
+                            onChange={(e) => setSelectedExpiry((prev) => ({ ...prev, [selectedStock]: e.target.value }))}
+                            title="CBOE option expiry to evaluate"
+                            style={{ background: "#0d1117", color: "#e6edf3", border: "1px solid #21262d", borderRadius: 4, fontSize: 10, padding: "2px 4px", fontFamily: mono }}
+                          >
+                            {buckets.slice(0, 25).map((b) => (
+                              <option key={b.expiry} value={b.expiry}>
+                                {b.label}{b.dte != null ? ` · ${b.dte}d` : ""}
+                              </option>
+                            ))}
+                          </select>
+                        )}
                         {hasCall && (
-                          <span title={`${(oa.topCallPct! * 100).toFixed(0)}% of today's call volume on this name is at the $${oa.topCallStrike} strike (CBOE-listed, via Nasdaq option-chain feed).`}>
-                            CALL TGT <span style={{ color: "#39d353", fontWeight: 800 }}>${oa.topCallStrike!.toFixed(2)}</span>
-                            <span style={{ color: "#39d353", marginLeft: 3 }}>· {(oa.topCallPct! * 100).toFixed(0)}%</span>
+                          <span title={`${(view.topCallPct! * 100).toFixed(0)}% of ${view.label} call volume at $${view.topCallStrike} (CBOE).`}>
+                            CALL TGT <span style={{ color: "#39d353", fontWeight: 800 }}>${view.topCallStrike!.toFixed(2)}</span>
+                            <span style={{ color: "#39d353", marginLeft: 3 }}>· {(view.topCallPct! * 100).toFixed(0)}%</span>
+                            <span style={{ color: "#8b949e", marginLeft: 4 }}>({view.label}{view.dte != null ? ` · ${view.dte}d` : ""})</span>
                           </span>
                         )}
                         {hasPut && (
-                          <span title={`${(oa.topPutPct! * 100).toFixed(0)}% of today's put volume on this name is at the $${oa.topPutStrike} strike (CBOE-listed, via Nasdaq option-chain feed).`}>
-                            PUT TGT <span style={{ color: "#f85149", fontWeight: 800 }}>${oa.topPutStrike!.toFixed(2)}</span>
-                            <span style={{ color: "#f85149", marginLeft: 3 }}>· {(oa.topPutPct! * 100).toFixed(0)}%</span>
+                          <span title={`${(view.topPutPct! * 100).toFixed(0)}% of ${view.label} put volume at $${view.topPutStrike} (CBOE).`}>
+                            PUT TGT <span style={{ color: "#f85149", fontWeight: 800 }}>${view.topPutStrike!.toFixed(2)}</span>
+                            <span style={{ color: "#f85149", marginLeft: 3 }}>· {(view.topPutPct! * 100).toFixed(0)}%</span>
+                            <span style={{ color: "#8b949e", marginLeft: 4 }}>({view.label}{view.dte != null ? ` · ${view.dte}d` : ""})</span>
                           </span>
                         )}
                       </span>
