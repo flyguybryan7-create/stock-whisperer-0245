@@ -1227,8 +1227,9 @@ export default function TradingPlatform() {
       const start = Math.min(open, b.close);
       const body = Math.abs(b.close - open);
       // Keep BUY/SELL labels glued to the candle so they're readable on phones.
-      const baseOffset = Math.max((high - low) * 0.12, b.close * 0.0008);
-      const extra = staggerExtra.get(i) ? baseOffset * 1.2 : 0;
+      // Glue BUY/SELL arrows right against the wick tip — tiny offset only.
+      const baseOffset = Math.max((high - low) * 0.04, b.close * 0.0002);
+      const extra = staggerExtra.get(i) ? baseOffset * 0.8 : 0;
       const offset = baseOffset + extra;
       const s20 = sma(i, 20);
       const s200 = sma(i, 200);
@@ -2092,11 +2093,12 @@ export default function TradingPlatform() {
             ]}
           >
             <div style={{ position: "relative" }}>
-            {/* Sticky Y-axis overlay so dollar prices stay visible while user pans. */}
-            <div style={{ position: "absolute", left: 0, top: 0, width: 58, height: 430, pointerEvents: "none", zIndex: 2, background: "linear-gradient(to right, #0d1117 70%, rgba(13,17,23,0))" }}>
+            {/* Sticky Y-axis overlay (RIGHT side) so dollar prices stay
+                pinned to the live edge while the user pans the time axis. */}
+            <div style={{ position: "absolute", right: 0, top: 0, width: 62, height: 430, pointerEvents: "none", zIndex: 2, background: "linear-gradient(to left, #0d1117 70%, rgba(13,17,23,0))" }}>
               <ResponsiveContainer width="100%" height={430}>
                 <ComposedChart data={masterData} margin={{ top: 8, right: 0, left: 0, bottom: 20 }}>
-                  <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={masterPriceDomain} allowDataOverflow ticks={niceTicks(masterPriceDomain, 7)} tickFormatter={(v: number) => `$${v.toFixed(2)}`} width={58} />
+                  <YAxis orientation="right" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={masterPriceDomain} allowDataOverflow ticks={niceTicks(masterPriceDomain, 7)} tickFormatter={(v: number) => `$${v.toFixed(2)}`} width={60} />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
@@ -2124,10 +2126,10 @@ export default function TradingPlatform() {
               style={{ width: "100%", overflowX: "auto", WebkitOverflowScrolling: "touch", touchAction: "pan-x pinch-zoom" }}>
             <div style={{ width: masterChartWidth, height: 430 }}>
             <ResponsiveContainer width="100%" height={430}>
-              <ComposedChart data={masterData} margin={{ top: 8, right: 8, left: 0, bottom: 20 }}>
+              <ComposedChart data={masterData} margin={{ top: 8, right: 0, left: 4, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                 <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} interval="preserveStartEnd" minTickGap={20} />
-                <YAxis stroke="transparent" fontSize={9} tick={false} domain={masterPriceDomain} allowDataOverflow width={58} axisLine={false} tickLine={false} />
+                <YAxis orientation="right" stroke="transparent" fontSize={9} tick={false} domain={masterPriceDomain} allowDataOverflow width={62} axisLine={false} tickLine={false} />
                 {/* True OHLC candle via custom shape — single range bar so YAxis fits the price band */}
                 <Bar dataKey="candleRange" name="Candle" isAnimationActive={false} shape={<Candle />} />
                 <Line type="monotone" dataKey="sma9" stroke="#79c0ff" strokeWidth={1.8} dot={false} name="SMA9" connectNulls />
@@ -2204,7 +2206,7 @@ export default function TradingPlatform() {
                   <ComposedChart data={macdCandleData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                     <XAxis dataKey="date" stroke="#8b949e" fontSize={8} tick={{ fontFamily: mono, fontSize: 8 }} interval="preserveStartEnd" minTickGap={20} hide />
-                    <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={macdPriceDomain} allowDataOverflow ticks={niceTicks(macdPriceDomain, 6)} tickFormatter={(v: number) => `$${v.toFixed(2)}`} width={58} />
+                    <YAxis orientation="right" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={macdPriceDomain} allowDataOverflow ticks={niceTicks(macdPriceDomain, 6)} tickFormatter={(v: number) => `$${v.toFixed(2)}`} width={60} />
                     <Bar dataKey="candleRange" name="Candle" isAnimationActive={false} shape={<Candle />} />
                     <Line type="monotone" dataKey="ema21" stroke="#79c0ff" strokeWidth={1.5} dot={false} name="EMA21" connectNulls />
                     <Scatter dataKey="buyArrowY" isAnimationActive={false}
@@ -2227,7 +2229,7 @@ export default function TradingPlatform() {
                   <ComposedChart data={macdCandleData} margin={{ top: 0, right: 8, left: 0, bottom: 16 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                     <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} interval="preserveStartEnd" minTickGap={20} />
-                    <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={macdOscDomain} width={58} />
+                    <YAxis orientation="right" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={macdOscDomain} width={60} />
                     <Bar dataKey="macdHist" name="Hist" isAnimationActive={false} maxBarSize={6}
                       shape={(p: any) => <rect x={p.x} y={p.y} width={p.width} height={p.height} fill={(p.payload?.macdHist ?? 0) >= 0 ? "#39d353" : "#f85149"} />}
                     />
