@@ -2093,11 +2093,12 @@ export default function TradingPlatform() {
             ]}
           >
             <div style={{ position: "relative" }}>
-            {/* Sticky Y-axis overlay so dollar prices stay visible while user pans. */}
-            <div style={{ position: "absolute", left: 0, top: 0, width: 58, height: 430, pointerEvents: "none", zIndex: 2, background: "linear-gradient(to right, #0d1117 70%, rgba(13,17,23,0))" }}>
+            {/* Sticky Y-axis overlay (RIGHT side) so dollar prices stay
+                pinned to the live edge while the user pans the time axis. */}
+            <div style={{ position: "absolute", right: 0, top: 0, width: 62, height: 430, pointerEvents: "none", zIndex: 2, background: "linear-gradient(to left, #0d1117 70%, rgba(13,17,23,0))" }}>
               <ResponsiveContainer width="100%" height={430}>
                 <ComposedChart data={masterData} margin={{ top: 8, right: 0, left: 0, bottom: 20 }}>
-                  <YAxis stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={masterPriceDomain} allowDataOverflow ticks={niceTicks(masterPriceDomain, 7)} tickFormatter={(v: number) => `$${v.toFixed(2)}`} width={58} />
+                  <YAxis orientation="right" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={masterPriceDomain} allowDataOverflow ticks={niceTicks(masterPriceDomain, 7)} tickFormatter={(v: number) => `$${v.toFixed(2)}`} width={60} />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
@@ -2125,10 +2126,10 @@ export default function TradingPlatform() {
               style={{ width: "100%", overflowX: "auto", WebkitOverflowScrolling: "touch", touchAction: "pan-x pinch-zoom" }}>
             <div style={{ width: masterChartWidth, height: 430 }}>
             <ResponsiveContainer width="100%" height={430}>
-              <ComposedChart data={masterData} margin={{ top: 8, right: 8, left: 0, bottom: 20 }}>
+              <ComposedChart data={masterData} margin={{ top: 8, right: 0, left: 4, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                 <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} interval="preserveStartEnd" minTickGap={20} />
-                <YAxis stroke="transparent" fontSize={9} tick={false} domain={masterPriceDomain} allowDataOverflow width={58} axisLine={false} tickLine={false} />
+                <YAxis orientation="right" stroke="transparent" fontSize={9} tick={false} domain={masterPriceDomain} allowDataOverflow width={62} axisLine={false} tickLine={false} />
                 {/* True OHLC candle via custom shape — single range bar so YAxis fits the price band */}
                 <Bar dataKey="candleRange" name="Candle" isAnimationActive={false} shape={<Candle />} />
                 <Line type="monotone" dataKey="sma9" stroke="#79c0ff" strokeWidth={1.8} dot={false} name="SMA9" connectNulls />
