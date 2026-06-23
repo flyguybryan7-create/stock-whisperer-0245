@@ -1329,7 +1329,7 @@ export default function TradingPlatform() {
   const macdChartWidth = Math.max(360, macdCandleData.length * pxPerBar);
   const syncVisibleRange = useCallback((el: HTMLDivElement | null, rows: number, chartWidth: number, setter: any) => {
     if (!el || rows <= 0) { setter(null); return; }
-    const usableWidth = Math.max(1, el.clientWidth - PRICE_AXIS_WIDTH);
+    const usableWidth = Math.max(1, el.clientWidth);
     const px = Math.max(1, chartWidth / rows);
     const start = Math.max(0, Math.floor(el.scrollLeft / px) - 2);
     const end = Math.min(rows - 1, Math.ceil((el.scrollLeft + usableWidth) / px) + 2);
