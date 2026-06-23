@@ -104,6 +104,33 @@ function niceTicks(domain: [number, number] | ["auto", "auto"] | unknown, target
 
 const PRICE_AXIS_WIDTH = 62;
 
+function getVisiblePriceDomain(rows: Array<Record<string, any>>): [number, number] | ["auto", "auto"] {
+  if (!rows.length) return ["auto", "auto"];
+  const keys = ["open", "high", "low", "close", "sma9", "sma15", "sma20", "sma200", "ema21", "bbUpper", "bbLower", "bullLabelY", "sellLabelY", "buyArrowY", "sellArrowY"];
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const d of rows) {
+    for (const key of keys) {
+      const v = d[key];
+      if (typeof v === "number" && Number.isFinite(v)) {
+        lo = Math.min(lo, v);
+        hi = Math.max(hi, v);
+      }
+    }
+    if (Array.isArray(d.candleRange)) {
+      for (const v of d.candleRange) if (typeof v === "number" && Number.isFinite(v)) {
+        lo = Math.min(lo, v);
+        hi = Math.max(hi, v);
+      }
+    }
+  }
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return ["auto", "auto"];
+  const lastClose = rows[rows.length - 1]?.close ?? hi;
+  const span = Math.max(hi - lo, Math.abs(lastClose) * 0.0008, 0.03);
+  const pad = Math.max(span * 0.08, Math.abs(lastClose) * 0.00025, 0.01);
+  return [Math.floor((lo - pad) * 100) / 100, Math.ceil((hi + pad) * 100) / 100];
+}
+
 const DEFAULT_STOCKS = [
   "NVDA","MRVL","SMTC","TSEM","CRDO","INTC","QBTS","INFQ","HUT","ALAB","AAOI","SNOW","NVTS","MCHP","ANET",
   "CRWV","CBRS","RMBS","LSCC","MXL","AMBA","PLAB","ASYS","COHU","NLST","ACLS","STM","SATS","WDC",
