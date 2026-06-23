@@ -2031,8 +2031,7 @@ export default function TradingPlatform() {
                     const oa = optionsActivity[selectedStock];
                     if (!oa) return null;
                     const buckets = oa.expiries ?? [];
-                    const chosenKey = selectedExpiry[selectedStock];
-                    const bucket = (chosenKey && buckets.find((b) => b.expiry === chosenKey)) || buckets[0];
+                    const bucket = buckets[0];
                     const view = bucket ?? {
                       label: "All",
                       dte: null as number | null,
@@ -2046,19 +2045,10 @@ export default function TradingPlatform() {
                     if (!hasCall && !hasPut && buckets.length === 0) return null;
                     return (
                       <span style={{ display: "flex", gap: 10, flexBasis: "100%", flexWrap: "wrap", alignItems: "center" }}>
-                        {buckets.length > 0 && (
-                          <select
-                            value={bucket?.expiry ?? ""}
-                            onChange={(e) => setSelectedExpiry((prev) => ({ ...prev, [selectedStock]: e.target.value }))}
-                            title="CBOE option expiry to evaluate"
-                            style={{ background: "#0d1117", color: "#e6edf3", border: "1px solid #21262d", borderRadius: 4, fontSize: 10, padding: "2px 4px", fontFamily: mono }}
-                          >
-                            {buckets.slice(0, 25).map((b) => (
-                              <option key={b.expiry} value={b.expiry}>
-                                {b.label}{b.dte != null ? ` · ${b.dte}d` : ""}
-                              </option>
-                            ))}
-                          </select>
+                        {bucket && (
+                          <span title="Nearest current listed options expiration" style={{ color: "#58a6ff", border: "1px solid #21262d", borderRadius: 4, padding: "2px 4px" }}>
+                            NEXT EXP {bucket.label}{bucket.dte != null ? ` · ${bucket.dte}d` : ""}
+                          </span>
                         )}
                         {hasCall && (
                           <span title={`${(view.topCallPct! * 100).toFixed(0)}% of ${view.label} call volume at $${view.topCallStrike} (CBOE).`}>
