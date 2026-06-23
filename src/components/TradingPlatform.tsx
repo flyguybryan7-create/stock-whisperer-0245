@@ -106,7 +106,7 @@ const PRICE_AXIS_WIDTH = 62;
 
 function getVisiblePriceDomain(rows: Array<Record<string, any>>): [number, number] | ["auto", "auto"] {
   if (!rows.length) return ["auto", "auto"];
-  const keys = ["open", "high", "low", "close", "sma9", "sma15", "sma20", "sma200", "ema21", "bbUpper", "bbLower", "bullLabelY", "sellLabelY", "buyArrowY", "sellArrowY"];
+  const keys = ["open", "high", "low", "close", "sma9", "sma15", "sma20", "ema21", "bbUpper", "bbLower", "bullLabelY", "sellLabelY", "buyArrowY", "sellArrowY"];
   let lo = Infinity;
   let hi = -Infinity;
   for (const d of rows) {
