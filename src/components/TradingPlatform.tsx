@@ -516,8 +516,6 @@ export default function TradingPlatform() {
   const [intradayInterval, setIntradayInterval] = useState<"1m" | "2m" | "5m" | "15m">("1m");
   // User-tweakable zoom multiplier for chart bar width (pinch / +/- buttons).
   const [chartZoom, setChartZoom] = useState(1);
-  // Per-symbol selected option expiry for the CALL/PUT TGT badges.
-  const [selectedExpiry, setSelectedExpiry] = useState<Record<string, string>>({});
   const [pushPerm, setPushPerm] = useState<PushPermission>("default");
   const [pushBusy, setPushBusy] = useState(false);
   const lastPushSignal = useRef<Record<string, "BUY" | "SELL">>({});
