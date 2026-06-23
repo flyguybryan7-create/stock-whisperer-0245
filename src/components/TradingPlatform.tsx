@@ -1083,7 +1083,7 @@ export default function TradingPlatform() {
       const green = d.close >= o;
       if (i === 0) ema21 = d.close;
       else ema21 = d.close * kEma21 + ema21 * (1 - kEma21);
-      const offset = (h - l) * 0.35 || d.close * 0.0015;
+      const offset = Math.max((h - l) * 0.015, d.close * 0.00005, 0.005);
       return {
         ...d,
         candleStart: +start.toFixed(4),
@@ -1228,9 +1228,8 @@ export default function TradingPlatform() {
       const low = (b as any).low ?? b.close;
       const start = Math.min(open, b.close);
       const body = Math.abs(b.close - open);
-      // Keep BUY/SELL labels glued to the candle so they're readable on phones.
       // Glue BUY/SELL arrows right against the wick tip — tiny offset only.
-      const baseOffset = Math.max((high - low) * 0.04, b.close * 0.0002);
+      const baseOffset = Math.max((high - low) * 0.015, b.close * 0.00005, 0.005);
       const extra = staggerExtra.get(i) ? baseOffset * 0.8 : 0;
       const offset = baseOffset + extra;
       const s20 = sma(i, 20);
