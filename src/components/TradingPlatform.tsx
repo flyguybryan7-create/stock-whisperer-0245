@@ -102,6 +102,8 @@ function niceTicks(domain: [number, number] | ["auto", "auto"] | unknown, target
   return out.length >= 2 ? out : undefined;
 }
 
+const PRICE_AXIS_WIDTH = 62;
+
 const DEFAULT_STOCKS = [
   "NVDA","MRVL","SMTC","TSEM","CRDO","INTC","QBTS","INFQ","HUT","ALAB","AAOI","SNOW","NVTS","MCHP","ANET",
   "CRWV","CBRS","RMBS","LSCC","MXL","AMBA","PLAB","ASYS","COHU","NLST","ACLS","STM","SATS","WDC",
