@@ -124,12 +124,13 @@ async function fetchChain(symbol: string): Promise<OptionsActivity | null> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const MS_DAY = 86400000;
-    const parseExp = (s: string): { dte: number | null; label: string } => {
-      // Nasdaq returns formats like "12/19/2025", "12/19/25", or "2025-12-19".
+    const parseExp = (s: string): { dte: number | null; label: string; time: number | null } => {
+      // Nasdaq returns formats like "Jun 26", "12/19/2025", "12/19/25", or "2025-12-19".
       let d: Date | null = null;
       const slash4 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
       const slash2 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
       const dash = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+      const monthDay = s.match(/^([A-Za-z]{3,9})\s+(\d{1,2})$/);
       if (slash4) d = new Date(+slash4[3], +slash4[1] - 1, +slash4[2]);
       else if (slash2) {
         // Pivot 2-digit years: 00-79 -> 2000s, 80-99 -> 1900s.
@@ -137,16 +138,23 @@ async function fetchChain(symbol: string): Promise<OptionsActivity | null> {
         const yyyy = yy < 80 ? 2000 + yy : 1900 + yy;
         d = new Date(yyyy, +slash2[1] - 1, +slash2[2]);
       } else if (dash) d = new Date(+dash[1], +dash[2] - 1, +dash[3]);
+      else if (monthDay) {
+        const month = new Date(`${monthDay[1]} 1, ${today.getFullYear()}`).getMonth();
+        if (Number.isFinite(month)) {
+          d = new Date(today.getFullYear(), month, +monthDay[2]);
+          if (d.getTime() < today.getTime()) d = new Date(today.getFullYear() + 1, month, +monthDay[2]);
+        }
+      }
       else {
         const t = Date.parse(s);
         if (!Number.isNaN(t)) d = new Date(t);
       }
-      if (!d || Number.isNaN(d.getTime())) return { dte: null, label: s };
+      if (!d || Number.isNaN(d.getTime())) return { dte: null, label: s, time: null };
       // Allow negative DTE so we can filter out stale/expired contracts upstream.
       const dte = Math.round((d.getTime() - today.getTime()) / MS_DAY);
       const month = d.toLocaleString("en-US", { month: "short" });
       const yr = String(d.getFullYear()).slice(-2);
-      return { dte, label: `${month} '${yr}` };
+      return { dte, label: `${month} '${yr}`, time: d.getTime() };
     };
     const expiries: ExpiryBucket[] = Array.from(byExpiry.values())
       .map((b) => {
