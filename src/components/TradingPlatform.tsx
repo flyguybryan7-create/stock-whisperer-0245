@@ -911,6 +911,14 @@ export default function TradingPlatform() {
     enabled: watchlist.length > 0,
   });
   const optionsActivity = (optionsActivityData?.items ?? {}) as Record<string, OptionsActivity>;
+  const { data: selectedOptionsActivity } = useQuery({
+    queryKey: ["selectedOptionsActivity", selectedStock],
+    queryFn: () => fetchOptionsActivityFn({ data: { symbols: [selectedStock] } }),
+    refetchInterval: 2_000,
+    refetchIntervalInBackground: true,
+    staleTime: 0,
+    enabled: !!selectedStock,
+  });
   const watchlistMacdSignals = useMemo(() => {
     const out: Record<string, "BUY" | "SELL" | "HOLD"> = {};
     const batch = (watchlistIntradayData ?? {}) as Record<string, IntradayBar[]>;
@@ -2031,7 +2039,7 @@ export default function TradingPlatform() {
                     </span>
                   )}
                   {(() => {
-                    const oa = optionsActivity[selectedStock];
+                    const oa = selectedOptionsActivity?.items?.[selectedStock] ?? optionsActivity[selectedStock];
                     if (!oa) return null;
                     const buckets = oa.expiries ?? [];
                     const bucket = buckets[0];
