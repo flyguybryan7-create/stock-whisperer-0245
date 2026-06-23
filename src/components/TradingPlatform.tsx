@@ -530,6 +530,8 @@ export default function TradingPlatform() {
   const masterScrollRef = useRef<HTMLDivElement | null>(null);
   const flowScrollRef = useRef<HTMLDivElement | null>(null);
   const macdScrollRef = useRef<HTMLDivElement | null>(null);
+  const [masterVisibleRange, setMasterVisibleRange] = useState<[number, number] | null>(null);
+  const [macdVisibleRange, setMacdVisibleRange] = useState<[number, number] | null>(null);
 
   // Load persisted watchlist from localStorage on first mount (fast path / signed-out users)
   const hydratedFromCloud = useRef(false);
