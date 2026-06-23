@@ -1283,18 +1283,26 @@ export default function TradingPlatform() {
     });
   }, [displayData]);
 
-  // Auto price-domain for the OV/Master chart — never let Recharts pull in
-  // the wick-bar baseline at 0 (which compressed all candles into a thin
-  // band at the top of the canvas).
+  const masterVisibleData = useMemo(() => {
+    if (!masterData.length) return [];
+    const fallback = chartMode === "D" ? masterData.length : Math.min(masterData.length, 40);
+    const [start, end] = masterVisibleRange ?? [Math.max(0, masterData.length - fallback), masterData.length - 1];
+    return masterData.slice(Math.max(0, start), Math.min(masterData.length, end + 1));
+  }, [masterData, masterVisibleRange, chartMode]);
+  const macdVisibleData = useMemo(() => {
+    if (!macdCandleData.length) return [];
+    const fallback = chartMode === "D" ? macdCandleData.length : Math.min(macdCandleData.length, 40);
+    const [start, end] = macdVisibleRange ?? [Math.max(0, macdCandleData.length - fallback), macdCandleData.length - 1];
+    return macdCandleData.slice(Math.max(0, start), Math.min(macdCandleData.length, end + 1));
+  }, [macdCandleData, macdVisibleRange, chartMode]);
+  // Price domains are recalculated from the bars currently in view, so the
+  // right-side dollar scale follows the timeframe as the user swipes back.
   const masterPriceDomain = useMemo<[number, number] | ["auto", "auto"]>(() => {
-    const recent = chartMode === "D" ? masterData.length : 40;
-    return getTightPriceDomain(masterData, recent);
-  }, [masterData, chartMode]);
-  // Same auto-domain for the MACD candlestick price panel.
+    return getVisiblePriceDomain(masterVisibleData);
+  }, [masterVisibleData]);
   const macdPriceDomain = useMemo<[number, number] | ["auto", "auto"]>(() => {
-    const recent = chartMode === "D" ? macdCandleData.length : 40;
-    return getTightPriceDomain(macdCandleData, recent);
-  }, [macdCandleData, chartMode]);
+    return getVisiblePriceDomain(macdVisibleData);
+  }, [macdVisibleData]);
   const macdOscDomain = useMemo<[number, number] | ["auto", "auto"]>(() => {
     if (!macdCandleData.length) return ["auto", "auto"];
     const sample = macdCandleData.slice(chartMode === "D" ? 0 : Math.max(0, macdCandleData.length - 90));
@@ -1319,10 +1327,20 @@ export default function TradingPlatform() {
   const masterChartWidth = Math.max(360, masterData.length * pxPerBar);
   const flowChartWidth = Math.max(360, flowChartData.length * Math.max(10, pxPerBar * 0.8));
   const macdChartWidth = Math.max(360, macdCandleData.length * pxPerBar);
+  const syncVisibleRange = useCallback((el: HTMLDivElement | null, rows: number, chartWidth: number, setter: any) => {
+    if (!el || rows <= 0) { setter(null); return; }
+    const usableWidth = Math.max(1, el.clientWidth - PRICE_AXIS_WIDTH);
+    const px = Math.max(1, chartWidth / rows);
+    const start = Math.max(0, Math.floor(el.scrollLeft / px) - 2);
+    const end = Math.min(rows - 1, Math.ceil((el.scrollLeft + usableWidth) / px) + 2);
+    setter((prev: [number, number] | null) => prev?.[0] === start && prev?.[1] === end ? prev : [start, end]);
+  }, []);
   useEffect(() => {
     for (const el of [masterScrollRef.current, flowScrollRef.current, macdScrollRef.current]) {
       if (el) el.scrollLeft = Math.max(0, el.scrollWidth - el.clientWidth);
     }
+    syncVisibleRange(masterScrollRef.current, masterData.length, masterChartWidth, setMasterVisibleRange);
+    syncVisibleRange(macdScrollRef.current, macdCandleData.length, macdChartWidth, setMacdVisibleRange);
   }, [selectedStock, chartMode, intradayRange, intradayInterval, masterChartWidth, flowChartWidth, macdChartWidth]);
   // Decision strip — last bar metrics
   const decision = useMemo(() => {
