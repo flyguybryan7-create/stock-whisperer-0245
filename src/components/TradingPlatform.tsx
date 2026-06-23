@@ -2281,7 +2281,7 @@ export default function TradingPlatform() {
                     <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} interval="preserveStartEnd" minTickGap={20} />
                     <YAxis orientation="right" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={macdOscDomain} width={60} />
                     <Bar dataKey="macdHist" name="Hist" isAnimationActive={false} maxBarSize={6}
-                      shape={(p: any) => <rect x={p.x} y={p.y} width={p.width} height={p.height} fill={(p.payload?.macdHist ?? 0) >= 0 ? "#39d353" : "#f85149"} />}
+                      shape={(p: any) => <rect x={p.x} y={Math.min(p.y, p.y + p.height)} width={p.width} height={Math.abs(p.height)} fill={(p.payload?.macdHist ?? 0) >= 0 ? "#39d353" : "#f85149"} />}
                     />
                     <Line type="monotone" dataKey="macd" stroke="#58a6ff" strokeWidth={1.5} dot={false} name="MACD" connectNulls />
                     <Line type="monotone" dataKey="macdSignal" stroke="#f0883e" strokeWidth={1.5} dot={false} name="Signal" connectNulls />
