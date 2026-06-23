@@ -2249,13 +2249,21 @@ export default function TradingPlatform() {
               { label: "SELL", color: "#f85149" },
             ]}
           >
-            <div ref={macdScrollRef} style={{ width: "100%", overflowX: "auto", WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}>
+            <div style={{ position: "relative" }}>
+              <div style={{ position: "absolute", right: 0, top: 0, width: PRICE_AXIS_WIDTH, height: 300, pointerEvents: "none", zIndex: 2, background: "linear-gradient(to left, #0d1117 78%, rgba(13,17,23,0))" }}>
+                <ResponsiveContainer width="100%" height={300}>
+                  <ComposedChart data={macdVisibleData} margin={{ top: 8, right: 0, left: 0, bottom: 0 }}>
+                    <YAxis orientation="right" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={macdPriceDomain} allowDataOverflow ticks={niceTicks(macdPriceDomain, 6)} tickFormatter={(v: number) => `$${v.toFixed(2)}`} width={PRICE_AXIS_WIDTH - 2} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            <div ref={macdScrollRef} onScroll={(e) => syncVisibleRange(e.currentTarget, macdCandleData.length, macdChartWidth, setMacdVisibleRange)} style={{ width: `calc(100% - ${PRICE_AXIS_WIDTH}px)`, overflowX: "auto", WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}>
               <div style={{ width: macdChartWidth }}>
                 <ResponsiveContainer width="100%" height={300}>
-                  <ComposedChart data={macdCandleData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <ComposedChart data={macdCandleData} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                     <XAxis dataKey="date" stroke="#8b949e" fontSize={8} tick={{ fontFamily: mono, fontSize: 8 }} interval="preserveStartEnd" minTickGap={20} hide />
-                    <YAxis orientation="right" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={macdPriceDomain} allowDataOverflow ticks={niceTicks(macdPriceDomain, 6)} tickFormatter={(v: number) => `$${v.toFixed(2)}`} width={60} />
+                    <YAxis orientation="right" hide domain={macdPriceDomain} allowDataOverflow width={0} />
                     <Bar dataKey="candleRange" name="Candle" isAnimationActive={false} shape={<Candle />} />
                     <Line type="monotone" dataKey="ema21" stroke="#79c0ff" strokeWidth={1.5} dot={false} name="EMA21" connectNulls />
                     <Scatter dataKey="buyArrowY" isAnimationActive={false}
@@ -2287,6 +2295,7 @@ export default function TradingPlatform() {
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
+            </div>
             </div>
             <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "3px 0" }}>← swipe to pan · BUY/SELL arrows = MACD crossovers</div>
           </ChartCard>
