@@ -1334,12 +1334,17 @@ export default function TradingPlatform() {
     setter((prev: [number, number] | null) => prev?.[0] === start && prev?.[1] === end ? prev : [start, end]);
   }, []);
   useEffect(() => {
-    for (const el of [masterScrollRef.current, flowScrollRef.current, macdScrollRef.current]) {
-      if (el) el.scrollLeft = Math.max(0, el.scrollWidth - el.clientWidth);
-    }
-    syncVisibleRange(masterScrollRef.current, masterData.length, masterChartWidth, setMasterVisibleRange);
-    syncVisibleRange(macdScrollRef.current, macdCandleData.length, macdChartWidth, setMacdVisibleRange);
-  }, [selectedStock, chartMode, intradayRange, intradayInterval, masterChartWidth, flowChartWidth, macdChartWidth]);
+    const scrollLiveEdge = () => {
+      for (const el of [masterScrollRef.current, flowScrollRef.current, macdScrollRef.current]) {
+        if (el) el.scrollLeft = Math.max(0, el.scrollWidth - el.clientWidth);
+      }
+      syncVisibleRange(masterScrollRef.current, masterData.length, masterChartWidth, setMasterVisibleRange);
+      syncVisibleRange(macdScrollRef.current, macdCandleData.length, macdChartWidth, setMacdVisibleRange);
+    };
+    const raf = requestAnimationFrame(scrollLiveEdge);
+    const t = window.setTimeout(scrollLiveEdge, 250);
+    return () => { cancelAnimationFrame(raf); window.clearTimeout(t); };
+  }, [selectedStock, chartMode, intradayRange, intradayInterval, masterChartWidth, flowChartWidth, macdChartWidth, masterData.length, macdCandleData.length, syncVisibleRange]);
   // Decision strip — last bar metrics
   const decision = useMemo(() => {
     const last = masterData[masterData.length - 1];
