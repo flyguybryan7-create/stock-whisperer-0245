@@ -21,6 +21,8 @@ import { fetchFastPulse, fetchMacroNews, fetchGlobalSemiIndex, fetchSemiRiskSent
 import type { QuoteSnap } from "@/lib/market-pulse.server";
 import { fetchOptionsActivity } from "@/lib/options.functions";
 import type { OptionsActivity } from "@/lib/options.server";
+import { getSchwabAuthUrl, getSchwabQuotes, refreshSchwabToken, type SchwabTokens, type SchwabQuote } from "@/lib/schwab.functions";
+import { SCHWAB_TOKEN_KEY } from "@/routes/auth.schwab.callback";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { useSubscription } from "@/hooks/useSubscription";
 import { supabase } from "@/integrations/supabase/client";
