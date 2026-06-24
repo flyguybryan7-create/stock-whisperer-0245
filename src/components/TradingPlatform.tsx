@@ -637,6 +637,32 @@ export default function TradingPlatform() {
   const fetchSemiRiskSentimentFn = useServerFn(fetchSemiRiskSentiment);
   const fetchOptionsActivityFn = useServerFn(fetchOptionsActivity);
 
+  // ============ Schwab real-time quotes ============
+  const fetchSchwabAuthUrl = useServerFn(getSchwabAuthUrl);
+  const fetchSchwabQuotes = useServerFn(getSchwabQuotes);
+  const refreshSchwab = useServerFn(refreshSchwabToken);
+  const [schwabTokens, setSchwabTokens] = useState<SchwabTokens | null>(null);
+  const [schwabErr, setSchwabErr] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(SCHWAB_TOKEN_KEY);
+      if (raw) setSchwabTokens(JSON.parse(raw) as SchwabTokens);
+    } catch {}
+  }, []);
+  const persistTokens = useCallback((t: SchwabTokens) => {
+    setSchwabTokens(t);
+    try { sessionStorage.setItem(SCHWAB_TOKEN_KEY, JSON.stringify(t)); } catch {}
+  }, []);
+  const connectSchwab = useCallback(async () => {
+    try {
+      const redirectUri = `${window.location.origin}/auth/schwab/callback`;
+      const { url } = await fetchSchwabAuthUrl({ data: { redirectUri } });
+      window.location.href = url;
+    } catch (e) {
+      setSchwabErr(e instanceof Error ? e.message : String(e));
+    }
+  }, [fetchSchwabAuthUrl]);
+
   // Reflect current notification permission + existing subscription.
   useEffect(() => {
     if (!pushSupported()) { setPushPerm("unsupported"); return; }
