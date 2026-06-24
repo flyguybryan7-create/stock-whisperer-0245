@@ -768,6 +768,36 @@ export default function TradingPlatform() {
   });
   const live = (liveQuotes as Record<string, LiveQuote> | undefined) ?? {};
 
+  // Schwab real-time quote for the selected symbol (polls every 1s when connected).
+  const { data: schwabQuoteData } = useQuery({
+    queryKey: ["schwabQuote", selectedStock, schwabTokens?.access_token ?? ""],
+    queryFn: async () => {
+      if (!schwabTokens?.access_token) return null;
+      try {
+        return await fetchSchwabQuotes({ data: { accessToken: schwabTokens.access_token, symbols: [selectedStock] } });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes("schwab_unauthorized") && schwabTokens.refresh_token) {
+          try {
+            const fresh = await refreshSchwab({ data: { refreshToken: schwabTokens.refresh_token } });
+            persistTokens(fresh);
+            return await fetchSchwabQuotes({ data: { accessToken: fresh.access_token, symbols: [selectedStock] } });
+          } catch (re) {
+            setSchwabErr(re instanceof Error ? re.message : String(re));
+            return null;
+          }
+        }
+        setSchwabErr(msg);
+        return null;
+      }
+    },
+    enabled: !!schwabTokens?.access_token && !!selectedStock,
+    refetchInterval: 1000,
+    refetchIntervalInBackground: true,
+    staleTime: 0,
+  });
+  const schwabQuote: SchwabQuote | null = (schwabQuoteData as Record<string, SchwabQuote> | null)?.[selectedStock] ?? null;
+
   // Bid/ask now comes through getLiveQuotes (v7 endpoint returns bid/ask/bidSize/askSize)
   // on the same 1s tick as the live price — no separate query.
 
