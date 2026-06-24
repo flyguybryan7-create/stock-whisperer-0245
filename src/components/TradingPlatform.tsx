@@ -1697,6 +1697,29 @@ export default function TradingPlatform() {
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#39d353", animation: "pulse 2s infinite" }} />
             LIVE
           </div>
+          {schwabTokens ? (
+            <span
+              title={schwabErr ? `Schwab error: ${schwabErr}` : `Schwab real-time quote for ${selectedStock}`}
+              style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, color: "#39d353", border: "1px solid #39d353", borderRadius: 4, padding: "2px 6px", flexShrink: 0 }}
+            >
+              <span style={{ color: "#8b949e", fontWeight: 800 }}>SCHWAB</span>
+              {schwabQuote?.last != null ? `$${schwabQuote.last.toFixed(2)}` : "—"}
+              {schwabQuote?.bid != null && schwabQuote?.ask != null && (
+                <span style={{ color: "#8b949e", fontWeight: 700 }}>
+                  {schwabQuote.bid.toFixed(2)}×{schwabQuote.ask.toFixed(2)}
+                </span>
+              )}
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={connectSchwab}
+              title="Connect Schwab for real-time NBBO quotes"
+              style={{ background: "rgba(57,211,83,0.12)", border: "1px solid #39d353", color: "#39d353", fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 4, cursor: "pointer", letterSpacing: 0.5, flexShrink: 0 }}
+            >
+              CONNECT SCHWAB
+            </button>
+          )}
           </div>
         </div>
         {/* Row 2: FUT strip full width */}
