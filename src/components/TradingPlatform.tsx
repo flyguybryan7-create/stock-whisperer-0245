@@ -21,6 +21,8 @@ import { fetchFastPulse, fetchMacroNews, fetchGlobalSemiIndex, fetchSemiRiskSent
 import type { QuoteSnap } from "@/lib/market-pulse.server";
 import { fetchOptionsActivity } from "@/lib/options.functions";
 import type { OptionsActivity } from "@/lib/options.server";
+import { getSchwabAuthUrl, getSchwabQuotes, refreshSchwabToken, type SchwabTokens, type SchwabQuote } from "@/lib/schwab.functions";
+import { SCHWAB_TOKEN_KEY } from "@/routes/auth.schwab.callback";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { useSubscription } from "@/hooks/useSubscription";
 import { supabase } from "@/integrations/supabase/client";
@@ -635,6 +637,32 @@ export default function TradingPlatform() {
   const fetchSemiRiskSentimentFn = useServerFn(fetchSemiRiskSentiment);
   const fetchOptionsActivityFn = useServerFn(fetchOptionsActivity);
 
+  // ============ Schwab real-time quotes ============
+  const fetchSchwabAuthUrl = useServerFn(getSchwabAuthUrl);
+  const fetchSchwabQuotes = useServerFn(getSchwabQuotes);
+  const refreshSchwab = useServerFn(refreshSchwabToken);
+  const [schwabTokens, setSchwabTokens] = useState<SchwabTokens | null>(null);
+  const [schwabErr, setSchwabErr] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(SCHWAB_TOKEN_KEY);
+      if (raw) setSchwabTokens(JSON.parse(raw) as SchwabTokens);
+    } catch {}
+  }, []);
+  const persistTokens = useCallback((t: SchwabTokens) => {
+    setSchwabTokens(t);
+    try { sessionStorage.setItem(SCHWAB_TOKEN_KEY, JSON.stringify(t)); } catch {}
+  }, []);
+  const connectSchwab = useCallback(async () => {
+    try {
+      const redirectUri = `${window.location.origin}/auth/schwab/callback`;
+      const { url } = await fetchSchwabAuthUrl({ data: { redirectUri } });
+      window.location.href = url;
+    } catch (e) {
+      setSchwabErr(e instanceof Error ? e.message : String(e));
+    }
+  }, [fetchSchwabAuthUrl]);
+
   // Reflect current notification permission + existing subscription.
   useEffect(() => {
     if (!pushSupported()) { setPushPerm("unsupported"); return; }
@@ -739,6 +767,36 @@ export default function TradingPlatform() {
     enabled: watchlist.length > 0,
   });
   const live = (liveQuotes as Record<string, LiveQuote> | undefined) ?? {};
+
+  // Schwab real-time quote for the selected symbol (polls every 1s when connected).
+  const { data: schwabQuoteData } = useQuery({
+    queryKey: ["schwabQuote", selectedStock, schwabTokens?.access_token ?? ""],
+    queryFn: async () => {
+      if (!schwabTokens?.access_token) return null;
+      try {
+        return await fetchSchwabQuotes({ data: { accessToken: schwabTokens.access_token, symbols: [selectedStock] } });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes("schwab_unauthorized") && schwabTokens.refresh_token) {
+          try {
+            const fresh = await refreshSchwab({ data: { refreshToken: schwabTokens.refresh_token } });
+            persistTokens(fresh);
+            return await fetchSchwabQuotes({ data: { accessToken: fresh.access_token, symbols: [selectedStock] } });
+          } catch (re) {
+            setSchwabErr(re instanceof Error ? re.message : String(re));
+            return null;
+          }
+        }
+        setSchwabErr(msg);
+        return null;
+      }
+    },
+    enabled: !!schwabTokens?.access_token && !!selectedStock,
+    refetchInterval: 1000,
+    refetchIntervalInBackground: true,
+    staleTime: 0,
+  });
+  const schwabQuote: SchwabQuote | null = (schwabQuoteData as Record<string, SchwabQuote> | null)?.[selectedStock] ?? null;
 
   // Bid/ask now comes through getLiveQuotes (v7 endpoint returns bid/ask/bidSize/askSize)
   // on the same 1s tick as the live price — no separate query.
@@ -1639,6 +1697,29 @@ export default function TradingPlatform() {
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#39d353", animation: "pulse 2s infinite" }} />
             LIVE
           </div>
+          {schwabTokens ? (
+            <span
+              title={schwabErr ? `Schwab error: ${schwabErr}` : `Schwab real-time quote for ${selectedStock}`}
+              style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, color: "#39d353", border: "1px solid #39d353", borderRadius: 4, padding: "2px 6px", flexShrink: 0 }}
+            >
+              <span style={{ color: "#8b949e", fontWeight: 800 }}>SCHWAB</span>
+              {schwabQuote?.last != null ? `$${schwabQuote.last.toFixed(2)}` : "—"}
+              {schwabQuote?.bid != null && schwabQuote?.ask != null && (
+                <span style={{ color: "#8b949e", fontWeight: 700 }}>
+                  {schwabQuote.bid.toFixed(2)}×{schwabQuote.ask.toFixed(2)}
+                </span>
+              )}
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={connectSchwab}
+              title="Connect Schwab for real-time NBBO quotes"
+              style={{ background: "rgba(57,211,83,0.12)", border: "1px solid #39d353", color: "#39d353", fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 4, cursor: "pointer", letterSpacing: 0.5, flexShrink: 0 }}
+            >
+              CONNECT SCHWAB
+            </button>
+          )}
           </div>
         </div>
         {/* Row 2: FUT strip full width */}

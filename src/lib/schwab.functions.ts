@@ -73,6 +73,54 @@ export const exchangeSchwabCode = createServerFn({ method: "POST" })
     return { ...json, obtained_at: Date.now() };
   });
 
+export type SchwabQuote = {
+  symbol: string;
+  last: number | null;
+  bid: number | null;
+  ask: number | null;
+  bidSize: number | null;
+  askSize: number | null;
+  netChange: number | null;
+  netPercentChange: number | null;
+  quoteTime: number | null; // ms epoch
+};
+
+export const getSchwabQuotes = createServerFn({ method: "POST" })
+  .inputValidator((d: { accessToken: string; symbols: string[] }) => d)
+  .handler(async ({ data }): Promise<Record<string, SchwabQuote>> => {
+    const syms = (data.symbols || []).map((s) => s.toUpperCase()).filter(Boolean);
+    if (syms.length === 0) return {};
+    const url = `https://api.schwabapi.com/marketdata/v1/quotes?symbols=${encodeURIComponent(syms.join(","))}&fields=quote`;
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${data.accessToken}`,
+        Accept: "application/json",
+      },
+    });
+    const text = await res.text();
+    if (res.status === 401) throw new Error("schwab_unauthorized");
+    if (!res.ok) throw new Error(`Schwab quotes failed (${res.status}): ${text.slice(0, 300)}`);
+    let json: any;
+    try { json = JSON.parse(text); } catch { throw new Error("Schwab returned non-JSON quotes"); }
+    const out: Record<string, SchwabQuote> = {};
+    for (const sym of syms) {
+      const row = json?.[sym];
+      const q = row?.quote ?? {};
+      out[sym] = {
+        symbol: sym,
+        last: Number.isFinite(q.lastPrice) ? q.lastPrice : null,
+        bid: Number.isFinite(q.bidPrice) ? q.bidPrice : null,
+        ask: Number.isFinite(q.askPrice) ? q.askPrice : null,
+        bidSize: Number.isFinite(q.bidSize) ? q.bidSize : null,
+        askSize: Number.isFinite(q.askSize) ? q.askSize : null,
+        netChange: Number.isFinite(q.netChange) ? q.netChange : null,
+        netPercentChange: Number.isFinite(q.netPercentChange) ? q.netPercentChange : null,
+        quoteTime: Number.isFinite(q.quoteTime) ? q.quoteTime : null,
+      };
+    }
+    return out;
+  });
+
 export const refreshSchwabToken = createServerFn({ method: "POST" })
   .inputValidator((d: { refreshToken: string }) => d)
   .handler(async ({ data }): Promise<SchwabTokens> => {
