@@ -1087,7 +1087,11 @@ export default function TradingPlatform() {
 
   // Overlay live price into the last bar of each series so the chart "tickles"
   for (const sym of Object.keys(allData)) {
-    const lq = live[sym];
+    const lqBase = live[sym];
+    // Prefer Schwab real-time NBBO for the SELECTED symbol when connected.
+    const lq = sym === selectedStock && schwabQuote?.last != null
+      ? { ...(lqBase ?? { symbol: sym, price: schwabQuote.last, ts: Date.now() } as any), price: schwabQuote.last }
+      : lqBase;
     const series = allData[sym];
     if (lq && series.length > 0) {
       const lastBar = { ...series[series.length - 1] };
@@ -1100,7 +1104,10 @@ export default function TradingPlatform() {
   }
 
   const dailyChartData = allData[selectedStock] || [];
-  const selectedLiveQuote = live[selectedStock];
+  const liveBase = live[selectedStock];
+  const selectedLiveQuote = schwabQuote?.last != null
+    ? { ...(liveBase ?? { symbol: selectedStock, ts: Date.now() } as any), price: schwabQuote.last }
+    : liveBase;
   // Convert intraday bars -> Row[] (same shape) so we can reuse buildChartData/charts.
   const intradayRows: Row[] = useMemo(() => {
     const bars = intradayBars;
