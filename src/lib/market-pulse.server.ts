@@ -84,6 +84,9 @@ export type GlobalSemiComponent = { symbol: string; name: string; changePct: num
 export type GlobalSemiIndexResponse = {
   avgChangePct: number | null;
   components: GlobalSemiComponent[];
+  level: "LOW" | "ELEVATED" | "HIGH" | "EXTREME";
+  score: number; // 0-100; higher = more risk
+  reason: string;
   asOf: number;
   error?: string;
 };
@@ -100,11 +103,11 @@ export type SemiRiskSentimentResponse = {
 
 const GLOBAL_SEMI_INDICES: { symbol: string; name: string }[] = [
   { symbol: "^KS11", name: "KOSPI" },
-  { symbol: "688000.SS", name: "STAR 50" },
+  { symbol: "000688.SS", name: "STAR 50" },
   { symbol: "^SOX", name: "PHLX Semi" },
   { symbol: "^TWII", name: "TAIEX" },
   { symbol: "^N225", name: "Nikkei 225" },
-  { symbol: "3031.HK", name: "Hang Seng Tech" },
+  { symbol: "^HSTECH", name: "Hang Seng Tech" },
 ];
 
 export type NewsItem = {
