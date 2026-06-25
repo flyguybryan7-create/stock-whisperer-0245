@@ -17,7 +17,7 @@ import {
   type PushPermission,
 } from "@/lib/push-client";
 import { getShortInterest, type ShortInterest } from "@/lib/shortinterest.functions";
-import { fetchFastPulse, fetchMacroNews, fetchGlobalSemiIndex, fetchSemiRiskSentiment } from "@/lib/market-pulse.functions";
+import { fetchFastPulse, fetchMacroNews, fetchGlobalSemiIndex } from "@/lib/market-pulse.functions";
 import type { QuoteSnap } from "@/lib/market-pulse.server";
 import { fetchOptionsActivity } from "@/lib/options.functions";
 import type { OptionsActivity } from "@/lib/options.server";
@@ -634,7 +634,6 @@ export default function TradingPlatform() {
   const fetchMacroNewsFn = useServerFn(fetchMacroNews);
   const fetchFastPulseFn = useServerFn(fetchFastPulse);
   const fetchGlobalSemiIndexFn = useServerFn(fetchGlobalSemiIndex);
-  const fetchSemiRiskSentimentFn = useServerFn(fetchSemiRiskSentiment);
   const fetchOptionsActivityFn = useServerFn(fetchOptionsActivity);
 
   // ============ Schwab real-time quotes ============
@@ -768,20 +767,21 @@ export default function TradingPlatform() {
   });
   const live = (liveQuotes as Record<string, LiveQuote> | undefined) ?? {};
 
-  // Schwab real-time quote for the selected symbol (polls every 1s when connected).
+  // Schwab real-time quotes for EVERY watchlist symbol (polls every 1s when connected).
   const { data: schwabQuoteData } = useQuery({
-    queryKey: ["schwabQuote", selectedStock, schwabTokens?.access_token ?? ""],
+    queryKey: ["schwabQuotes", [...watchlist].sort().join(","), schwabTokens?.access_token ?? ""],
     queryFn: async () => {
       if (!schwabTokens?.access_token) return null;
+      const syms = watchlist.length ? watchlist : [selectedStock];
       try {
-        return await fetchSchwabQuotes({ data: { accessToken: schwabTokens.access_token, symbols: [selectedStock] } });
+        return await fetchSchwabQuotes({ data: { accessToken: schwabTokens.access_token, symbols: syms } });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         if (msg.includes("schwab_unauthorized") && schwabTokens.refresh_token) {
           try {
             const fresh = await refreshSchwab({ data: { refreshToken: schwabTokens.refresh_token } });
             persistTokens(fresh);
-            return await fetchSchwabQuotes({ data: { accessToken: fresh.access_token, symbols: [selectedStock] } });
+            return await fetchSchwabQuotes({ data: { accessToken: fresh.access_token, symbols: syms } });
           } catch (re) {
             setSchwabErr(re instanceof Error ? re.message : String(re));
             return null;
@@ -791,12 +791,13 @@ export default function TradingPlatform() {
         return null;
       }
     },
-    enabled: !!schwabTokens?.access_token && !!selectedStock,
+    enabled: !!schwabTokens?.access_token && watchlist.length > 0,
     refetchInterval: 1000,
     refetchIntervalInBackground: true,
     staleTime: 0,
   });
-  const schwabQuote: SchwabQuote | null = (schwabQuoteData as Record<string, SchwabQuote> | null)?.[selectedStock] ?? null;
+  const schwabQuotes = (schwabQuoteData as Record<string, SchwabQuote> | null) ?? {};
+  const schwabQuote: SchwabQuote | null = schwabQuotes[selectedStock] ?? null;
 
   // Bid/ask now comes through getLiveQuotes (v7 endpoint returns bid/ask/bidSize/askSize)
   // on the same 1s tick as the live price — no separate query.
@@ -835,13 +836,8 @@ export default function TradingPlatform() {
     refetchIntervalInBackground: true,
   });
 
-  // News-based semiconductor sector risk sentiment — refresh every 5 minutes
-  const { data: semiRiskSent } = useQuery({
-    queryKey: ["semiRiskSentiment"],
-    queryFn: () => fetchSemiRiskSentimentFn(),
-    staleTime: 5 * 60_000,
-    refetchInterval: 5 * 60_000,
-  });
+  // SEMI RISK is now derived from the Asian/Philly semiconductor indices
+  // (globalSemis, above). Headline-sentiment query removed.
 
   // Macro market-moving news (CNBC / MarketWatch / WSJ) — refresh every 5 minutes.
   const { data: macroNews } = useQuery({
@@ -1088,10 +1084,20 @@ export default function TradingPlatform() {
   // Overlay live price into the last bar of each series so the chart "tickles"
   for (const sym of Object.keys(allData)) {
     const lqBase = live[sym];
-    // Prefer Schwab real-time NBBO for the SELECTED symbol when connected.
-    const lq = sym === selectedStock && schwabQuote?.last != null
-      ? { ...(lqBase ?? { symbol: sym, price: schwabQuote.last, ts: Date.now() } as any), price: schwabQuote.last }
+    // Prefer Schwab real-time NBBO for EVERY symbol when connected.
+    const sq = schwabQuotes[sym];
+    const lq = sq?.last != null
+      ? {
+          ...(lqBase ?? { symbol: sym, price: sq.last, ts: Date.now() } as any),
+          price: sq.last,
+          bid: sq.bid ?? lqBase?.bid,
+          ask: sq.ask ?? lqBase?.ask,
+          bidSize: sq.bidSize ?? lqBase?.bidSize,
+          askSize: sq.askSize ?? lqBase?.askSize,
+        }
       : lqBase;
+    // Also write back into the live map so all other UI (bid/ask, VWAP comparisons) sees Schwab.
+    if (lq && lq !== lqBase) (live as any)[sym] = lq;
     const series = allData[sym];
     if (lq && series.length > 0) {
       const lastBar = { ...series[series.length - 1] };
@@ -1675,11 +1681,10 @@ export default function TradingPlatform() {
             {/* OV chart is inline per-stock now */}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          {semiRiskSent && (() => {
-            const r = semiRiskSent;
+          {globalSemis && (() => {
+            const r = globalSemis;
             const color = r.level === "EXTREME" ? "#f85149" : r.level === "HIGH" ? "#ff7b29" : r.level === "ELEVATED" ? "#e3b341" : "#39d353";
-            const tip = `Semi sector news sentiment — ${r.level} (${r.score}/100)\nBullish words: ${r.bullishCount} · Bearish words: ${r.bearishCount}\n\n` +
-              (r.headlines.length ? r.headlines.map((h, i) => `${i + 1}. [${h.publisher}] ${h.title}`).join("\n") : "No recent headlines.");
+            const tip = `Semi risk from Asian/Philly indices — ${r.level} (${r.score}/100)\n\n${r.reason}`;
             return (
               <span title={tip}
                 style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px", letterSpacing: 0.5, flexShrink: 0 }}>
