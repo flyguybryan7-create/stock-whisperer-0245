@@ -837,13 +837,8 @@ export default function TradingPlatform() {
     refetchIntervalInBackground: true,
   });
 
-  // News-based semiconductor sector risk sentiment — refresh every 5 minutes
-  const { data: semiRiskSent } = useQuery({
-    queryKey: ["semiRiskSentiment"],
-    queryFn: () => fetchSemiRiskSentimentFn(),
-    staleTime: 5 * 60_000,
-    refetchInterval: 5 * 60_000,
-  });
+  // SEMI RISK is now derived from the Asian/Philly semiconductor indices
+  // (globalSemis, above). Headline-sentiment query removed.
 
   // Macro market-moving news (CNBC / MarketWatch / WSJ) — refresh every 5 minutes.
   const { data: macroNews } = useQuery({
