@@ -2165,7 +2165,9 @@ export default function TradingPlatform() {
             // Show any positive, finite quote — server already filtered junk.
             const bidOk = bidVal != null && Number.isFinite(bidVal) && bidVal > 0;
             const askOk = askVal != null && Number.isFinite(askVal) && askVal > 0;
-            const vwap = watchlistVwap[selectedStock];
+            // Prefer Schwab's authoritative session VWAP when present; fall back
+            // to the locally computed VWAP from intraday bars.
+            const vwap = schwabQuote?.vwap ?? watchlistVwap[selectedStock];
             return (
               <>
                 {/* Row 1: SYMBOL  PRICE  CHANGE  (session badge) */}
