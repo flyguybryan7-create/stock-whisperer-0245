@@ -2155,9 +2155,27 @@ export default function TradingPlatform() {
             const sess = liveSel?.session;
             const sessLabel = sess === "PRE" ? "PRE" : sess === "POST" ? "AH" : sess === "REGULAR" ? "LIVE" : sess === "OVERNIGHT" ? "24H" : sess ? "CLSD" : null;
             const sessColor = sess === "REGULAR" ? "#39d353" : sess === "PRE" ? "#58a6ff" : sess === "POST" ? "#d2a8ff" : sess === "OVERNIGHT" ? "#ff9b3d" : "#8b949e";
-            const si = shorts[selectedStock];
-            const pct = si?.shortPercentOfFloat;
-            const siColor = si?.risk === "EXTREME" ? "#f85149" : si?.risk === "HIGH" ? "#ff7b29" : si?.risk === "MODERATE" ? "#e3b341" : si?.risk === "LOW" ? "#39d353" : "#8b949e";
+            const siBase = shorts[selectedStock];
+            const sf = schwabFundamentals[selectedStock];
+            // Prefer Schwab's shortIntToFloat (it's authoritative and refreshed
+            // daily). Fall back to Nasdaq/stockanalysis blend.
+            const pct = sf?.shortIntToFloat ?? siBase?.shortPercentOfFloat ?? null;
+            const riskFromPct = pct == null
+              ? "UNKNOWN"
+              : pct >= 30 ? "EXTREME" : pct >= 20 ? "HIGH" : pct >= 10 ? "MODERATE" : "LOW";
+            const si = siBase ?? (sf ? {
+              symbol: selectedStock,
+              floatShares: null,
+              sharesOutstanding: sf.sharesOutstanding,
+              sharesShort: null,
+              shortPercentOfFloat: sf.shortIntToFloat,
+              shortPercentOfShares: null,
+              shortRatio: sf.shortIntDayToCover,
+              shortDate: null,
+              risk: riskFromPct as ShortInterest["risk"],
+            } as ShortInterest : undefined);
+            const effectiveRisk = si?.risk && si.risk !== "UNKNOWN" ? si.risk : riskFromPct;
+            const siColor = effectiveRisk === "EXTREME" ? "#f85149" : effectiveRisk === "HIGH" ? "#ff7b29" : effectiveRisk === "MODERATE" ? "#e3b341" : effectiveRisk === "LOW" ? "#39d353" : "#8b949e";
             const fmtM = (n: number | null | undefined) => n == null ? "—" : n >= 1e9 ? (n / 1e9).toFixed(2) + "B" : n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n.toLocaleString();
             const bidVal = liveSel?.bid;
             const askVal = liveSel?.ask;
