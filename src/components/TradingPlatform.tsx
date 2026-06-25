@@ -1090,10 +1090,20 @@ export default function TradingPlatform() {
   // Overlay live price into the last bar of each series so the chart "tickles"
   for (const sym of Object.keys(allData)) {
     const lqBase = live[sym];
-    // Prefer Schwab real-time NBBO for the SELECTED symbol when connected.
-    const lq = sym === selectedStock && schwabQuote?.last != null
-      ? { ...(lqBase ?? { symbol: sym, price: schwabQuote.last, ts: Date.now() } as any), price: schwabQuote.last }
+    // Prefer Schwab real-time NBBO for EVERY symbol when connected.
+    const sq = schwabQuotes[sym];
+    const lq = sq?.last != null
+      ? {
+          ...(lqBase ?? { symbol: sym, price: sq.last, ts: Date.now() } as any),
+          price: sq.last,
+          bid: sq.bid ?? lqBase?.bid,
+          ask: sq.ask ?? lqBase?.ask,
+          bidSize: sq.bidSize ?? lqBase?.bidSize,
+          askSize: sq.askSize ?? lqBase?.askSize,
+        }
       : lqBase;
+    // Also write back into the live map so all other UI (bid/ask, VWAP comparisons) sees Schwab.
+    if (lq && lq !== lqBase) (live as any)[sym] = lq;
     const series = allData[sym];
     if (lq && series.length > 0) {
       const lastBar = { ...series[series.length - 1] };
