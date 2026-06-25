@@ -149,3 +149,166 @@ export const refreshSchwabToken = createServerFn({ method: "POST" })
     const json = JSON.parse(text);
     return { ...json, obtained_at: Date.now() };
   });
+
+// ============ Schwab 24-hour intraday price history ============
+// Returns minute candles for the last 2 calendar days with extended hours so
+// the chart can render a true 24h tape for overnight-tradeable equities.
+export type SchwabBar = {
+  t: number; // unix seconds
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+};
+
+export const getSchwabPriceHistory = createServerFn({ method: "POST" })
+  .inputValidator((d: { accessToken: string; symbol: string; minutes?: 1 | 5 | 10 | 15 | 30; days?: 1 | 2 | 3 | 5 | 10 }) => d)
+  .handler(async ({ data }): Promise<SchwabBar[]> => {
+    const sym = (data.symbol || "").toUpperCase();
+    if (!sym) return [];
+    const freq = data.minutes ?? 1;
+    const period = data.days ?? 2;
+    const url =
+      `https://api.schwabapi.com/marketdata/v1/pricehistory?symbol=${encodeURIComponent(sym)}` +
+      `&periodType=day&period=${period}&frequencyType=minute&frequency=${freq}&needExtendedHoursData=true`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${data.accessToken}`, Accept: "application/json" },
+    });
+    if (res.status === 401) throw new Error("schwab_unauthorized");
+    if (!res.ok) {
+      console.error("[schwab] pricehistory", sym, res.status, (await res.text()).slice(0, 200));
+      return [];
+    }
+    const json: any = await res.json().catch(() => ({}));
+    const candles: any[] = Array.isArray(json?.candles) ? json.candles : [];
+    return candles
+      .filter((c) => Number.isFinite(c?.close))
+      .map((c) => ({
+        t: Math.floor(Number(c.datetime) / 1000),
+        open: Number(c.open),
+        high: Number(c.high),
+        low: Number(c.low),
+        close: Number(c.close),
+        volume: Number(c.volume) || 0,
+      }));
+  });
+
+// ============ Schwab fundamentals (short interest / float) ============
+export type SchwabFundamental = {
+  symbol: string;
+  sharesOutstanding: number | null;
+  shortIntToFloat: number | null;   // already a percentage (e.g. 18.32)
+  shortIntDayToCover: number | null;
+  marketCap: number | null;
+  avg10DaysVolume: number | null;
+};
+
+export const getSchwabFundamentals = createServerFn({ method: "POST" })
+  .inputValidator((d: { accessToken: string; symbols: string[] }) => d)
+  .handler(async ({ data }): Promise<Record<string, SchwabFundamental>> => {
+    const syms = (data.symbols || []).map((s) => s.toUpperCase()).filter(Boolean);
+    if (syms.length === 0) return {};
+    const url = `https://api.schwabapi.com/marketdata/v1/quotes?symbols=${encodeURIComponent(syms.join(","))}&fields=fundamental`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${data.accessToken}`, Accept: "application/json" },
+    });
+    if (res.status === 401) throw new Error("schwab_unauthorized");
+    if (!res.ok) {
+      console.error("[schwab] fundamentals", res.status, (await res.text()).slice(0, 200));
+      return {};
+    }
+    const json: any = await res.json().catch(() => ({}));
+    const out: Record<string, SchwabFundamental> = {};
+    for (const sym of syms) {
+      const f = json?.[sym]?.fundamental ?? {};
+      out[sym] = {
+        symbol: sym,
+        sharesOutstanding: Number.isFinite(f.sharesOutstanding) ? f.sharesOutstanding : null,
+        shortIntToFloat: Number.isFinite(f.shortIntToFloat) ? f.shortIntToFloat : null,
+        shortIntDayToCover: Number.isFinite(f.shortIntDayToCover) ? f.shortIntDayToCover : null,
+        marketCap: Number.isFinite(f.marketCap) ? f.marketCap : null,
+        avg10DaysVolume: Number.isFinite(f.avg10DaysVolume) ? f.avg10DaysVolume : null,
+      };
+    }
+    return out;
+  });
+
+// ============ Schwab options chain — top-volume strike per side ============
+export type SchwabTopStrikes = {
+  symbol: string;
+  expiry: string | null;            // YYYY-MM-DD
+  dte: number | null;
+  label: string | null;             // e.g. "Jun '26"
+  topCallStrike: number | null;
+  topCallPct: number | null;        // 0..1 share of side's volume at strike
+  topPutStrike: number | null;
+  topPutPct: number | null;
+  callVolume: number;
+  putVolume: number;
+};
+
+export const getSchwabTopStrikes = createServerFn({ method: "POST" })
+  .inputValidator((d: { accessToken: string; symbol: string }) => d)
+  .handler(async ({ data }): Promise<SchwabTopStrikes | null> => {
+    const sym = (data.symbol || "").toUpperCase();
+    if (!sym) return null;
+    const url =
+      `https://api.schwabapi.com/marketdata/v1/chains?symbol=${encodeURIComponent(sym)}` +
+      `&contractType=ALL&includeQuotes=false&range=ALL&strikeCount=200`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${data.accessToken}`, Accept: "application/json" },
+    });
+    if (res.status === 401) throw new Error("schwab_unauthorized");
+    if (!res.ok) {
+      console.error("[schwab] chains", sym, res.status, (await res.text()).slice(0, 200));
+      return null;
+    }
+    const json: any = await res.json().catch(() => ({}));
+    const callMap = json?.callExpDateMap ?? {};
+    const putMap = json?.putExpDateMap ?? {};
+    // Keys look like "2026-06-19:21" (expiry:DTE). Pick the smallest non-negative DTE
+    // that has any volume on either side.
+    const allKeys = Array.from(new Set([...Object.keys(callMap), ...Object.keys(putMap)])).sort();
+    let chosen: string | null = null;
+    for (const k of allKeys) {
+      const [, dteStr] = k.split(":");
+      const dte = Number(dteStr);
+      if (!Number.isFinite(dte) || dte < 0) continue;
+      chosen = k;
+      break;
+    }
+    if (!chosen) return null;
+    const [expiry, dteStr] = chosen.split(":");
+    const dte = Number(dteStr);
+    const pickTopFromExp = (map: any): { strike: number | null; pct: number | null; total: number } => {
+      const exp = map?.[chosen!] ?? {};
+      let best = 0, bestStrike = 0, total = 0;
+      for (const strikeKey of Object.keys(exp)) {
+        const arr = exp[strikeKey];
+        const v = Array.isArray(arr) && arr[0]?.totalVolume ? Number(arr[0].totalVolume) : 0;
+        if (!Number.isFinite(v)) continue;
+        total += v;
+        if (v > best) { best = v; bestStrike = Number(strikeKey); }
+      }
+      return { strike: bestStrike || null, pct: bestStrike && total > 0 ? best / total : null, total };
+    };
+    const tc = pickTopFromExp(callMap);
+    const tp = pickTopFromExp(putMap);
+    const d = new Date(expiry + "T00:00:00");
+    const label = Number.isNaN(d.getTime())
+      ? expiry
+      : `${d.toLocaleString("en-US", { month: "short" })} '${String(d.getFullYear()).slice(-2)}`;
+    return {
+      symbol: sym,
+      expiry,
+      dte: Number.isFinite(dte) ? dte : null,
+      label,
+      topCallStrike: tc.strike,
+      topCallPct: tc.pct,
+      topPutStrike: tp.strike,
+      topPutPct: tp.pct,
+      callVolume: tc.total,
+      putVolume: tp.total,
+    };
+  });
