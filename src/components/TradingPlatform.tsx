@@ -811,6 +811,94 @@ export default function TradingPlatform() {
   const schwabQuotes = (schwabQuoteData as Record<string, SchwabQuote> | null) ?? {};
   const schwabQuote: SchwabQuote | null = schwabQuotes[selectedStock] ?? null;
 
+  // ---- Schwab 24-hour intraday pricehistory ----
+  // Only fires when the user has selected the new "24H" range button AND has
+  // Schwab connected. Returns 2 calendar days of 1m candles with extended-hours
+  // data so the chart shows true overnight tape for tradeable equities.
+  const fetchSchwabHistory = useServerFn(getSchwabPriceHistory);
+  const { data: schwabHistoryData } = useQuery({
+    queryKey: ["schwabHistory", selectedStock, intradayInterval, schwabTokens?.access_token ?? ""],
+    queryFn: async () => {
+      if (!schwabTokens?.access_token) return null;
+      const freq = intradayInterval === "1m" ? 1 : intradayInterval === "2m" ? 1 : intradayInterval === "5m" ? 5 : 15;
+      try {
+        return await fetchSchwabHistory({
+          data: { accessToken: schwabTokens.access_token, symbol: selectedStock, minutes: freq as 1 | 5 | 10 | 15 | 30, days: 2 },
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes("schwab_unauthorized") && schwabTokens.refresh_token) {
+          try {
+            const fresh = await refreshSchwab({ data: { refreshToken: schwabTokens.refresh_token } });
+            persistTokens(fresh);
+            return await fetchSchwabHistory({
+              data: { accessToken: fresh.access_token, symbol: selectedStock, minutes: freq as 1 | 5 | 10 | 15 | 30, days: 2 },
+            });
+          } catch { return null; }
+        }
+        return null;
+      }
+    },
+    enabled: !!schwabTokens?.access_token && intradayRange === "24H",
+    refetchInterval: 15_000,
+    staleTime: 5_000,
+  });
+
+  // ---- Schwab fundamentals (short interest / float) for all watchlist syms ----
+  const fetchSchwabFundamentals = useServerFn(getSchwabFundamentals);
+  const { data: schwabFundData } = useQuery({
+    queryKey: ["schwabFundamentals", [...watchlist].sort().join(",")],
+    queryFn: async () => {
+      if (!schwabTokens?.access_token || watchlist.length === 0) return null;
+      try {
+        return await fetchSchwabFundamentals({ data: { accessToken: schwabTokens.access_token, symbols: watchlist } });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes("schwab_unauthorized") && schwabTokens.refresh_token) {
+          try {
+            const fresh = await refreshSchwab({ data: { refreshToken: schwabTokens.refresh_token } });
+            persistTokens(fresh);
+            return await fetchSchwabFundamentals({ data: { accessToken: fresh.access_token, symbols: watchlist } });
+          } catch { return null; }
+        }
+        return null;
+      }
+    },
+    enabled: !!schwabTokens?.access_token && watchlist.length > 0,
+    refetchInterval: 10 * 60_000, // 10 min — fundamentals don't tick
+    staleTime: 10 * 60_000,
+  });
+  const schwabFundamentals = (schwabFundData as Record<string, SchwabFundamental> | null) ?? {};
+
+  // ---- Schwab top-volume call/put strikes for the selected symbol ----
+  // Daily-keyed so the strike target refreshes whenever the date rolls and
+  // also rechecks every 60s to follow intraday flow.
+  const fetchSchwabStrikes = useServerFn(getSchwabTopStrikes);
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const { data: schwabStrikesData } = useQuery({
+    queryKey: ["schwabStrikes", selectedStock, todayKey],
+    queryFn: async () => {
+      if (!schwabTokens?.access_token) return null;
+      try {
+        return await fetchSchwabStrikes({ data: { accessToken: schwabTokens.access_token, symbol: selectedStock } });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes("schwab_unauthorized") && schwabTokens.refresh_token) {
+          try {
+            const fresh = await refreshSchwab({ data: { refreshToken: schwabTokens.refresh_token } });
+            persistTokens(fresh);
+            return await fetchSchwabStrikes({ data: { accessToken: fresh.access_token, symbol: selectedStock } });
+          } catch { return null; }
+        }
+        return null;
+      }
+    },
+    enabled: !!schwabTokens?.access_token && !!selectedStock,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  const schwabTopStrikes = (schwabStrikesData as SchwabTopStrikes | null) ?? null;
+
   // Bid/ask now comes through getLiveQuotes (v7 endpoint returns bid/ask/bidSize/askSize)
   // on the same 1s tick as the live price — no separate query.
 
