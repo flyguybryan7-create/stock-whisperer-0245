@@ -2297,10 +2297,10 @@ export default function TradingPlatform() {
           {/* Range */}
           <div style={{ display: "grid", gap: 4, marginBottom: 4 }}>
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-              {(["1D", "2D", "5D"] as const).map((r) => (
+              {(["24H", "1D", "2D", "5D"] as const).map((r) => (
                 <button key={r} onClick={() => { setChartMode("INTRADAY"); setIntradayRange(r); }}
                   style={{ background: chartMode === "INTRADAY" && intradayRange === r ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "2px 8px", fontSize: 10, color: chartMode === "INTRADAY" && intradayRange === r ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
-                  {r}
+                  {r}{r === "24H" && !schwabTokens ? "*" : ""}
                 </button>
               ))}
               {[14, 30, 60, 90, 120].map(r => (
