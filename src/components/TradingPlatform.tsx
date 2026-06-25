@@ -1026,9 +1026,22 @@ export default function TradingPlatform() {
     queryKey: ["intraday", selectedStock, intradayRange, intradayInterval],
     queryFn: () => fetchIntraday({ data: intradayRequest }),
     refetchInterval: 15_000,
-    enabled: !!selectedStock,
+    enabled: !!selectedStock && intradayRange !== "24H",
   });
-  const intradayBars: IntradayBar[] = intradayData ?? [];
+  // For 24H mode prefer Schwab's true 2-day extended-hours candles; falls back
+  // to Yahoo when Schwab isn't connected (the 2d range covers the prior
+  // overnight session well enough for a synthetic 24h view).
+  const intradayBars: IntradayBar[] = useMemo(() => {
+    if (intradayRange === "24H") {
+      const sb = (schwabHistoryData as SchwabBar[] | null) ?? null;
+      if (sb && sb.length) return sb;
+      // Fallback: use the existing batch which already runs at range=2d, 1m.
+      const batch = (watchlistIntradayData ?? {}) as Record<string, IntradayBar[]>;
+      const fallback = batch[selectedStock] ?? [];
+      if (fallback.length) return fallback;
+    }
+    return intradayData ?? [];
+  }, [intradayRange, schwabHistoryData, intradayData, watchlistIntradayData, selectedStock]);
   const dayTrade = useMemo(() => getDayTradeSignal(intradayBars), [intradayBars]);
 
   // Intraday bars for every watchlist symbol — refreshed every 3s so the
