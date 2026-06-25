@@ -83,6 +83,8 @@ export type SchwabQuote = {
   netChange: number | null;
   netPercentChange: number | null;
   quoteTime: number | null; // ms epoch
+  vwap: number | null;
+  totalVolume: number | null;
 };
 
 export const getSchwabQuotes = createServerFn({ method: "POST" })
@@ -90,7 +92,7 @@ export const getSchwabQuotes = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<Record<string, SchwabQuote>> => {
     const syms = (data.symbols || []).map((s) => s.toUpperCase()).filter(Boolean);
     if (syms.length === 0) return {};
-    const url = `https://api.schwabapi.com/marketdata/v1/quotes?symbols=${encodeURIComponent(syms.join(","))}&fields=quote`;
+    const url = `https://api.schwabapi.com/marketdata/v1/quotes?symbols=${encodeURIComponent(syms.join(","))}&fields=quote,regular`;
     const res = await fetch(url, {
       headers: {
         Authorization: `Bearer ${data.accessToken}`,
@@ -116,6 +118,8 @@ export const getSchwabQuotes = createServerFn({ method: "POST" })
         netChange: Number.isFinite(q.netChange) ? q.netChange : null,
         netPercentChange: Number.isFinite(q.netPercentChange) ? q.netPercentChange : null,
         quoteTime: Number.isFinite(q.quoteTime) ? q.quoteTime : null,
+        vwap: Number.isFinite(q.vwap) ? q.vwap : null,
+        totalVolume: Number.isFinite(q.totalVolume) ? q.totalVolume : null,
       };
     }
     return out;
