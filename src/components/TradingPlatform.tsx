@@ -17,7 +17,7 @@ import {
   type PushPermission,
 } from "@/lib/push-client";
 import { getShortInterest, type ShortInterest } from "@/lib/shortinterest.functions";
-import { fetchFastPulse, fetchMacroNews, fetchGlobalSemiIndex, fetchSemiRiskSentiment } from "@/lib/market-pulse.functions";
+import { fetchFastPulse, fetchMacroNews, fetchGlobalSemiIndex } from "@/lib/market-pulse.functions";
 import type { QuoteSnap } from "@/lib/market-pulse.server";
 import { fetchOptionsActivity } from "@/lib/options.functions";
 import type { OptionsActivity } from "@/lib/options.server";
