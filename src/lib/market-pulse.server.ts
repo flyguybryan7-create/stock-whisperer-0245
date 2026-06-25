@@ -456,10 +456,27 @@ export async function fetchGlobalSemiIndexSnapshot(): Promise<GlobalSemiIndexRes
     );
     const valid = components.filter((c) => c.changePct != null) as Array<GlobalSemiComponent & { changePct: number }>;
     const avgChangePct = valid.length ? valid.reduce((s, c) => s + c.changePct, 0) / valid.length : null;
-    return { avgChangePct, components, asOf: Date.now() };
+    // Risk model: heavier weight to PHLX Semi (^SOX) since it's the US semi tape.
+    // Otherwise a decliner-weighted aggregate of the six Asian/Philly indices.
+    const decliners = valid.filter((c) => c.changePct < -0.1).length;
+    const sox = valid.find((c) => c.symbol === "^SOX")?.changePct ?? 0;
+    const weighted = valid.length
+      ? (avgChangePct! * 0.6) + (sox * 0.4)
+      : 0;
+    // Negative weighted % => higher risk. -2% => ~80, -1% => ~60, 0 => 40, +1% => 20.
+    let score = Math.round(40 - weighted * 20 + (decliners >= 4 ? 15 : decliners >= 3 ? 8 : 0));
+    score = Math.max(0, Math.min(100, score));
+    const level: GlobalSemiIndexResponse["level"] =
+      score >= 70 ? "EXTREME" : score >= 50 ? "HIGH" : score >= 30 ? "ELEVATED" : "LOW";
+    const fmt = (n: number) => `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
+    const reason =
+      `Asian/Philly semi tape: ` +
+      components.map((c) => `${c.name} ${c.changePct == null ? "—" : fmt(c.changePct)}`).join(" · ") +
+      `\nAvg ${avgChangePct == null ? "—" : fmt(avgChangePct)} · ${decliners} of ${valid.length} declining`;
+    return { avgChangePct, components, level, score, reason, asOf: Date.now() };
   } catch (error) {
     console.error("[global-semis] snapshot failed", error);
-    return { avgChangePct: null, components: [], asOf: Date.now(), error: "SERVICE_UNAVAILABLE" };
+    return { avgChangePct: null, components: [], level: "ELEVATED", score: 40, reason: "unavailable", asOf: Date.now(), error: "SERVICE_UNAVAILABLE" };
   }
 }
 
