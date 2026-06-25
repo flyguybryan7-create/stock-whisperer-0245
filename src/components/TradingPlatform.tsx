@@ -2262,25 +2262,38 @@ export default function TradingPlatform() {
                   )}
                   {(() => {
                     const oa = selectedOptionsActivity?.items?.[selectedStock] ?? optionsActivity[selectedStock];
-                    if (!oa) return null;
-                    const buckets = oa.expiries ?? [];
+                    // Prefer Schwab's authoritative option-chain volume when connected.
+                    const sts = schwabTopStrikes && schwabTopStrikes.symbol === selectedStock ? schwabTopStrikes : null;
+                    if (!oa && !sts) return null;
+                    const buckets = oa?.expiries ?? [];
                     const bucket = buckets[0];
-                    const view = bucket ?? {
-                      label: "All",
-                      dte: null as number | null,
-                      topCallStrike: oa.topCallStrike,
-                      topCallPct: oa.topCallPct,
-                      topPutStrike: oa.topPutStrike,
-                      topPutPct: oa.topPutPct,
-                    };
+                    const view = sts
+                      ? {
+                          label: sts.label ?? "Next",
+                          dte: sts.dte,
+                          topCallStrike: sts.topCallStrike,
+                          topCallPct: sts.topCallPct,
+                          topPutStrike: sts.topPutStrike,
+                          topPutPct: sts.topPutPct,
+                        }
+                      : bucket ?? {
+                          label: "All",
+                          dte: null as number | null,
+                          topCallStrike: oa!.topCallStrike,
+                          topCallPct: oa!.topCallPct,
+                          topPutStrike: oa!.topPutStrike,
+                          topPutPct: oa!.topPutPct,
+                        };
                     const hasCall = view.topCallStrike != null && view.topCallPct != null;
                     const hasPut = view.topPutStrike != null && view.topPutPct != null;
-                    if (!hasCall && !hasPut && buckets.length === 0) return null;
+                    if (!hasCall && !hasPut && buckets.length === 0 && !sts) return null;
+                    const nextLabel = sts ? sts.label : bucket?.label;
+                    const nextDte = sts ? sts.dte : bucket?.dte;
                     return (
                       <span style={{ display: "flex", gap: 10, flexBasis: "100%", flexWrap: "wrap", alignItems: "center" }}>
-                        {bucket && (
+                        {nextLabel && (
                           <span title="Nearest current listed options expiration" style={{ color: "#58a6ff", border: "1px solid #21262d", borderRadius: 4, padding: "2px 4px" }}>
-                            NEXT EXP {bucket.label}{bucket.dte != null ? ` · ${bucket.dte}d` : ""}
+                            NEXT EXP {nextLabel}{nextDte != null ? ` · ${nextDte}d` : ""}{sts ? " · Schwab" : ""}
                           </span>
                         )}
                         {hasCall && (
