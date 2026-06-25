@@ -526,7 +526,7 @@ export default function TradingPlatform() {
   const [notification, setNotification] = useState<{ msg: string } | null>(null);
   const [chartRange, setChartRange] = useState(60);
   const [chartMode, setChartMode] = useState<"D" | "INTRADAY">("INTRADAY");
-  const [intradayRange, setIntradayRange] = useState<"1D" | "2D" | "5D">("1D");
+  const [intradayRange, setIntradayRange] = useState<"1D" | "2D" | "5D" | "24H">("1D");
   const [intradayInterval, setIntradayInterval] = useState<"1m" | "2m" | "5m" | "15m">("1m");
   // User-tweakable zoom multiplier for chart bar width (pinch / +/- buttons).
   const [chartZoom, setChartZoom] = useState(1);
