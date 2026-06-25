@@ -21,7 +21,19 @@ import { fetchFastPulse, fetchMacroNews, fetchGlobalSemiIndex } from "@/lib/mark
 import type { QuoteSnap } from "@/lib/market-pulse.server";
 import { fetchOptionsActivity } from "@/lib/options.functions";
 import type { OptionsActivity } from "@/lib/options.server";
-import { getSchwabAuthUrl, getSchwabQuotes, refreshSchwabToken, type SchwabTokens, type SchwabQuote } from "@/lib/schwab.functions";
+import {
+  getSchwabAuthUrl,
+  getSchwabQuotes,
+  refreshSchwabToken,
+  getSchwabPriceHistory,
+  getSchwabFundamentals,
+  getSchwabTopStrikes,
+  type SchwabTokens,
+  type SchwabQuote,
+  type SchwabBar,
+  type SchwabFundamental,
+  type SchwabTopStrikes,
+} from "@/lib/schwab.functions";
 import { SCHWAB_TOKEN_KEY } from "@/routes/auth.schwab.callback";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { useSubscription } from "@/hooks/useSubscription";
@@ -514,7 +526,7 @@ export default function TradingPlatform() {
   const [notification, setNotification] = useState<{ msg: string } | null>(null);
   const [chartRange, setChartRange] = useState(60);
   const [chartMode, setChartMode] = useState<"D" | "INTRADAY">("INTRADAY");
-  const [intradayRange, setIntradayRange] = useState<"1D" | "2D" | "5D">("1D");
+  const [intradayRange, setIntradayRange] = useState<"1D" | "2D" | "5D" | "24H">("1D");
   const [intradayInterval, setIntradayInterval] = useState<"1m" | "2m" | "5m" | "15m">("1m");
   // User-tweakable zoom multiplier for chart bar width (pinch / +/- buttons).
   const [chartZoom, setChartZoom] = useState(1);
@@ -799,6 +811,94 @@ export default function TradingPlatform() {
   const schwabQuotes = (schwabQuoteData as Record<string, SchwabQuote> | null) ?? {};
   const schwabQuote: SchwabQuote | null = schwabQuotes[selectedStock] ?? null;
 
+  // ---- Schwab 24-hour intraday pricehistory ----
+  // Only fires when the user has selected the new "24H" range button AND has
+  // Schwab connected. Returns 2 calendar days of 1m candles with extended-hours
+  // data so the chart shows true overnight tape for tradeable equities.
+  const fetchSchwabHistory = useServerFn(getSchwabPriceHistory);
+  const { data: schwabHistoryData } = useQuery({
+    queryKey: ["schwabHistory", selectedStock, intradayInterval, schwabTokens?.access_token ?? ""],
+    queryFn: async () => {
+      if (!schwabTokens?.access_token) return null;
+      const freq = intradayInterval === "1m" ? 1 : intradayInterval === "2m" ? 1 : intradayInterval === "5m" ? 5 : 15;
+      try {
+        return await fetchSchwabHistory({
+          data: { accessToken: schwabTokens.access_token, symbol: selectedStock, minutes: freq as 1 | 5 | 10 | 15 | 30, days: 2 },
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes("schwab_unauthorized") && schwabTokens.refresh_token) {
+          try {
+            const fresh = await refreshSchwab({ data: { refreshToken: schwabTokens.refresh_token } });
+            persistTokens(fresh);
+            return await fetchSchwabHistory({
+              data: { accessToken: fresh.access_token, symbol: selectedStock, minutes: freq as 1 | 5 | 10 | 15 | 30, days: 2 },
+            });
+          } catch { return null; }
+        }
+        return null;
+      }
+    },
+    enabled: !!schwabTokens?.access_token && intradayRange === "24H",
+    refetchInterval: 15_000,
+    staleTime: 5_000,
+  });
+
+  // ---- Schwab fundamentals (short interest / float) for all watchlist syms ----
+  const fetchSchwabFundamentals = useServerFn(getSchwabFundamentals);
+  const { data: schwabFundData } = useQuery({
+    queryKey: ["schwabFundamentals", [...watchlist].sort().join(",")],
+    queryFn: async () => {
+      if (!schwabTokens?.access_token || watchlist.length === 0) return null;
+      try {
+        return await fetchSchwabFundamentals({ data: { accessToken: schwabTokens.access_token, symbols: watchlist } });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes("schwab_unauthorized") && schwabTokens.refresh_token) {
+          try {
+            const fresh = await refreshSchwab({ data: { refreshToken: schwabTokens.refresh_token } });
+            persistTokens(fresh);
+            return await fetchSchwabFundamentals({ data: { accessToken: fresh.access_token, symbols: watchlist } });
+          } catch { return null; }
+        }
+        return null;
+      }
+    },
+    enabled: !!schwabTokens?.access_token && watchlist.length > 0,
+    refetchInterval: 10 * 60_000, // 10 min — fundamentals don't tick
+    staleTime: 10 * 60_000,
+  });
+  const schwabFundamentals = (schwabFundData as Record<string, SchwabFundamental> | null) ?? {};
+
+  // ---- Schwab top-volume call/put strikes for the selected symbol ----
+  // Daily-keyed so the strike target refreshes whenever the date rolls and
+  // also rechecks every 60s to follow intraday flow.
+  const fetchSchwabStrikes = useServerFn(getSchwabTopStrikes);
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const { data: schwabStrikesData } = useQuery({
+    queryKey: ["schwabStrikes", selectedStock, todayKey],
+    queryFn: async () => {
+      if (!schwabTokens?.access_token) return null;
+      try {
+        return await fetchSchwabStrikes({ data: { accessToken: schwabTokens.access_token, symbol: selectedStock } });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes("schwab_unauthorized") && schwabTokens.refresh_token) {
+          try {
+            const fresh = await refreshSchwab({ data: { refreshToken: schwabTokens.refresh_token } });
+            persistTokens(fresh);
+            return await fetchSchwabStrikes({ data: { accessToken: fresh.access_token, symbol: selectedStock } });
+          } catch { return null; }
+        }
+        return null;
+      }
+    },
+    enabled: !!schwabTokens?.access_token && !!selectedStock,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  const schwabTopStrikes = (schwabStrikesData as SchwabTopStrikes | null) ?? null;
+
   // Bid/ask now comes through getLiveQuotes (v7 endpoint returns bid/ask/bidSize/askSize)
   // on the same 1s tick as the live price — no separate query.
 
@@ -916,7 +1016,7 @@ export default function TradingPlatform() {
     () => ({
       symbol: selectedStock,
       interval: intradayInterval,
-      range: intradayRange.toLowerCase() as "1d" | "2d" | "5d",
+      range: (intradayRange === "24H" ? "2d" : intradayRange.toLowerCase()) as "1d" | "2d" | "5d",
     }),
     [selectedStock, intradayInterval, intradayRange],
   );
@@ -928,7 +1028,16 @@ export default function TradingPlatform() {
     refetchInterval: 15_000,
     enabled: !!selectedStock,
   });
-  const intradayBars: IntradayBar[] = intradayData ?? [];
+  // For 24H mode prefer Schwab's true 2-day extended-hours candles; falls back
+  // to Yahoo when Schwab isn't connected (the 2d range covers the prior
+  // overnight session well enough for a synthetic 24h view).
+  const intradayBars: IntradayBar[] = useMemo(() => {
+    if (intradayRange === "24H") {
+      const sb = (schwabHistoryData as SchwabBar[] | null) ?? null;
+      if (sb && sb.length) return sb;
+    }
+    return intradayData ?? [];
+  }, [intradayRange, schwabHistoryData, intradayData]);
   const dayTrade = useMemo(() => getDayTradeSignal(intradayBars), [intradayBars]);
 
   // Intraday bars for every watchlist symbol — refreshed every 3s so the
@@ -2046,9 +2155,27 @@ export default function TradingPlatform() {
             const sess = liveSel?.session;
             const sessLabel = sess === "PRE" ? "PRE" : sess === "POST" ? "AH" : sess === "REGULAR" ? "LIVE" : sess === "OVERNIGHT" ? "24H" : sess ? "CLSD" : null;
             const sessColor = sess === "REGULAR" ? "#39d353" : sess === "PRE" ? "#58a6ff" : sess === "POST" ? "#d2a8ff" : sess === "OVERNIGHT" ? "#ff9b3d" : "#8b949e";
-            const si = shorts[selectedStock];
-            const pct = si?.shortPercentOfFloat;
-            const siColor = si?.risk === "EXTREME" ? "#f85149" : si?.risk === "HIGH" ? "#ff7b29" : si?.risk === "MODERATE" ? "#e3b341" : si?.risk === "LOW" ? "#39d353" : "#8b949e";
+            const siBase = shorts[selectedStock];
+            const sf = schwabFundamentals[selectedStock];
+            // Prefer Schwab's shortIntToFloat (it's authoritative and refreshed
+            // daily). Fall back to Nasdaq/stockanalysis blend.
+            const pct = sf?.shortIntToFloat ?? siBase?.shortPercentOfFloat ?? null;
+            const riskFromPct = pct == null
+              ? "UNKNOWN"
+              : pct >= 30 ? "EXTREME" : pct >= 20 ? "HIGH" : pct >= 10 ? "MODERATE" : "LOW";
+            const si = siBase ?? (sf ? {
+              symbol: selectedStock,
+              floatShares: null,
+              sharesOutstanding: sf.sharesOutstanding,
+              sharesShort: null,
+              shortPercentOfFloat: sf.shortIntToFloat,
+              shortPercentOfShares: null,
+              shortRatio: sf.shortIntDayToCover,
+              shortDate: null,
+              risk: riskFromPct as ShortInterest["risk"],
+            } as ShortInterest : undefined);
+            const effectiveRisk = si?.risk && si.risk !== "UNKNOWN" ? si.risk : riskFromPct;
+            const siColor = effectiveRisk === "EXTREME" ? "#f85149" : effectiveRisk === "HIGH" ? "#ff7b29" : effectiveRisk === "MODERATE" ? "#e3b341" : effectiveRisk === "LOW" ? "#39d353" : "#8b949e";
             const fmtM = (n: number | null | undefined) => n == null ? "—" : n >= 1e9 ? (n / 1e9).toFixed(2) + "B" : n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n.toLocaleString();
             const bidVal = liveSel?.bid;
             const askVal = liveSel?.ask;
@@ -2056,7 +2183,9 @@ export default function TradingPlatform() {
             // Show any positive, finite quote — server already filtered junk.
             const bidOk = bidVal != null && Number.isFinite(bidVal) && bidVal > 0;
             const askOk = askVal != null && Number.isFinite(askVal) && askVal > 0;
-            const vwap = watchlistVwap[selectedStock];
+            // Prefer Schwab's authoritative session VWAP when present; fall back
+            // to the locally computed VWAP from intraday bars.
+            const vwap = schwabQuote?.vwap ?? watchlistVwap[selectedStock];
             return (
               <>
                 {/* Row 1: SYMBOL  PRICE  CHANGE  (session badge) */}
@@ -2096,7 +2225,7 @@ export default function TradingPlatform() {
                       title={si ? `Short interest\nFloat: ${fmtM(si.floatShares)}\nShares short: ${fmtM(si.sharesShort)}\nShort % of float: ${pct?.toFixed(2) ?? "—"}%\nDays to cover: ${si.shortRatio?.toFixed(1) ?? "—"}\nRisk: ${si.risk}` : "Short interest data unavailable"}
                       style={{ cursor: "help" }}>
                       SHORT/FLOAT <span style={{ color: siColor, fontWeight: 800 }}>{pct != null ? `${pct.toFixed(1)}%` : "—"}</span>
-                      {si?.risk && si.risk !== "UNKNOWN" && <span style={{ color: siColor, fontSize: 8, marginLeft: 3 }}>{si.risk}</span>}
+                      {effectiveRisk && effectiveRisk !== "UNKNOWN" && <span style={{ color: siColor, fontSize: 8, marginLeft: 3 }}>{effectiveRisk}</span>}
                     </span>
                     {si?.sharesOutstanding != null && (
                       <span title="Total shares outstanding">SHARES OUT <span style={{ color: "#e6edf3", fontWeight: 700 }}>{fmtM(si.sharesOutstanding)}</span></span>
@@ -2133,25 +2262,38 @@ export default function TradingPlatform() {
                   )}
                   {(() => {
                     const oa = selectedOptionsActivity?.items?.[selectedStock] ?? optionsActivity[selectedStock];
-                    if (!oa) return null;
-                    const buckets = oa.expiries ?? [];
+                    // Prefer Schwab's authoritative option-chain volume when connected.
+                    const sts = schwabTopStrikes && schwabTopStrikes.symbol === selectedStock ? schwabTopStrikes : null;
+                    if (!oa && !sts) return null;
+                    const buckets = oa?.expiries ?? [];
                     const bucket = buckets[0];
-                    const view = bucket ?? {
-                      label: "All",
-                      dte: null as number | null,
-                      topCallStrike: oa.topCallStrike,
-                      topCallPct: oa.topCallPct,
-                      topPutStrike: oa.topPutStrike,
-                      topPutPct: oa.topPutPct,
-                    };
+                    const view = sts
+                      ? {
+                          label: sts.label ?? "Next",
+                          dte: sts.dte,
+                          topCallStrike: sts.topCallStrike,
+                          topCallPct: sts.topCallPct,
+                          topPutStrike: sts.topPutStrike,
+                          topPutPct: sts.topPutPct,
+                        }
+                      : bucket ?? {
+                          label: "All",
+                          dte: null as number | null,
+                          topCallStrike: oa!.topCallStrike,
+                          topCallPct: oa!.topCallPct,
+                          topPutStrike: oa!.topPutStrike,
+                          topPutPct: oa!.topPutPct,
+                        };
                     const hasCall = view.topCallStrike != null && view.topCallPct != null;
                     const hasPut = view.topPutStrike != null && view.topPutPct != null;
-                    if (!hasCall && !hasPut && buckets.length === 0) return null;
+                    if (!hasCall && !hasPut && buckets.length === 0 && !sts) return null;
+                    const nextLabel = sts ? sts.label : bucket?.label;
+                    const nextDte = sts ? sts.dte : bucket?.dte;
                     return (
                       <span style={{ display: "flex", gap: 10, flexBasis: "100%", flexWrap: "wrap", alignItems: "center" }}>
-                        {bucket && (
+                        {nextLabel && (
                           <span title="Nearest current listed options expiration" style={{ color: "#58a6ff", border: "1px solid #21262d", borderRadius: 4, padding: "2px 4px" }}>
-                            NEXT EXP {bucket.label}{bucket.dte != null ? ` · ${bucket.dte}d` : ""}
+                            NEXT EXP {nextLabel}{nextDte != null ? ` · ${nextDte}d` : ""}{sts ? " · Schwab" : ""}
                           </span>
                         )}
                         {hasCall && (
@@ -2188,10 +2330,10 @@ export default function TradingPlatform() {
           {/* Range */}
           <div style={{ display: "grid", gap: 4, marginBottom: 4 }}>
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-              {(["1D", "2D", "5D"] as const).map((r) => (
+              {(["24H", "1D", "2D", "5D"] as const).map((r) => (
                 <button key={r} onClick={() => { setChartMode("INTRADAY"); setIntradayRange(r); }}
                   style={{ background: chartMode === "INTRADAY" && intradayRange === r ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "2px 8px", fontSize: 10, color: chartMode === "INTRADAY" && intradayRange === r ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
-                  {r}
+                  {r}{r === "24H" && !schwabTokens ? "*" : ""}
                 </button>
               ))}
               {[14, 30, 60, 90, 120].map(r => (
