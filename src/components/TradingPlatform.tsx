@@ -634,7 +634,6 @@ export default function TradingPlatform() {
   const fetchMacroNewsFn = useServerFn(fetchMacroNews);
   const fetchFastPulseFn = useServerFn(fetchFastPulse);
   const fetchGlobalSemiIndexFn = useServerFn(fetchGlobalSemiIndex);
-  const fetchSemiRiskSentimentFn = useServerFn(fetchSemiRiskSentiment);
   const fetchOptionsActivityFn = useServerFn(fetchOptionsActivity);
 
   // ============ Schwab real-time quotes ============
