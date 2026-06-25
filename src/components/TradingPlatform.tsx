@@ -1687,11 +1687,10 @@ export default function TradingPlatform() {
             {/* OV chart is inline per-stock now */}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          {semiRiskSent && (() => {
-            const r = semiRiskSent;
+          {globalSemis && (() => {
+            const r = globalSemis;
             const color = r.level === "EXTREME" ? "#f85149" : r.level === "HIGH" ? "#ff7b29" : r.level === "ELEVATED" ? "#e3b341" : "#39d353";
-            const tip = `Semi sector news sentiment — ${r.level} (${r.score}/100)\nBullish words: ${r.bullishCount} · Bearish words: ${r.bearishCount}\n\n` +
-              (r.headlines.length ? r.headlines.map((h, i) => `${i + 1}. [${h.publisher}] ${h.title}`).join("\n") : "No recent headlines.");
+            const tip = `Semi risk from Asian/Philly indices — ${r.level} (${r.score}/100)\n\n${r.reason}`;
             return (
               <span title={tip}
                 style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px", letterSpacing: 0.5, flexShrink: 0 }}>
