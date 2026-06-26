@@ -35,6 +35,13 @@ import {
   type SchwabTopStrikes,
 } from "@/lib/schwab.functions";
 import { SCHWAB_TOKEN_KEY } from "@/routes/auth.schwab.callback";
+import {
+  getSharedSchwabQuotes,
+  getSharedSchwabFundamentals,
+  getSharedSchwabTopStrikes,
+  getSharedSchwabPriceHistory,
+} from "@/lib/schwab-shared.functions";
+import { detectTrap, type TrapResult } from "@/lib/trap-indicator";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { useSubscription } from "@/hooks/useSubscription";
 import { supabase } from "@/integrations/supabase/client";
