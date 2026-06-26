@@ -1921,6 +1921,26 @@ export default function TradingPlatform() {
               CONNECT SCHWAB
             </button>
           )}
+          {trap.kind && (() => {
+            const isBull = trap.kind === "BULL_TRAP";
+            const color = isBull ? "#f85149" : "#39d353";
+            const label = isBull ? "BULL TRAP" : "BEAR TRAP";
+            return (
+              <span
+                title={trap.reason}
+                style={{
+                  display: "flex", alignItems: "center", gap: 4,
+                  fontSize: 10, fontWeight: 900, letterSpacing: 0.5,
+                  color: "#0d1117", background: color,
+                  border: `1px solid ${color}`, borderRadius: 4,
+                  padding: "2px 6px", flexShrink: 0,
+                  animation: "pulse 1.4s ease-in-out infinite",
+                }}
+              >
+                🪤 {label}
+              </span>
+            );
+          })()}
           </div>
         </div>
         {/* Row 2: FUT strip full width */}
