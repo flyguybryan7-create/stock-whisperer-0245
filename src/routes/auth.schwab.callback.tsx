@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { exchangeSchwabCode } from "@/lib/schwab.functions";
+import { setOwnerSchwabTokens } from "@/lib/schwab-shared.functions";
 
 export const SCHWAB_TOKEN_KEY = "bryantrade.schwab.tokens.v1";
 
@@ -12,6 +13,7 @@ export const Route = createFileRoute("/auth/schwab/callback")({
 function SchwabCallback() {
   const navigate = useNavigate();
   const exchange = useServerFn(exchangeSchwabCode);
+  const persistOwner = useServerFn(setOwnerSchwabTokens);
   const [status, setStatus] = useState("Completing Schwab sign-in…");
 
   useEffect(() => {
@@ -30,11 +32,21 @@ function SchwabCallback() {
         sessionStorage.setItem(SCHWAB_TOKEN_KEY, JSON.stringify(tokens));
         // Clean up any token previously written to localStorage.
         try { localStorage.removeItem(SCHWAB_TOKEN_KEY); } catch {}
+        // Best-effort: persist tokens to the shared owner row so every viewer
+        // (including signed-out share-link viewers) sees live Schwab quotes.
+        // Requires the caller to be signed into Lovable; safe to ignore failures.
+        persistOwner({ data: {
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token,
+          expiresIn: tokens.expires_in,
+          scope: tokens.scope,
+          tokenType: tokens.token_type,
+        }}).catch((e) => console.warn("[schwab] could not persist owner token", e));
         setStatus("Connected! Redirecting…");
         setTimeout(() => navigate({ to: "/" }), 800);
       })
       .catch((e) => setStatus(`Failed: ${e instanceof Error ? e.message : String(e)}`));
-  }, [exchange, navigate]);
+  }, [exchange, persistOwner, navigate]);
 
   return (
     <div style={{ minHeight: "100vh", background: "#0d1117", color: "#e6edf3", display: "grid", placeItems: "center", fontFamily: "monospace" }}>
