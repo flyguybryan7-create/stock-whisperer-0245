@@ -906,6 +906,64 @@ export default function TradingPlatform() {
   });
   const schwabTopStrikes = (schwabStrikesData as SchwabTopStrikes | null) ?? null;
 
+  // ============================================================
+  // SHARED SCHWAB FEED
+  // Runs for EVERY visitor (including shared/published-link viewers who
+  // are not signed into Schwab). Uses the project owner's Schwab token
+  // stored server-side. If the owner hasn't connected Schwab yet these
+  // server fns return null and the UI falls back to Yahoo as before.
+  // ============================================================
+  const fetchSharedQuotes = useServerFn(getSharedSchwabQuotes);
+  const { data: sharedQuoteData } = useQuery({
+    queryKey: ["sharedSchwabQuotes", [...watchlist].sort().join(",")],
+    queryFn: () => fetchSharedQuotes({ data: { symbols: watchlist.length ? watchlist : [selectedStock] } }),
+    enabled: watchlist.length > 0,
+    refetchInterval: 1000,
+    refetchIntervalInBackground: true,
+    staleTime: 0,
+  });
+  const fetchSharedFund = useServerFn(getSharedSchwabFundamentals);
+  const { data: sharedFundData } = useQuery({
+    queryKey: ["sharedSchwabFundamentals", [...watchlist].sort().join(",")],
+    queryFn: () => fetchSharedFund({ data: { symbols: watchlist } }),
+    enabled: watchlist.length > 0,
+    refetchInterval: 10 * 60_000,
+    staleTime: 10 * 60_000,
+  });
+  const fetchSharedStrikes = useServerFn(getSharedSchwabTopStrikes);
+  const sharedStrikesTodayKey = new Date().toISOString().slice(0, 10);
+  const { data: sharedStrikesData } = useQuery({
+    queryKey: ["sharedSchwabStrikes", selectedStock, sharedStrikesTodayKey],
+    queryFn: () => fetchSharedStrikes({ data: { symbol: selectedStock } }),
+    enabled: !!selectedStock,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  const fetchSharedHistory = useServerFn(getSharedSchwabPriceHistory);
+  const { data: sharedHistoryData } = useQuery({
+    queryKey: ["sharedSchwabHistory", selectedStock, intradayInterval],
+    queryFn: () => {
+      const freq = intradayInterval === "1m" ? 1 : intradayInterval === "2m" ? 1 : intradayInterval === "5m" ? 5 : 15;
+      return fetchSharedHistory({ data: { symbol: selectedStock, minutes: freq as 1 | 5 | 10 | 15 | 30, days: 2 } });
+    },
+    enabled: intradayRange === "24H" && !schwabTokens?.access_token,
+    refetchInterval: 15_000,
+    staleTime: 5_000,
+  });
+
+  // Merge per-user (preferred) with shared (fallback) so signed-out viewers
+  // still see live Schwab quotes via the owner's account.
+  const mergedSchwabQuotes: Record<string, SchwabQuote> = useMemo(() => {
+    const shared = (sharedQuoteData as Record<string, SchwabQuote> | null) ?? {};
+    return { ...shared, ...((schwabQuoteData as Record<string, SchwabQuote> | null) ?? {}) };
+  }, [sharedQuoteData, schwabQuoteData]);
+  const mergedSchwabFund: Record<string, SchwabFundamental> = useMemo(() => {
+    const shared = (sharedFundData as Record<string, SchwabFundamental> | null) ?? {};
+    return { ...shared, ...((schwabFundData as Record<string, SchwabFundamental> | null) ?? {}) };
+  }, [sharedFundData, schwabFundData]);
+  const mergedSchwabStrikes: SchwabTopStrikes | null =
+    (schwabStrikesData as SchwabTopStrikes | null) ?? (sharedStrikesData as SchwabTopStrikes | null) ?? null;
+
   // Bid/ask now comes through getLiveQuotes (v7 endpoint returns bid/ask/bidSize/askSize)
   // on the same 1s tick as the live price — no separate query.
 
