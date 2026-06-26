@@ -1107,10 +1107,18 @@ export default function TradingPlatform() {
     if (intradayRange === "24H") {
       const sb = (schwabHistoryData as SchwabBar[] | null) ?? null;
       if (sb && sb.length) return sb;
+      const shared = (sharedHistoryData as SchwabBar[] | null) ?? null;
+      if (shared && shared.length) return shared;
     }
     return intradayData ?? [];
-  }, [intradayRange, schwabHistoryData, intradayData]);
+  }, [intradayRange, schwabHistoryData, sharedHistoryData, intradayData]);
   const dayTrade = useMemo(() => getDayTradeSignal(intradayBars), [intradayBars]);
+
+  // ----- Gap-and-Trap indicator for the selected symbol -----
+  const trap: TrapResult = useMemo(
+    () => detectTrap(intradayBars as unknown as Parameters<typeof detectTrap>[0], schwabQuote?.vwap ?? null),
+    [intradayBars, schwabQuote?.vwap],
+  );
 
   // Intraday bars for every watchlist symbol — refreshed every 3s so the
   // BUY/SELL/HOLD badges next to each ticker react to live MACD momentum.
