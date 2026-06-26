@@ -964,6 +964,13 @@ export default function TradingPlatform() {
   const mergedSchwabStrikes: SchwabTopStrikes | null =
     (schwabStrikesData as SchwabTopStrikes | null) ?? (sharedStrikesData as SchwabTopStrikes | null) ?? null;
 
+  // Public aliases the rest of the component already uses. Now backed by the
+  // merged feed so shared/published-link viewers see the same live data.
+  const schwabQuotes = mergedSchwabQuotes;
+  const schwabQuote: SchwabQuote | null = mergedSchwabQuotes[selectedStock] ?? null;
+  const schwabFundamentals = mergedSchwabFund;
+  const schwabTopStrikes = mergedSchwabStrikes;
+
   // Bid/ask now comes through getLiveQuotes (v7 endpoint returns bid/ask/bidSize/askSize)
   // on the same 1s tick as the live price — no separate query.
 
