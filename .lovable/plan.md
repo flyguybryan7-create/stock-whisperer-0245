@@ -1,64 +1,65 @@
-## Goal
-Stop the chart squish + null bid/ask issues. One readable OV chart per stock, real candles, touch panning, accurate prices.
+# Build Plan
 
-## Scope of changes
+Three independent pieces. I'll ship them in this order so each one is testable on its own.
 
-### 1. Remove what's broken
-- Delete the **BRYANTRADE MASTER · DAY TRADE SIGNAL CHART** card (the section starting around `TradingPlatform.tsx:2001`). That's the "trend bear" card with the squished candles.
-- Delete the top-of-page `<a href="/charts">OV CHART</a>` button and the per-stock `OV CHART →` link.
-- Delete `src/routes/charts.tsx` and the symbol-picker page entirely. OV becomes inline only.
-- Remove all `<Brush>` components from the Price / OBV / MACD charts.
+## 1. Shared Schwab token (fixes stale quotes for shared viewers)
 
-### 2. Inline OV chart (one per selected stock)
-Add a single new card inside the stock detail view (replacing the deleted Master card) titled `OV · {SYMBOL} · 1D / 1m candles`:
-- Fixed dataset: today's regular-session 1-minute bars from Yahoo (`range=1d&interval=1m`), pulled per selected stock.
-- **Thick candlesticks** rendered via a custom Recharts `shape` (real OHLC body + wick, min body height 2px, body width ≈ 70% of slot).
-- Overlays: cream 20MA line, dark-red 200MA line, yellow volume bars in a 60px sub-panel below.
-- Signals: green `BULL` label 8px under candle low, red `SELL` label 8px over candle high (Elephant Bar + Tail Bar logic already in `VelezOpenIndicators.tsx` — reuse `getElephantBarMarkers`).
-- Y-axis: dynamic domain `[min(low)*0.998, max(high)*1.002]` with 2-decimal `$` ticks.
-- X-axis: HH:MM ticks, `minTickGap=60`.
-- Legend row + disclaimer text as user specified.
+Today your Schwab tokens live in browser cookies — only *you* have them. Viewers fall back to Yahoo. To use your token as a shared feed:
 
-### 3. Touch panning instead of sliders
-Wrap each chart's `<ResponsiveContainer>` in a horizontally scrollable div:
-```tsx
-<div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}>
-  <div style={{ width: Math.max(containerWidth, bars.length * 6) }}>
-    <ResponsiveContainer ...>
+- New table `schwab_owner_tokens` (single-row, owner-only) holding `access_token`, `refresh_token`, `expires_at`, `obtained_at`. RLS: only your `user_id` can read/write; service role for the refresher.
+- New server fn `setOwnerSchwabTokens` — called once after *you* sign into Schwab; stores tokens in the table.
+- New server fn `getSharedSchwabQuotes(symbols)` — public (no auth). Server-side it loads the owner's token from the table using `supabaseAdmin`, auto-refreshes if expired (uses existing `refreshSchwabToken`), then calls Schwab quotes. Returns the same shape as `getSchwabQuotes`.
+- Client switches `schwabQuotes` polling from per-user `getSchwabQuotes` to `getSharedSchwabQuotes` so every visitor on every device sees live Schwab quotes at 1s cadence.
+- Same swap for `getSchwabFundamentals` → `getSharedSchwabFundamentals` and `getSchwabTopStrikes` → `getSharedSchwabTopStrikes`.
+
+**Tradeoff you accepted:** uses your account's rate limits and is against Schwab ToS. If Schwab notices and revokes, only the shared-quote path breaks — your per-user OAuth still works.
+
+## 2. Schwab WebSocket streamer
+
+Schwab's streamer needs a per-account login handshake (userid + token + channel). The clean architecture:
+
+- Server route `/api/public/schwab-stream` (SSE, not WS — Cloudflare Workers don't support persistent outbound WS on the free tier reliably). 
+- On first connect, server opens a single Schwab streamer WS using the owner's token (same shared-feed model as #1), subscribes to LEVELONE_EQUITIES for the union of all symbols any viewer has requested in the last 60s.
+- Server fans out ticks to every connected SSE client filtered by their symbol list.
+- Client hook `useSchwabStream(symbols)` opens an EventSource, merges ticks into the same `live` state your `LiveQuote` map already uses.
+- Polling stays as fallback if the stream drops.
+
+**Honest caveat:** Cloudflare Workers cap WS connection lifetime (~30s idle, ~5min hard). I'll add auto-reconnect, but a true always-on streamer ideally runs on a long-lived server. This will work but expect occasional reconnects. If reconnects become a problem we move the streamer to a small Node worker on Fly/Render later.
+
+## 3. Gap-Trap indicator
+
+Per symbol on each tick, compute from existing 2m intraday bars (already in `intradayBars`):
+
+```text
+gapPct  = (todayOpen - yesterdayClose) / yesterdayClose
+vwap    = session VWAP (already have from Schwab)
+firstHr = first 30min after 9:30 ET
+rejection = high(firstHr) > todayOpen * 1.005 AND
+            currentClose < vwap AND
+            currentClose < todayOpen AND
+            volume(firstHr) > 1.5 * avgVol(first30m, 20d)
 ```
-This gives finger-drag pan across the full day; no Brush component anywhere.
 
-### 4. OBV chart → minute-by-minute + pannable
-- Switch OBV data source from current `intradayInterval` to fixed 1-minute bars (same Yahoo fetch as OV).
-- Apply the same scrollable-wrapper pattern from step 3. Remove its `<Brush>`.
+- `gapPct > +3%` AND `rejection` → **🪤 GAP TRAP (bull trap)** — red pulsing badge
+- `gapPct < -3%` AND inverse rejection → **🪤 GAP TRAP (bear trap)** — green pulsing badge
+- Otherwise hidden.
 
-### 5. Bid/Ask accuracy (Yahoo Finance, sub-second)
-In `src/lib/quotes.functions.ts`:
-- Replace current single-call logic with a **fallback chain** per symbol:
-  1. Yahoo `v7/finance/quote` (returns `bid`, `ask`, `bidSize`, `askSize`, `regularMarketPrice`)
-  2. If `bid==null || ask==null || bid==0 || ask==0`: fall back to `v8/finance/chart?range=1d&interval=1m` last bar's close ± half typical spread
-  3. If still missing: synthesize bid = mark − 0.01, ask = mark + 0.01 and flag `synthetic: true`
-- Cache for 800ms (sub-second refresh).
-- Add server-side log line `[quotes] sym=NVDA src=v7 bid=… ask=… age=…ms` so we can verify in logs.
-- Remove the "3%/25% sanity check" that was silently nuking valid wide spreads.
-- Remove the 🐛 debug toggle UI in `TradingPlatform.tsx`.
+Renders in the symbol header next to the price, pulses for 5min after first trigger, then becomes a static badge for the rest of the session. Hover shows the trigger reason.
 
-### 6. Keep working
-- 1D/2D/5D/14D/30D/60D/90D/120D and 1m/5m/15m selectors for the **main Price / Bollinger** chart stay exactly as they are (no Brush, but otherwise unchanged).
-- MACD chart stays (no Brush, dynamic Y-domain), but no longer has the duplicate candle panel — just histogram + signal lines.
+I'll also wire it into the watchlist row so you can see at a glance which names are trapped.
 
-## Technical details
-- Custom candle: `const Candle = ({ x, y, width, height, payload }) => { const { o,h,l,c } = payload; const color = c>=o ? '#26a641' : '#f85149'; ... }` passed as `shape={<Candle />}` on a `<Bar dataKey="hlRange" />` with custom `y` mapping.
-- Touch panning width formula: `barCount * pxPerBar` where `pxPerBar = 6` for 1m bars (giving ~2340px for a 390-bar regular session, ~6× viewport scroll).
-- Yahoo v7 endpoint: `https://query1.finance.yahoo.com/v7/finance/quote?symbols=...&fields=bid,ask,bidSize,askSize,regularMarketPrice,marketState` (already used elsewhere in the file).
+## Files
 
-## Files touched
-- `src/components/TradingPlatform.tsx` — delete Master card, delete OV button, delete all Brushes, add inline OV card, wrap charts in scroll container, switch OBV to 1m, remove bid/ask debug row.
-- `src/lib/quotes.functions.ts` — rewrite bid/ask fetch with fallback chain + 800ms cache + logging.
-- `src/routes/charts.tsx` — delete.
-- `src/components/VelezOpenIndicators.tsx` — keep `getElephantBarMarkers` + helpers, but the `VelezChartPanel` component is no longer imported anywhere (leave file for the helpers).
+- `supabase/migrations/<ts>_schwab_owner_tokens.sql` — new table + RLS + grants
+- `src/lib/schwab-shared.functions.ts` — new shared-feed server fns + token refresher
+- `src/lib/schwab.functions.ts` — add `setOwnerSchwabTokens`
+- `src/routes/api/public/schwab-stream.ts` — new SSE route
+- `src/lib/schwab-stream.client.ts` — new `useSchwabStream` hook
+- `src/lib/trap-indicator.ts` — pure detection function
+- `src/components/TradingPlatform.tsx` — swap quote sources, add stream hook, render trap badges
 
-## Out of scope (ask if you want these too)
-- After-hours / pre-market overlay on the OV chart.
-- Real-time streaming (currently polled).
-- Replacing Recharts with a true financial-charting library (TradingView lightweight-charts) — bigger lift; tell me if you want that swap instead of the custom shape.
+## Out of scope (per your answer)
+
+- 24h overnight bars — holding until you find an overnight-session feed.
+
+Ready for me to build?
