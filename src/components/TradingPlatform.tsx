@@ -815,8 +815,8 @@ export default function TradingPlatform() {
     refetchIntervalInBackground: true,
     staleTime: 0,
   });
-  const schwabQuotes = (schwabQuoteData as Record<string, SchwabQuote> | null) ?? {};
-  const schwabQuote: SchwabQuote | null = schwabQuotes[selectedStock] ?? null;
+  // Per-user only (kept around in case some legacy code references it directly).
+  const schwabQuotesPerUser = (schwabQuoteData as Record<string, SchwabQuote> | null) ?? {};
 
   // ---- Schwab 24-hour intraday pricehistory ----
   // Only fires when the user has selected the new "24H" range button AND has
@@ -875,7 +875,7 @@ export default function TradingPlatform() {
     refetchInterval: 10 * 60_000, // 10 min — fundamentals don't tick
     staleTime: 10 * 60_000,
   });
-  const schwabFundamentals = (schwabFundData as Record<string, SchwabFundamental> | null) ?? {};
+  const schwabFundamentalsPerUser = (schwabFundData as Record<string, SchwabFundamental> | null) ?? {};
 
   // ---- Schwab top-volume call/put strikes for the selected symbol ----
   // Daily-keyed so the strike target refreshes whenever the date rolls and
@@ -904,7 +904,7 @@ export default function TradingPlatform() {
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
-  const schwabTopStrikes = (schwabStrikesData as SchwabTopStrikes | null) ?? null;
+  const schwabTopStrikesPerUser = (schwabStrikesData as SchwabTopStrikes | null) ?? null;
 
   // ============================================================
   // SHARED SCHWAB FEED
