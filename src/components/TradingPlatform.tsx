@@ -782,7 +782,7 @@ export default function TradingPlatform() {
   const { data: liveQuotes } = useQuery({
     queryKey: ["live", watchlist],
     queryFn: () => fetchLive({ data: { symbols: watchlist } }),
-    refetchInterval: 400,
+    refetchInterval: 250,
     refetchIntervalInBackground: true,
     staleTime: 0,
     enabled: watchlist.length > 0,
@@ -814,7 +814,7 @@ export default function TradingPlatform() {
       }
     },
     enabled: !!schwabTokens?.access_token && watchlist.length > 0,
-    refetchInterval: 1000,
+    refetchInterval: 500,
     refetchIntervalInBackground: true,
     staleTime: 0,
   });
@@ -921,7 +921,7 @@ export default function TradingPlatform() {
     queryKey: ["sharedSchwabQuotes", [...watchlist].sort().join(",")],
     queryFn: () => fetchSharedQuotes({ data: { symbols: watchlist.length ? watchlist : [selectedStock] } }),
     enabled: watchlist.length > 0,
-    refetchInterval: 1000,
+    refetchInterval: 500,
     refetchIntervalInBackground: true,
     staleTime: 0,
   });
@@ -1452,11 +1452,36 @@ export default function TradingPlatform() {
     bottomingTailY: number | null; // small ▲
     toppingTailY: number | null;   // small ▼
     isElephant: boolean;
+    newsMarkerY: number | null;
+    newsCount: number;
   };
   const masterData = useMemo<MasterRow[]>(() => {
     if (!displayData.length) return [];
     const bars = displayData;
     const closes = bars.map((b) => b.close);
+    // Map news headlines to bar indices so we can drop 📰 markers on the
+    // candle the news landed on. Only valid for intraday mode (where bars[i]
+    // aligns with intradayBars[i]); daily mode skips.
+    const newsBarMap = new Map<number, number>(); // idx -> count
+    if (chartMode !== "D" && intradayBars.length === bars.length && newsItems.length) {
+      const ts = intradayBars.map((b) => b.t);
+      const stepSec = ts.length >= 2 ? Math.max(60, ts[ts.length - 1] - ts[ts.length - 2]) : 120;
+      for (const n of newsItems) {
+        const p = n.publishedAt;
+        if (!p) continue;
+        // Binary search for nearest bar.
+        let lo = 0, hi = ts.length - 1, best = -1, bestDiff = Infinity;
+        while (lo <= hi) {
+          const mid = (lo + hi) >> 1;
+          const d = Math.abs(ts[mid] - p);
+          if (d < bestDiff) { bestDiff = d; best = mid; }
+          if (ts[mid] < p) lo = mid + 1; else hi = mid - 1;
+        }
+        if (best >= 0 && bestDiff <= stepSec * 2) {
+          newsBarMap.set(best, (newsBarMap.get(best) ?? 0) + 1);
+        }
+      }
+    }
     // SMA helpers — partial SMA200 if fewer than 200 bars (user requested)
     const sma = (i: number, period: number): number | null => {
       const eff = Math.min(period, i + 1);
@@ -1548,9 +1573,11 @@ export default function TradingPlatform() {
         bottomingTailY: flags[i].bottomingTail && !keepBull.has(i) ? +(low - offset * 0.5).toFixed(4) : null,
         toppingTailY: flags[i].toppingTail && !keepSell.has(i) ? +(high + offset * 0.5).toFixed(4) : null,
         isElephant: flags[i].isElephant,
+        newsMarkerY: newsBarMap.has(i) ? +(high + offset * 2.2).toFixed(4) : null,
+        newsCount: newsBarMap.get(i) ?? 0,
       };
     });
-  }, [displayData]);
+  }, [displayData, chartMode, intradayBars, newsItems]);
 
   const masterVisibleData = useMemo(() => {
     if (!masterData.length) return [];
@@ -2556,6 +2583,17 @@ export default function TradingPlatform() {
                 <Scatter dataKey="toppingTailY" isAnimationActive={false}
                   shape={(p: any) => p?.payload?.toppingTailY == null ? <g /> : (
                     <polygon points={`${p.cx - 3},${p.cy - 3} ${p.cx + 3},${p.cy - 3} ${p.cx},${p.cy + 3}`} fill="#f85149" fillOpacity={0.7} />
+                  )} />
+                {/* 📰 News markers — anchored above the bar a headline landed on */}
+                <Scatter dataKey="newsMarkerY" isAnimationActive={false}
+                  shape={(p: any) => p?.payload?.newsMarkerY == null ? <g /> : (
+                    <g>
+                      <circle cx={p.cx} cy={p.cy} r={7} fill="#58a6ff" stroke="#0d1117" strokeWidth={1} />
+                      <text x={p.cx} y={p.cy + 3} textAnchor="middle" fontSize={9} fontWeight={900} fill="#0d1117">N</text>
+                      {p.payload.newsCount > 1 && (
+                        <text x={p.cx + 8} y={p.cy - 4} fontSize={8} fontWeight={900} fill="#58a6ff">×{p.payload.newsCount}</text>
+                      )}
+                    </g>
                   )} />
               </ComposedChart>
             </ResponsiveContainer>
