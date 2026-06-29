@@ -2582,6 +2582,17 @@ export default function TradingPlatform() {
                   shape={(p: any) => p?.payload?.toppingTailY == null ? <g /> : (
                     <polygon points={`${p.cx - 3},${p.cy - 3} ${p.cx + 3},${p.cy - 3} ${p.cx},${p.cy + 3}`} fill="#f85149" fillOpacity={0.7} />
                   )} />
+                {/* 📰 News markers — anchored above the bar a headline landed on */}
+                <Scatter dataKey="newsMarkerY" isAnimationActive={false}
+                  shape={(p: any) => p?.payload?.newsMarkerY == null ? <g /> : (
+                    <g>
+                      <circle cx={p.cx} cy={p.cy} r={7} fill="#58a6ff" stroke="#0d1117" strokeWidth={1} />
+                      <text x={p.cx} y={p.cy + 3} textAnchor="middle" fontSize={9} fontWeight={900} fill="#0d1117">N</text>
+                      {p.payload.newsCount > 1 && (
+                        <text x={p.cx + 8} y={p.cy - 4} fontSize={8} fontWeight={900} fill="#58a6ff">×{p.payload.newsCount}</text>
+                      )}
+                    </g>
+                  )} />
               </ComposedChart>
             </ResponsiveContainer>
             {/* Volume sub-panel — yellow bars rising with volume, synced X with master chart */}
