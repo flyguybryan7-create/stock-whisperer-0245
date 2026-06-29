@@ -1457,6 +1457,29 @@ export default function TradingPlatform() {
     if (!displayData.length) return [];
     const bars = displayData;
     const closes = bars.map((b) => b.close);
+    // Map news headlines to bar indices so we can drop 📰 markers on the
+    // candle the news landed on. Only valid for intraday mode (where bars[i]
+    // aligns with intradayBars[i]); daily mode skips.
+    const newsBarMap = new Map<number, number>(); // idx -> count
+    if (chartMode !== "D" && intradayBars.length === bars.length && newsItems.length) {
+      const ts = intradayBars.map((b) => b.t);
+      const stepSec = ts.length >= 2 ? Math.max(60, ts[ts.length - 1] - ts[ts.length - 2]) : 120;
+      for (const n of newsItems) {
+        const p = n.publishedAt;
+        if (!p) continue;
+        // Binary search for nearest bar.
+        let lo = 0, hi = ts.length - 1, best = -1, bestDiff = Infinity;
+        while (lo <= hi) {
+          const mid = (lo + hi) >> 1;
+          const d = Math.abs(ts[mid] - p);
+          if (d < bestDiff) { bestDiff = d; best = mid; }
+          if (ts[mid] < p) lo = mid + 1; else hi = mid - 1;
+        }
+        if (best >= 0 && bestDiff <= stepSec * 2) {
+          newsBarMap.set(best, (newsBarMap.get(best) ?? 0) + 1);
+        }
+      }
+    }
     // SMA helpers — partial SMA200 if fewer than 200 bars (user requested)
     const sma = (i: number, period: number): number | null => {
       const eff = Math.min(period, i + 1);
@@ -1548,9 +1571,11 @@ export default function TradingPlatform() {
         bottomingTailY: flags[i].bottomingTail && !keepBull.has(i) ? +(low - offset * 0.5).toFixed(4) : null,
         toppingTailY: flags[i].toppingTail && !keepSell.has(i) ? +(high + offset * 0.5).toFixed(4) : null,
         isElephant: flags[i].isElephant,
+        newsMarkerY: newsBarMap.has(i) ? +(high + offset * 2.2).toFixed(4) : null,
+        newsCount: newsBarMap.get(i) ?? 0,
       };
     });
-  }, [displayData]);
+  }, [displayData, chartMode, intradayBars, newsItems]);
 
   const masterVisibleData = useMemo(() => {
     if (!masterData.length) return [];
