@@ -771,8 +771,11 @@ export default function TradingPlatform() {
   const { data: rawQuotes } = useQuery({
     queryKey: ["quotes", watchlist],
     queryFn: () => fetchQuotes({ data: { symbols: watchlist } }),
-    staleTime: 60_000,
-    refetchInterval: 60_000,
+    // v8 chart endpoint — refresh snapshot (day H/L, prev close, 6mo candles)
+    // every 10s instead of every 60s so close-price / day range stay current.
+    staleTime: 10_000,
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: true,
   });
 
   // Live intraday prices — refresh every 1s
