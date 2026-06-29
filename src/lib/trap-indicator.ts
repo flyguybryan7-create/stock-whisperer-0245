@@ -88,26 +88,64 @@ export function detectTrap(bars: TrapBar[], vwap: number | null): TrapResult {
   const firstLow = Math.min(...firstWindow.map((b) => b.low));
   const last = todayReg[todayReg.length - 1];
   const currentClose = last.close;
-  const v = Number.isFinite(vwap) ? (vwap as number) : null;
+  // Synthesize a session VWAP from today's regular bars when Schwab's VWAP
+  // isn't available — so trap detection works for every symbol, not just
+  // Schwab-quoted ones.
+  let v: number | null = Number.isFinite(vwap) ? (vwap as number) : null;
+  if (v == null) {
+    let pv = 0, vv = 0;
+    for (const b of todayReg) {
+      const typ = (b.high + b.low + b.close) / 3;
+      const vol = Math.max(0, b.volume || 0);
+      pv += typ * vol; vv += vol;
+    }
+    if (vv > 0) v = pv / vv;
+  }
 
-  if (gapPct >= 0.03 && v != null) {
-    const reversal = firstHigh > todayOpen * 1.005 && currentClose < v && currentClose < todayOpen;
-    if (reversal) {
+  // Loosened gap thresholds (1.5% / -1.5%) and lighter rejection criteria so
+  // the "gap up, hedge funds dump into retail" pattern actually fires.
+  const todayHigh = Math.max(...todayReg.map((b) => b.high));
+  const todayLow = Math.min(...todayReg.map((b) => b.low));
+
+  if (gapPct >= 0.015 && v != null) {
+    const rejected = firstHigh > todayOpen * 1.003 && currentClose < v && currentClose < todayOpen;
+    if (rejected) {
       return {
-        kind: "BULL_TRAP",
-        gapPct,
-        reason: `Gap +${(gapPct * 100).toFixed(1)}% then rejected: high $${firstHigh.toFixed(2)} → $${currentClose.toFixed(2)} below VWAP $${v.toFixed(2)}.`,
+        kind: "BULL_TRAP", gapPct,
+        reason: `Gap +${(gapPct * 100).toFixed(1)}% then rejected: high $${firstHigh.toFixed(2)} → now $${currentClose.toFixed(2)} below VWAP $${v.toFixed(2)}.`,
         triggeredAt: last.t,
       };
     }
   }
-  if (gapPct <= -0.03 && v != null) {
-    const reversal = firstLow < todayOpen * 0.995 && currentClose > v && currentClose > todayOpen;
-    if (reversal) {
+  if (gapPct <= -0.015 && v != null) {
+    const reclaimed = firstLow < todayOpen * 0.997 && currentClose > v && currentClose > todayOpen;
+    if (reclaimed) {
       return {
-        kind: "BEAR_TRAP",
-        gapPct,
-        reason: `Gap ${(gapPct * 100).toFixed(1)}% then reclaimed: low $${firstLow.toFixed(2)} → $${currentClose.toFixed(2)} above VWAP $${v.toFixed(2)}.`,
+        kind: "BEAR_TRAP", gapPct,
+        reason: `Gap ${(gapPct * 100).toFixed(1)}% then reclaimed: low $${firstLow.toFixed(2)} → now $${currentClose.toFixed(2)} above VWAP $${v.toFixed(2)}.`,
+        triggeredAt: last.t,
+      };
+    }
+  }
+
+  // Intraday VWAP-rejection trap (no gap required): a new session high that
+  // gets dumped back below VWAP on rising volume. Catches mid-day institutional
+  // distribution like MU's earnings-day reversal.
+  if (v != null && todayReg.length >= 10) {
+    const avgVol = todayReg.slice(0, -3).reduce((s, b) => s + (b.volume || 0), 0) / Math.max(1, todayReg.length - 3);
+    const recentVol = todayReg.slice(-3).reduce((s, b) => s + (b.volume || 0), 0) / 3;
+    const heavy = avgVol > 0 && recentVol > avgVol * 1.3;
+    if (heavy && currentClose < v && todayHigh > v * 1.01 && currentClose < todayHigh * 0.99) {
+      return {
+        kind: "BULL_TRAP", gapPct,
+        reason: `Intraday distribution: HOD $${todayHigh.toFixed(2)} dumped to $${currentClose.toFixed(2)} below VWAP $${v.toFixed(2)} on ${(recentVol / avgVol).toFixed(1)}× volume.`,
+        triggeredAt: last.t,
+      };
+    }
+    if (heavy && currentClose > v && todayLow < v * 0.99 && currentClose > todayLow * 1.01) {
+      return {
+        kind: "BEAR_TRAP", gapPct,
+        reason: `Intraday squeeze: LOD $${todayLow.toFixed(2)} reclaimed to $${currentClose.toFixed(2)} above VWAP $${v.toFixed(2)} on ${(recentVol / avgVol).toFixed(1)}× volume.`,
         triggeredAt: last.t,
       };
     }
