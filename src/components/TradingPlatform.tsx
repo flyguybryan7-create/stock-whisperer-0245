@@ -1452,6 +1452,8 @@ export default function TradingPlatform() {
     bottomingTailY: number | null; // small ▲
     toppingTailY: number | null;   // small ▼
     isElephant: boolean;
+    newsMarkerY: number | null;
+    newsCount: number;
   };
   const masterData = useMemo<MasterRow[]>(() => {
     if (!displayData.length) return [];
