@@ -782,7 +782,7 @@ export default function TradingPlatform() {
   const { data: liveQuotes } = useQuery({
     queryKey: ["live", watchlist],
     queryFn: () => fetchLive({ data: { symbols: watchlist } }),
-    refetchInterval: 400,
+    refetchInterval: 250,
     refetchIntervalInBackground: true,
     staleTime: 0,
     enabled: watchlist.length > 0,
@@ -814,7 +814,7 @@ export default function TradingPlatform() {
       }
     },
     enabled: !!schwabTokens?.access_token && watchlist.length > 0,
-    refetchInterval: 1000,
+    refetchInterval: 500,
     refetchIntervalInBackground: true,
     staleTime: 0,
   });
@@ -921,7 +921,7 @@ export default function TradingPlatform() {
     queryKey: ["sharedSchwabQuotes", [...watchlist].sort().join(",")],
     queryFn: () => fetchSharedQuotes({ data: { symbols: watchlist.length ? watchlist : [selectedStock] } }),
     enabled: watchlist.length > 0,
-    refetchInterval: 1000,
+    refetchInterval: 500,
     refetchIntervalInBackground: true,
     staleTime: 0,
   });
