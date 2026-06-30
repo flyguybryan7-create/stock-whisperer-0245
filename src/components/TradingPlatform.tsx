@@ -585,6 +585,7 @@ export default function TradingPlatform() {
   const live24hBarsRef = useRef<Record<string, IntradayBar[]>>({});
   const [masterVisibleRange, setMasterVisibleRange] = useState<[number, number] | null>(null);
   const [macdVisibleRange, setMacdVisibleRange] = useState<[number, number] | null>(null);
+  const [liveClockTick, setLiveClockTick] = useState(0);
 
   // Load persisted watchlist from localStorage on first mount (fast path / signed-out users)
   const hydratedFromCloud = useRef(false);
@@ -601,6 +602,10 @@ export default function TradingPlatform() {
         if (parsed.names) setStockNames((s) => ({ ...s, ...parsed.names }));
       }
     } catch {}
+  }, []);
+  useEffect(() => {
+    const id = setInterval(() => setLiveClockTick((v) => (v + 1) % 1_000_000), 1000);
+    return () => clearInterval(id);
   }, []);
 
   // When signed in, pull cloud watchlist and merge local additions up to the cloud
