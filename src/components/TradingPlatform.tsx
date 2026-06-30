@@ -982,6 +982,17 @@ export default function TradingPlatform() {
   const schwabQuote: SchwabQuote | null = mergedSchwabQuotes[selectedStock] ?? null;
   const schwabFundamentals = mergedSchwabFund;
   const schwabTopStrikes = mergedSchwabStrikes;
+  const liveBase = live[selectedStock];
+  const selectedLiveQuote = schwabQuote?.last != null
+    ? {
+        ...(liveBase ?? { symbol: selectedStock, ts: Date.now() } as any),
+        price: schwabQuote.last,
+        bid: schwabQuote.bid ?? liveBase?.bid,
+        ask: schwabQuote.ask ?? liveBase?.ask,
+        bidSize: schwabQuote.bidSize ?? liveBase?.bidSize,
+        askSize: schwabQuote.askSize ?? liveBase?.askSize,
+      }
+    : liveBase;
 
   // Bid/ask now comes through getLiveQuotes (v7 endpoint returns bid/ask/bidSize/askSize)
   // on the same 1s tick as the live price — no separate query.
@@ -1341,17 +1352,6 @@ export default function TradingPlatform() {
   }
 
   const dailyChartData = allData[selectedStock] || [];
-  const liveBase = live[selectedStock];
-  const selectedLiveQuote = schwabQuote?.last != null
-    ? {
-        ...(liveBase ?? { symbol: selectedStock, ts: Date.now() } as any),
-        price: schwabQuote.last,
-        bid: schwabQuote.bid ?? liveBase?.bid,
-        ask: schwabQuote.ask ?? liveBase?.ask,
-        bidSize: schwabQuote.bidSize ?? liveBase?.bidSize,
-        askSize: schwabQuote.askSize ?? liveBase?.askSize,
-      }
-    : liveBase;
   // Convert intraday bars -> Row[] (same shape) so we can reuse buildChartData/charts.
   const intradayRows: Row[] = useMemo(() => {
     const bars = stitchedIntradayBars;
