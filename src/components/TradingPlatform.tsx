@@ -1366,16 +1366,21 @@ export default function TradingPlatform() {
     const lqBase = live[sym];
     // Prefer Schwab real-time NBBO for EVERY symbol when connected.
     const sq = schwabQuotes[sym];
+    const mark = sq?.last ?? lqBase?.price;
+    const nbbo = bidAskNearMark(mark, sq?.bid ?? lqBase?.bid, sq?.ask ?? lqBase?.ask);
     const lq = sq?.last != null
       ? {
           ...(lqBase ?? { symbol: sym, price: sq.last, ts: Date.now() } as any),
           price: sq.last,
-          bid: sq.bid ?? lqBase?.bid,
-          ask: sq.ask ?? lqBase?.ask,
+          bid: nbbo.bid,
+          ask: nbbo.ask,
           bidSize: sq.bidSize ?? lqBase?.bidSize,
           askSize: sq.askSize ?? lqBase?.askSize,
+          syntheticBidAsk: nbbo.syntheticBidAsk,
         }
-      : lqBase;
+      : lqBase
+        ? { ...lqBase, ...nbbo }
+        : lqBase;
     // Also write back into the live map so all other UI (bid/ask, VWAP comparisons) sees Schwab.
     if (lq && lq !== lqBase) (live as any)[sym] = lq;
     const series = allData[sym];
