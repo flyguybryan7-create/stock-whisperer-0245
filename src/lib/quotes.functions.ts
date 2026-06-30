@@ -211,7 +211,7 @@ function roundQuotePrice(value: number) {
 
 function makeBidAsk(mark: number, recentRanges: number[] = []) {
   const avgRange = recentRanges.length ? recentRanges.reduce((s, v) => s + v, 0) / recentRanges.length : 0;
-  const halfSpread = Math.max(0.005, Math.min(Math.max(mark * 0.0008, avgRange * 0.08), Math.max(mark * 0.01, 0.02)));
+  const halfSpread = Math.max(0.005, Math.min(Math.max(mark * 0.00045, avgRange * 0.04), Math.max(mark * 0.0025, 0.03)));
   return {
     bid: roundQuotePrice(Math.max(0.0001, mark - halfSpread)),
     ask: roundQuotePrice(mark + halfSpread),
