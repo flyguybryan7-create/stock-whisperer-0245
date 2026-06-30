@@ -1202,7 +1202,7 @@ export default function TradingPlatform() {
     }
     const cutoff = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
     return rows.filter((b) => b.t >= cutoff);
-  }, [intradayRange, intradayBars, intradayData, selectedLiveQuote?.price, intradayInterval]);
+  }, [intradayRange, intradayBars, intradayData, selectedLiveQuote?.price, intradayInterval, selectedStock]);
   const dayTrade = useMemo(() => getDayTradeSignal(stitchedIntradayBars), [stitchedIntradayBars]);
 
   // ----- Gap-and-Trap indicator for the selected symbol -----
