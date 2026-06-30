@@ -134,6 +134,30 @@ function alignEpochToInterval(epochSec: number, interval: "1m" | "2m" | "5m" | "
   return Math.floor(epochSec / step) * step;
 }
 
+function roundQuote(value: number) {
+  return value >= 1 ? Math.round(value * 100) / 100 : Math.round(value * 10_000) / 10_000;
+}
+
+function tightEstimatedBidAsk(mark: number) {
+  const halfSpread = Math.max(0.01, Math.min(mark * 0.0005, 0.15));
+  return { bid: roundQuote(Math.max(0.0001, mark - halfSpread)), ask: roundQuote(mark + halfSpread) };
+}
+
+function bidAskNearMark(mark: number | null | undefined, bid: number | null | undefined, ask: number | null | undefined) {
+  if (mark == null || !Number.isFinite(mark) || mark <= 0) return { bid: undefined, ask: undefined, syntheticBidAsk: false };
+  if (bid == null || ask == null || !Number.isFinite(bid) || !Number.isFinite(ask) || bid <= 0 || ask <= 0 || ask < bid) {
+    return { ...tightEstimatedBidAsk(mark), syntheticBidAsk: true };
+  }
+  const spread = ask - bid;
+  const mid = (ask + bid) / 2;
+  // Never show stale/wild NBBO against the live header mark. This catches the
+  // MRVL-style problem where BID/ASK came from old lots while the header ticked live.
+  if (spread > Math.max(mark * 0.02, 0.08) || Math.abs(mid - mark) > Math.max(mark * 0.01, 0.05)) {
+    return { ...tightEstimatedBidAsk(mark), syntheticBidAsk: true };
+  }
+  return { bid, ask, syntheticBidAsk: false };
+}
+
 function getVisiblePriceDomain(rows: any[]): [number, number] | ["auto", "auto"] {
   if (!rows.length) return ["auto", "auto"];
   const keys = ["open", "high", "low", "close", "sma9", "sma15", "sma20", "ema21", "bbUpper", "bbLower", "bullLabelY", "sellLabelY", "buyArrowY", "sellArrowY"];
