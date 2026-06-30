@@ -1146,6 +1146,10 @@ export default function TradingPlatform() {
       if (!Number.isFinite(b?.t) || !Number.isFinite(b?.close)) continue;
       if (!merged.has(b.t)) merged.set(b.t, b);
     }
+    const liveRows = live24hBarsRef.current[selectedStock] ?? [];
+    for (const b of liveRows) {
+      if (Number.isFinite(b?.t) && Number.isFinite(b?.close) && !merged.has(b.t)) merged.set(b.t, b);
+    }
     const rows = [...merged.values()].sort((a, b) => a.t - b.t);
     const livePrice = selectedLiveQuote?.price;
     if (typeof livePrice === "number" && Number.isFinite(livePrice) && livePrice > 0) {
@@ -1153,14 +1157,18 @@ export default function TradingPlatform() {
       const last = rows[rows.length - 1];
       const maxGap = intervalSeconds(intradayInterval) * 2.5;
       if (!last || nowSec - last.t > maxGap) {
-        rows.push({ t: nowSec, open: livePrice, high: livePrice, low: livePrice, close: livePrice, volume: 0 });
+        const tickBar = { t: nowSec, open: livePrice, high: livePrice, low: livePrice, close: livePrice, volume: 0 };
+        rows.push(tickBar);
+        live24hBarsRef.current[selectedStock] = [...liveRows.filter((b) => Date.now() / 1000 - b.t < 24 * 60 * 60), tickBar];
       } else {
-        rows[rows.length - 1] = {
+        const tickBar = {
           ...last,
           close: livePrice,
           high: Math.max(last.high, livePrice),
           low: Math.min(last.low, livePrice),
         };
+        rows[rows.length - 1] = tickBar;
+        live24hBarsRef.current[selectedStock] = [...liveRows.filter((b) => b.t !== tickBar.t && Date.now() / 1000 - b.t < 24 * 60 * 60), tickBar];
       }
     }
     const cutoff = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
