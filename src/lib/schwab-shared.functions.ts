@@ -82,6 +82,18 @@ async function schwabGet(path: string, accessToken: string): Promise<Response> {
   });
 }
 
+function cleanBidAsk(mark: number | null, bid: number | null, ask: number | null): { bid: number | null; ask: number | null } {
+  if (mark == null || !Number.isFinite(mark) || mark <= 0) return { bid: null, ask: null };
+  if (bid == null || ask == null || !Number.isFinite(bid) || !Number.isFinite(ask) || bid <= 0 || ask <= 0 || ask < bid) {
+    return { bid: null, ask: null };
+  }
+  const spread = ask - bid;
+  const mid = (ask + bid) / 2;
+  if (spread > Math.max(mark * 0.03, mark < 5 ? 0.08 : 0.05)) return { bid: null, ask: null };
+  if (Math.abs(mid - mark) > Math.max(mark * 0.018, mark < 5 ? 0.05 : 0.03)) return { bid: null, ask: null };
+  return { bid, ask };
+}
+
 // ============ Owner: persist tokens ============
 export const setOwnerSchwabTokens = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -125,11 +137,15 @@ export const getSharedSchwabQuotes = createServerFn({ method: "POST" })
     for (const sym of syms) {
       const row = json?.[sym];
       const q = row?.quote ?? {};
+      const last = Number.isFinite(q.lastPrice) ? q.lastPrice : null;
+      const rawBid = Number.isFinite(q.bidPrice) ? q.bidPrice : null;
+      const rawAsk = Number.isFinite(q.askPrice) ? q.askPrice : null;
+      const nbbo = cleanBidAsk(last, rawBid, rawAsk);
       out[sym] = {
         symbol: sym,
-        last: Number.isFinite(q.lastPrice) ? q.lastPrice : null,
-        bid: Number.isFinite(q.bidPrice) ? q.bidPrice : null,
-        ask: Number.isFinite(q.askPrice) ? q.askPrice : null,
+        last,
+        bid: nbbo.bid,
+        ask: nbbo.ask,
         bidSize: Number.isFinite(q.bidSize) ? q.bidSize : null,
         askSize: Number.isFinite(q.askSize) ? q.askSize : null,
         netChange: Number.isFinite(q.netChange) ? q.netChange : null,

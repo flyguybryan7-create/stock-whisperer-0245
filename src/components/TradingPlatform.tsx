@@ -125,6 +125,39 @@ function niceTicks(domain: [number, number] | ["auto", "auto"] | unknown, target
 
 const PRICE_AXIS_WIDTH = 62;
 
+function intervalSeconds(interval: "1m" | "2m" | "5m" | "15m") {
+  return interval === "1m" ? 60 : interval === "2m" ? 120 : interval === "5m" ? 300 : 900;
+}
+
+function alignEpochToInterval(epochSec: number, interval: "1m" | "2m" | "5m" | "15m") {
+  const step = intervalSeconds(interval);
+  return Math.floor(epochSec / step) * step;
+}
+
+function roundQuote(value: number) {
+  return value >= 1 ? Math.round(value * 100) / 100 : Math.round(value * 10_000) / 10_000;
+}
+
+function tightEstimatedBidAsk(mark: number) {
+  const halfSpread = Math.max(0.01, Math.min(mark * 0.0005, 0.15));
+  return { bid: roundQuote(Math.max(0.0001, mark - halfSpread)), ask: roundQuote(mark + halfSpread) };
+}
+
+function bidAskNearMark(mark: number | null | undefined, bid: number | null | undefined, ask: number | null | undefined) {
+  if (mark == null || !Number.isFinite(mark) || mark <= 0) return { bid: undefined, ask: undefined, syntheticBidAsk: false };
+  if (bid == null || ask == null || !Number.isFinite(bid) || !Number.isFinite(ask) || bid <= 0 || ask <= 0 || ask < bid) {
+    return { ...tightEstimatedBidAsk(mark), syntheticBidAsk: true };
+  }
+  const spread = ask - bid;
+  const mid = (ask + bid) / 2;
+  // Never show stale/wild NBBO against the live header mark. This catches the
+  // MRVL-style problem where BID/ASK came from old lots while the header ticked live.
+  if (spread > Math.max(mark * 0.02, 0.08) || Math.abs(mid - mark) > Math.max(mark * 0.01, 0.05)) {
+    return { ...tightEstimatedBidAsk(mark), syntheticBidAsk: true };
+  }
+  return { bid, ask, syntheticBidAsk: false };
+}
+
 function getVisiblePriceDomain(rows: any[]): [number, number] | ["auto", "auto"] {
   if (!rows.length) return ["auto", "auto"];
   const keys = ["open", "high", "low", "close", "sma9", "sma15", "sma20", "ema21", "bbUpper", "bbLower", "bullLabelY", "sellLabelY", "buyArrowY", "sellArrowY"];
@@ -549,8 +582,10 @@ export default function TradingPlatform() {
   const masterScrollRef = useRef<HTMLDivElement | null>(null);
   const flowScrollRef = useRef<HTMLDivElement | null>(null);
   const macdScrollRef = useRef<HTMLDivElement | null>(null);
+  const live24hBarsRef = useRef<Record<string, IntradayBar[]>>({});
   const [masterVisibleRange, setMasterVisibleRange] = useState<[number, number] | null>(null);
   const [macdVisibleRange, setMacdVisibleRange] = useState<[number, number] | null>(null);
+  const [liveClockTick, setLiveClockTick] = useState(0);
 
   // Load persisted watchlist from localStorage on first mount (fast path / signed-out users)
   const hydratedFromCloud = useRef(false);
@@ -567,6 +602,10 @@ export default function TradingPlatform() {
         if (parsed.names) setStockNames((s) => ({ ...s, ...parsed.names }));
       }
     } catch {}
+  }, []);
+  useEffect(() => {
+    const id = setInterval(() => setLiveClockTick((v) => (v + 1) % 1_000_000), 1000);
+    return () => clearInterval(id);
   }, []);
 
   // When signed in, pull cloud watchlist and merge local additions up to the cloud
@@ -973,6 +1012,25 @@ export default function TradingPlatform() {
   const schwabQuote: SchwabQuote | null = mergedSchwabQuotes[selectedStock] ?? null;
   const schwabFundamentals = mergedSchwabFund;
   const schwabTopStrikes = mergedSchwabStrikes;
+  const liveBase = live[selectedStock];
+  const selectedMark = schwabQuote?.last ?? liveBase?.price;
+  const selectedSchwabNbbo = bidAskNearMark(selectedMark, schwabQuote?.bid, schwabQuote?.ask);
+  const selectedNbbo = selectedSchwabNbbo.syntheticBidAsk
+    ? bidAskNearMark(selectedMark, liveBase?.bid, liveBase?.ask)
+    : selectedSchwabNbbo;
+  const selectedLiveQuote = schwabQuote?.last != null
+    ? {
+        ...(liveBase ?? { symbol: selectedStock, ts: Date.now() } as any),
+        price: schwabQuote.last,
+        bid: selectedNbbo.bid,
+        ask: selectedNbbo.ask,
+        bidSize: schwabQuote.bidSize ?? liveBase?.bidSize,
+        askSize: schwabQuote.askSize ?? liveBase?.askSize,
+        syntheticBidAsk: selectedNbbo.syntheticBidAsk,
+      }
+    : liveBase
+      ? { ...liveBase, ...selectedNbbo }
+      : liveBase;
 
   // Bid/ask now comes through getLiveQuotes (v7 endpoint returns bid/ask/bidSize/askSize)
   // on the same 1s tick as the live price — no separate query.
@@ -1115,12 +1173,50 @@ export default function TradingPlatform() {
     }
     return intradayData ?? [];
   }, [intradayRange, schwabHistoryData, sharedHistoryData, intradayData]);
-  const dayTrade = useMemo(() => getDayTradeSignal(intradayBars), [intradayBars]);
+  const stitchedIntradayBars: IntradayBar[] = useMemo(() => {
+    if (intradayRange !== "24H") return intradayBars;
+    const merged = new Map<number, IntradayBar>();
+    for (const b of intradayBars) {
+      if (Number.isFinite(b?.t) && Number.isFinite(b?.close)) merged.set(b.t, b);
+    }
+    for (const b of intradayData ?? []) {
+      if (!Number.isFinite(b?.t) || !Number.isFinite(b?.close)) continue;
+      if (!merged.has(b.t)) merged.set(b.t, b);
+    }
+    const liveRows = live24hBarsRef.current[selectedStock] ?? [];
+    for (const b of liveRows) {
+      if (Number.isFinite(b?.t) && Number.isFinite(b?.close) && !merged.has(b.t)) merged.set(b.t, b);
+    }
+    const rows = [...merged.values()].sort((a, b) => a.t - b.t);
+    const livePrice = selectedLiveQuote?.price;
+    if (typeof livePrice === "number" && Number.isFinite(livePrice) && livePrice > 0) {
+      const nowSec = alignEpochToInterval(Math.floor(Date.now() / 1000), intradayInterval);
+      const last = rows[rows.length - 1];
+      const maxGap = intervalSeconds(intradayInterval) * 2.5;
+      if (!last || nowSec - last.t > maxGap) {
+        const tickBar = { t: nowSec, open: livePrice, high: livePrice, low: livePrice, close: livePrice, volume: 0 };
+        rows.push(tickBar);
+        live24hBarsRef.current[selectedStock] = [...liveRows.filter((b) => Date.now() / 1000 - b.t < 24 * 60 * 60), tickBar];
+      } else {
+        const tickBar = {
+          ...last,
+          close: livePrice,
+          high: Math.max(last.high, livePrice),
+          low: Math.min(last.low, livePrice),
+        };
+        rows[rows.length - 1] = tickBar;
+        live24hBarsRef.current[selectedStock] = [...liveRows.filter((b) => b.t !== tickBar.t && Date.now() / 1000 - b.t < 24 * 60 * 60), tickBar];
+      }
+    }
+    const cutoff = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
+    return rows.filter((b) => b.t >= cutoff);
+  }, [intradayRange, intradayBars, intradayData, selectedLiveQuote?.price, intradayInterval, selectedStock, liveClockTick]);
+  const dayTrade = useMemo(() => getDayTradeSignal(stitchedIntradayBars), [stitchedIntradayBars]);
 
   // ----- Gap-and-Trap indicator for the selected symbol -----
   const trap: TrapResult = useMemo(
-    () => detectTrap(intradayBars as unknown as Parameters<typeof detectTrap>[0], schwabQuote?.vwap ?? null),
-    [intradayBars, schwabQuote?.vwap],
+    () => detectTrap(stitchedIntradayBars as unknown as Parameters<typeof detectTrap>[0], schwabQuote?.vwap ?? null),
+    [stitchedIntradayBars, schwabQuote?.vwap],
   );
 
   // Intraday bars for every watchlist symbol — refreshed every 3s so the
@@ -1278,16 +1374,24 @@ export default function TradingPlatform() {
     const lqBase = live[sym];
     // Prefer Schwab real-time NBBO for EVERY symbol when connected.
     const sq = schwabQuotes[sym];
+    const mark = sq?.last ?? lqBase?.price;
+    const schwabNbbo = bidAskNearMark(mark, sq?.bid, sq?.ask);
+    const nbbo = schwabNbbo.syntheticBidAsk
+      ? bidAskNearMark(mark, lqBase?.bid, lqBase?.ask)
+      : schwabNbbo;
     const lq = sq?.last != null
       ? {
           ...(lqBase ?? { symbol: sym, price: sq.last, ts: Date.now() } as any),
           price: sq.last,
-          bid: sq.bid ?? lqBase?.bid,
-          ask: sq.ask ?? lqBase?.ask,
+          bid: nbbo.bid,
+          ask: nbbo.ask,
           bidSize: sq.bidSize ?? lqBase?.bidSize,
           askSize: sq.askSize ?? lqBase?.askSize,
+          syntheticBidAsk: nbbo.syntheticBidAsk,
         }
-      : lqBase;
+      : lqBase
+        ? { ...lqBase, ...nbbo }
+        : lqBase;
     // Also write back into the live map so all other UI (bid/ask, VWAP comparisons) sees Schwab.
     if (lq && lq !== lqBase) (live as any)[sym] = lq;
     const series = allData[sym];
@@ -1302,13 +1406,9 @@ export default function TradingPlatform() {
   }
 
   const dailyChartData = allData[selectedStock] || [];
-  const liveBase = live[selectedStock];
-  const selectedLiveQuote = schwabQuote?.last != null
-    ? { ...(liveBase ?? { symbol: selectedStock, ts: Date.now() } as any), price: schwabQuote.last }
-    : liveBase;
   // Convert intraday bars -> Row[] (same shape) so we can reuse buildChartData/charts.
   const intradayRows: Row[] = useMemo(() => {
-    const bars = intradayBars;
+    const bars = stitchedIntradayBars;
     if (!bars.length) return [];
     const rows: Row[] = bars.map((b) => ({
       date: intradayRange === "1D"
@@ -1325,7 +1425,7 @@ export default function TradingPlatform() {
       rows[rows.length - 1] = lastBar;
     }
     return buildChartData(rows);
-  }, [intradayBars, intradayRange, selectedLiveQuote?.price]);
+  }, [stitchedIntradayBars, intradayRange, selectedLiveQuote?.price]);
 
   const chartData = chartMode === "D" ? dailyChartData : intradayRows;
   // Keep the full selected timeframe. Readability comes from thick candles +
@@ -1461,10 +1561,10 @@ export default function TradingPlatform() {
     const closes = bars.map((b) => b.close);
     // Map news headlines to bar indices so we can drop 📰 markers on the
     // candle the news landed on. Only valid for intraday mode (where bars[i]
-    // aligns with intradayBars[i]); daily mode skips.
+    // aligns with stitchedIntradayBars[i]); daily mode skips.
     const newsBarMap = new Map<number, number>(); // idx -> count
-    if (chartMode !== "D" && intradayBars.length === bars.length && newsItems.length) {
-      const ts = intradayBars.map((b) => b.t);
+    if (chartMode !== "D" && stitchedIntradayBars.length === bars.length && newsItems.length) {
+      const ts = stitchedIntradayBars.map((b) => b.t);
       const stepSec = ts.length >= 2 ? Math.max(60, ts[ts.length - 1] - ts[ts.length - 2]) : 120;
       for (const n of newsItems) {
         const p = n.publishedAt;
@@ -1577,7 +1677,7 @@ export default function TradingPlatform() {
         newsCount: newsBarMap.get(i) ?? 0,
       };
     });
-  }, [displayData, chartMode, intradayBars, newsItems]);
+  }, [displayData, chartMode, stitchedIntradayBars, newsItems]);
 
   const masterVisibleData = useMemo(() => {
     if (!masterData.length) return [];
