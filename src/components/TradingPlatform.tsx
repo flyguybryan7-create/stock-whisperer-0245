@@ -1008,16 +1008,21 @@ export default function TradingPlatform() {
   const schwabFundamentals = mergedSchwabFund;
   const schwabTopStrikes = mergedSchwabStrikes;
   const liveBase = live[selectedStock];
+  const selectedMark = schwabQuote?.last ?? liveBase?.price;
+  const selectedNbbo = bidAskNearMark(selectedMark, schwabQuote?.bid ?? liveBase?.bid, schwabQuote?.ask ?? liveBase?.ask);
   const selectedLiveQuote = schwabQuote?.last != null
     ? {
         ...(liveBase ?? { symbol: selectedStock, ts: Date.now() } as any),
         price: schwabQuote.last,
-        bid: schwabQuote.bid ?? liveBase?.bid,
-        ask: schwabQuote.ask ?? liveBase?.ask,
+        bid: selectedNbbo.bid,
+        ask: selectedNbbo.ask,
         bidSize: schwabQuote.bidSize ?? liveBase?.bidSize,
         askSize: schwabQuote.askSize ?? liveBase?.askSize,
+        syntheticBidAsk: selectedNbbo.syntheticBidAsk,
       }
-    : liveBase;
+    : liveBase
+      ? { ...liveBase, ...selectedNbbo }
+      : liveBase;
 
   // Bid/ask now comes through getLiveQuotes (v7 endpoint returns bid/ask/bidSize/askSize)
   // on the same 1s tick as the live price — no separate query.
