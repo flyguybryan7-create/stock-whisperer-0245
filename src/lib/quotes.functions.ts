@@ -94,6 +94,22 @@ type YahooQuoteV7 = {
   syntheticBidAsk?: boolean;
 };
 
+function saneBidAsk(mark: number, bid?: number | null, ask?: number | null, session?: LiveQuote["session"]): { bid?: number; ask?: number } {
+  if (!Number.isFinite(mark) || mark <= 0) return {};
+  if (typeof bid !== "number" || typeof ask !== "number" || !Number.isFinite(bid) || !Number.isFinite(ask)) return {};
+  if (bid <= 0 || ask <= 0 || ask < bid) return {};
+  const spread = ask - bid;
+  const mid = (ask + bid) / 2;
+  const extended = session === "PRE" || session === "POST" || session === "OVERNIGHT" || session === "CLOSED";
+  // Reject stale/outlier NBBO like MRVL bid 262 / ask 277 against a ~$274 mark.
+  // A wide quote is worse than no quote; the UI will fall back to a tight mark-based estimate.
+  const maxSpread = Math.max(mark * (extended ? 0.03 : 0.015), mark < 5 ? 0.08 : 0.05);
+  const maxMidDrift = Math.max(mark * (extended ? 0.018 : 0.008), mark < 5 ? 0.05 : 0.03);
+  if (spread > maxSpread) return {};
+  if (Math.abs(mid - mark) > maxMidDrift) return {};
+  return { bid, ask };
+}
+
 async function fetchYahooV7Quotes(symbols: string[]): Promise<Record<string, LiveQuote>> {
   const auth = await getYahooAuth();
   if (!auth) return {};
@@ -143,17 +159,9 @@ async function fetchYahooV7Quotes(symbols: string[]): Promise<Record<string, Liv
       marketState = "OVERNIGHT";
     }
     const change = price - prev;
-    // Sanity-check NBBO. Regular-hours spreads should be tight (<5%);
-    // pre/post/overnight spreads can be wide (up to ~25%) and we still
-    // want to surface them rather than show "—".
-    // Only strip non-positive / non-finite values. Yahoo's NBBO can legitimately
-    // sit a few percent off the last trade in pre/post sessions; don't nuke it.
-    const cleanQuote = (v: number | undefined | null): number | undefined => {
-      if (typeof v !== "number" || !Number.isFinite(v) || v <= 0) return undefined;
-      return v;
-    };
-    const cleanBid = cleanQuote(q.bid);
-    const cleanAsk = cleanQuote(q.ask);
+    const clean = saneBidAsk(price, q.bid, q.ask, session);
+    const cleanBid = clean.bid;
+    const cleanAsk = clean.ask;
     if (process.env.NODE_ENV !== "production" && (q.bid != null || q.ask != null)) {
       // eslint-disable-next-line no-console
       console.log("[getLiveQuotes]", q.symbol, {
@@ -558,8 +566,9 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
             if (h != null && l != null && h >= l) recentRanges.push(h - l);
           }
           const prior = out[sym];
-          const spread = prior?.bid != null && prior?.ask != null
-            ? { bid: prior.bid, ask: prior.ask }
+          const cleanPrior = prior ? saneBidAsk(lastPrice, prior.bid, prior.ask, session) : {};
+          const spread = cleanPrior.bid != null && cleanPrior.ask != null
+            ? { bid: cleanPrior.bid, ask: cleanPrior.ask }
             : makeBidAsk(lastPrice, recentRanges);
           const change = lastPrice - prevClose;
           out[sym] = {
@@ -619,7 +628,7 @@ export const getLiveQuotes = createServerFn({ method: "POST" })
             ask: spread.ask,
             bidSize: prior?.bidSize,
             askSize: prior?.askSize,
-            syntheticBidAsk: prior?.bid != null && prior?.ask != null ? false : true,
+            syntheticBidAsk: cleanPrior.bid != null && cleanPrior.ask != null ? false : true,
           };
           if (process.env.NODE_ENV !== "production") {
             console.log(`[quotes] sym=${sym} src=${prior?.bid != null && prior?.ask != null ? "v7" : "v8-spread"} bid=${spread.bid} ask=${spread.ask} age=${Date.now() - lastTs * 1000}ms`);
