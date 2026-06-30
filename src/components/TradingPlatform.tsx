@@ -1009,7 +1009,10 @@ export default function TradingPlatform() {
   const schwabTopStrikes = mergedSchwabStrikes;
   const liveBase = live[selectedStock];
   const selectedMark = schwabQuote?.last ?? liveBase?.price;
-  const selectedNbbo = bidAskNearMark(selectedMark, schwabQuote?.bid ?? liveBase?.bid, schwabQuote?.ask ?? liveBase?.ask);
+  const selectedSchwabNbbo = bidAskNearMark(selectedMark, schwabQuote?.bid, schwabQuote?.ask);
+  const selectedNbbo = selectedSchwabNbbo.syntheticBidAsk
+    ? bidAskNearMark(selectedMark, liveBase?.bid, liveBase?.ask)
+    : selectedSchwabNbbo;
   const selectedLiveQuote = schwabQuote?.last != null
     ? {
         ...(liveBase ?? { symbol: selectedStock, ts: Date.now() } as any),
@@ -1367,7 +1370,10 @@ export default function TradingPlatform() {
     // Prefer Schwab real-time NBBO for EVERY symbol when connected.
     const sq = schwabQuotes[sym];
     const mark = sq?.last ?? lqBase?.price;
-    const nbbo = bidAskNearMark(mark, sq?.bid ?? lqBase?.bid, sq?.ask ?? lqBase?.ask);
+    const schwabNbbo = bidAskNearMark(mark, sq?.bid, sq?.ask);
+    const nbbo = schwabNbbo.syntheticBidAsk
+      ? bidAskNearMark(mark, lqBase?.bid, lqBase?.ask)
+      : schwabNbbo;
     const lq = sq?.last != null
       ? {
           ...(lqBase ?? { symbol: sym, price: sq.last, ts: Date.now() } as any),
