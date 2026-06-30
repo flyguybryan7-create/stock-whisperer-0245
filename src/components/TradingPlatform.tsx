@@ -558,6 +558,7 @@ export default function TradingPlatform() {
   const masterScrollRef = useRef<HTMLDivElement | null>(null);
   const flowScrollRef = useRef<HTMLDivElement | null>(null);
   const macdScrollRef = useRef<HTMLDivElement | null>(null);
+  const live24hBarsRef = useRef<Record<string, IntradayBar[]>>({});
   const [masterVisibleRange, setMasterVisibleRange] = useState<[number, number] | null>(null);
   const [macdVisibleRange, setMacdVisibleRange] = useState<[number, number] | null>(null);
 
