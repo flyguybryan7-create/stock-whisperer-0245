@@ -1146,7 +1146,7 @@ export default function TradingPlatform() {
       if (!merged.has(b.t)) merged.set(b.t, b);
     }
     const rows = [...merged.values()].sort((a, b) => a.t - b.t);
-    const livePrice = schwabQuote?.last ?? live[selectedStock]?.price;
+    const livePrice = selectedLiveQuote?.price;
     if (typeof livePrice === "number" && Number.isFinite(livePrice) && livePrice > 0) {
       const nowSec = alignEpochToInterval(Math.floor(Date.now() / 1000), intradayInterval);
       const last = rows[rows.length - 1];
@@ -1164,7 +1164,7 @@ export default function TradingPlatform() {
     }
     const cutoff = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
     return rows.filter((b) => b.t >= cutoff);
-  }, [intradayRange, intradayBars, intradayData, schwabQuote?.last, live, selectedStock, intradayInterval]);
+  }, [intradayRange, intradayBars, intradayData, selectedLiveQuote?.price, intradayInterval]);
   const dayTrade = useMemo(() => getDayTradeSignal(stitchedIntradayBars), [stitchedIntradayBars]);
 
   // ----- Gap-and-Trap indicator for the selected symbol -----
