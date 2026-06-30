@@ -1124,6 +1124,36 @@ export default function TradingPlatform() {
     }
     return intradayData ?? [];
   }, [intradayRange, schwabHistoryData, sharedHistoryData, intradayData]);
+  const stitchedIntradayBars: IntradayBar[] = useMemo(() => {
+    if (intradayRange !== "24H") return intradayBars;
+    const merged = new Map<number, IntradayBar>();
+    for (const b of intradayBars) {
+      if (Number.isFinite(b?.t) && Number.isFinite(b?.close)) merged.set(b.t, b);
+    }
+    for (const b of intradayData ?? []) {
+      if (!Number.isFinite(b?.t) || !Number.isFinite(b?.close)) continue;
+      if (!merged.has(b.t)) merged.set(b.t, b);
+    }
+    const rows = [...merged.values()].sort((a, b) => a.t - b.t);
+    const livePrice = selectedLiveQuote?.price;
+    if (typeof livePrice === "number" && Number.isFinite(livePrice) && livePrice > 0) {
+      const nowSec = alignEpochToInterval(Math.floor(Date.now() / 1000), intradayInterval);
+      const last = rows[rows.length - 1];
+      const maxGap = intervalSeconds(intradayInterval) * 2.5;
+      if (!last || nowSec - last.t > maxGap) {
+        rows.push({ t: nowSec, open: livePrice, high: livePrice, low: livePrice, close: livePrice, volume: 0 });
+      } else {
+        rows[rows.length - 1] = {
+          ...last,
+          close: livePrice,
+          high: Math.max(last.high, livePrice),
+          low: Math.min(last.low, livePrice),
+        };
+      }
+    }
+    const cutoff = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
+    return rows.filter((b) => b.t >= cutoff);
+  }, [intradayRange, intradayBars, intradayData, selectedLiveQuote?.price, intradayInterval]);
   const dayTrade = useMemo(() => getDayTradeSignal(intradayBars), [intradayBars]);
 
   // ----- Gap-and-Trap indicator for the selected symbol -----
