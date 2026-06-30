@@ -1507,10 +1507,10 @@ export default function TradingPlatform() {
     const closes = bars.map((b) => b.close);
     // Map news headlines to bar indices so we can drop 📰 markers on the
     // candle the news landed on. Only valid for intraday mode (where bars[i]
-    // aligns with intradayBars[i]); daily mode skips.
+    // aligns with stitchedIntradayBars[i]); daily mode skips.
     const newsBarMap = new Map<number, number>(); // idx -> count
-    if (chartMode !== "D" && intradayBars.length === bars.length && newsItems.length) {
-      const ts = intradayBars.map((b) => b.t);
+    if (chartMode !== "D" && stitchedIntradayBars.length === bars.length && newsItems.length) {
+      const ts = stitchedIntradayBars.map((b) => b.t);
       const stepSec = ts.length >= 2 ? Math.max(60, ts[ts.length - 1] - ts[ts.length - 2]) : 120;
       for (const n of newsItems) {
         const p = n.publishedAt;
@@ -1623,7 +1623,7 @@ export default function TradingPlatform() {
         newsCount: newsBarMap.get(i) ?? 0,
       };
     });
-  }, [displayData, chartMode, intradayBars, newsItems]);
+  }, [displayData, chartMode, stitchedIntradayBars, newsItems]);
 
   const masterVisibleData = useMemo(() => {
     if (!masterData.length) return [];
