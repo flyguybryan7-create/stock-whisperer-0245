@@ -125,6 +125,15 @@ function niceTicks(domain: [number, number] | ["auto", "auto"] | unknown, target
 
 const PRICE_AXIS_WIDTH = 62;
 
+function intervalSeconds(interval: "1m" | "2m" | "5m" | "15m") {
+  return interval === "1m" ? 60 : interval === "2m" ? 120 : interval === "5m" ? 300 : 900;
+}
+
+function alignEpochToInterval(epochSec: number, interval: "1m" | "2m" | "5m" | "15m") {
+  const step = intervalSeconds(interval);
+  return Math.floor(epochSec / step) * step;
+}
+
 function getVisiblePriceDomain(rows: any[]): [number, number] | ["auto", "auto"] {
   if (!rows.length) return ["auto", "auto"];
   const keys = ["open", "high", "low", "close", "sma9", "sma15", "sma20", "ema21", "bbUpper", "bbLower", "bullLabelY", "sellLabelY", "buyArrowY", "sellArrowY"];
