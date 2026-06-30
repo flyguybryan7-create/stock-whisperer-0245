@@ -1354,7 +1354,7 @@ export default function TradingPlatform() {
     : liveBase;
   // Convert intraday bars -> Row[] (same shape) so we can reuse buildChartData/charts.
   const intradayRows: Row[] = useMemo(() => {
-    const bars = intradayBars;
+    const bars = stitchedIntradayBars;
     if (!bars.length) return [];
     const rows: Row[] = bars.map((b) => ({
       date: intradayRange === "1D"
@@ -1371,7 +1371,7 @@ export default function TradingPlatform() {
       rows[rows.length - 1] = lastBar;
     }
     return buildChartData(rows);
-  }, [intradayBars, intradayRange, selectedLiveQuote?.price]);
+  }, [stitchedIntradayBars, intradayRange, selectedLiveQuote?.price]);
 
   const chartData = chartMode === "D" ? dailyChartData : intradayRows;
   // Keep the full selected timeframe. Readability comes from thick candles +
