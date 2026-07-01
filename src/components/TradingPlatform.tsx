@@ -548,8 +548,8 @@ type Alert = { price: number; type: "above" | "below"; active: boolean };
 export default function TradingPlatform() {
   const [watchlist, setWatchlist] = useState<string[]>(DEFAULT_STOCKS);
   const { user } = useAuthUser();
-  const { tier } = useSubscription(user?.id);
-  const isPro = tier === "pro";
+  const { tier, isActive: subActive } = useSubscription(user?.id);
+  const isPro = tier === "pro" && subActive;
   const [stockNames, setStockNames] = useState<Record<string, string>>(STOCK_NAMES);
   const [positions, setPositions] = useState<Record<string, Position>>({});
   const [editingPos, setEditingPos] = useState<string | null>(null);
@@ -731,6 +731,10 @@ export default function TradingPlatform() {
       showNotif("Notifications not supported on this device");
       return;
     }
+    if (!isPro) {
+      showNotif("Real-time push alerts require the Pro plan. Upgrade on the Pricing page.");
+      return;
+    }
     if (isPreviewIframe()) {
       showNotif("Open the published app in Safari/Chrome to enable notifications");
       return;
@@ -799,6 +803,10 @@ export default function TradingPlatform() {
   };
 
   const sendTest = async () => {
+    if (!isPro) {
+      showNotif("Real-time push alerts require the Pro plan.");
+      return;
+    }
     try {
       const r = await fireTestPush();
       showNotif(`Test sent to ${("sent" in r ? (r as { sent?: number }).sent ?? 0 : 0)} device(s)`);
@@ -1779,7 +1787,7 @@ export default function TradingPlatform() {
   // Watch every watchlist symbol; when its signal flips to BUY or SELL,
   // fire a web push to every subscribed device (5-min server-side cooldown).
   useEffect(() => {
-    if (pushPerm !== "granted") return;
+    if (pushPerm !== "granted" || !isPro) return;
     // Only during US regular trading hours, and only on breakout signals.
     if (!isUsMarketOpen()) return;
     for (const sym of Object.keys(allData)) {
@@ -1811,7 +1819,7 @@ export default function TradingPlatform() {
   // during US regular trading hours. Fires once per direction per symbol;
   // resets when the move falls back inside ±5%.
   useEffect(() => {
-    if (pushPerm !== "granted") return;
+    if (pushPerm !== "granted" || !isPro) return;
     if (!isUsMarketOpen()) return;
     for (const sym of watchlist) {
       const lq = live[sym];
@@ -1841,7 +1849,7 @@ export default function TradingPlatform() {
   // move on the bar), fire a push so the user gets pinged in addition to
   // the on-screen flashing ticker.
   useEffect(() => {
-    if (pushPerm !== "granted") return;
+    if (pushPerm !== "granted" || !isPro) return;
     if (!isUsMarketOpen()) return;
     for (const sym of Object.keys(flowSignals)) {
       const flow = flowSignals[sym];

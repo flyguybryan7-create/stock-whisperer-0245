@@ -98,10 +98,15 @@ function PricingPage() {
                   <button disabled className="mt-6 rounded bg-secondary px-4 py-2 font-medium text-secondary-foreground opacity-60">
                     Current plan
                   </button>
+                ) : subscription ? (
+                  <button onClick={openPortal}
+                    className="mt-6 rounded bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary/90">
+                    Switch to {plan.name} in billing portal
+                  </button>
                 ) : (
                   <button onClick={() => setOpenPriceId(plan.id)}
                     className="mt-6 rounded bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary/90">
-                    {subscription ? "Switch to " + plan.name : "Subscribe"}
+                    Subscribe
                   </button>
                 )}
               </div>
