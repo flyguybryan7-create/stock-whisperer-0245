@@ -1787,7 +1787,7 @@ export default function TradingPlatform() {
   // Watch every watchlist symbol; when its signal flips to BUY or SELL,
   // fire a web push to every subscribed device (5-min server-side cooldown).
   useEffect(() => {
-    if (pushPerm !== "granted") return;
+    if (pushPerm !== "granted" || !isPro) return;
     // Only during US regular trading hours, and only on breakout signals.
     if (!isUsMarketOpen()) return;
     for (const sym of Object.keys(allData)) {
@@ -1819,7 +1819,7 @@ export default function TradingPlatform() {
   // during US regular trading hours. Fires once per direction per symbol;
   // resets when the move falls back inside ±5%.
   useEffect(() => {
-    if (pushPerm !== "granted") return;
+    if (pushPerm !== "granted" || !isPro) return;
     if (!isUsMarketOpen()) return;
     for (const sym of watchlist) {
       const lq = live[sym];
@@ -1849,7 +1849,7 @@ export default function TradingPlatform() {
   // move on the bar), fire a push so the user gets pinged in addition to
   // the on-screen flashing ticker.
   useEffect(() => {
-    if (pushPerm !== "granted") return;
+    if (pushPerm !== "granted" || !isPro) return;
     if (!isUsMarketOpen()) return;
     for (const sym of Object.keys(flowSignals)) {
       const flow = flowSignals[sym];
