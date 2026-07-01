@@ -731,6 +731,10 @@ export default function TradingPlatform() {
       showNotif("Notifications not supported on this device");
       return;
     }
+    if (!isPro) {
+      showNotif("Real-time push alerts require the Pro plan. Upgrade on the Pricing page.");
+      return;
+    }
     if (isPreviewIframe()) {
       showNotif("Open the published app in Safari/Chrome to enable notifications");
       return;
@@ -799,6 +803,10 @@ export default function TradingPlatform() {
   };
 
   const sendTest = async () => {
+    if (!isPro) {
+      showNotif("Real-time push alerts require the Pro plan.");
+      return;
+    }
     try {
       const r = await fireTestPush();
       showNotif(`Test sent to ${("sent" in r ? (r as { sent?: number }).sent ?? 0 : 0)} device(s)`);
