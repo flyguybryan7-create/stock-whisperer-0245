@@ -1,65 +1,62 @@
-# Build Plan
+# Plan
 
-Three independent pieces. I'll ship them in this order so each one is testable on its own.
+## 1. Fix "Connect Schwab" — verify it actually persists
+Symptom: OAuth returns to the callback but the badge doesn't show connected.
 
-## 1. Shared Schwab token (fixes stale quotes for shared viewers)
+- Log `[schwab] persistOwner` result + exchange result in `auth.schwab.callback.tsx`.
+- On success, also write to `localStorage` a flag `bryantrade.schwab.connected = 1` and read it in `TradingPlatform` for the badge state (not just presence of tokens in sessionStorage, which is cleared on tab close — that's likely why "X out and go back" loses the connection).
+- Move token storage to `localStorage` (keep sessionStorage as fallback) so closing the Schwab tab and returning to BryanTrade retains the session.
+- Add a visible toast + status line on the callback page explaining success/failure.
+- Add a "🟢 Schwab Live" vs "⚪ Schwab Off" pill next to the Connect button driven by an actual live `getSchwabQuotes` ping every 30s.
 
-Today your Schwab tokens live in browser cookies — only *you* have them. Viewers fall back to Yahoo. To use your token as a shared feed:
+## 2. What your Schwab API keys unlock (advisory — no code)
+With individual developer keys you get:
+- Real-time NBBO quotes (bid/ask/last/size)
+- Full option chains + Greeks + volume/OI (used for CALL/PUT TGT and P/C ratio)
+- Price history incl. **extended hours** (pre 4am, post 8pm — but Schwab only publishes ETH bars 4am–8pm ET; 8pm–4am is truly dark for most equities. 24hr bars only exist for the ~50 symbols on the NYSE/Nasdaq overnight session, which Schwab does surface via the same `pricehistory` endpoint. Nothing unlocks TOS-style 24h for symbols that don't trade overnight — the tape doesn't exist.)
+- Fundamentals (short float, shares out, avg volume)
+- Movers by index
+- **NOT included** without additional entitlement: level 2, streaming websocket (requires separate Schwab streamer entitlement + account-linked app approval), futures data.
 
-- New table `schwab_owner_tokens` (single-row, owner-only) holding `access_token`, `refresh_token`, `expires_at`, `obtained_at`. RLS: only your `user_id` can read/write; service role for the refresher.
-- New server fn `setOwnerSchwabTokens` — called once after *you* sign into Schwab; stores tokens in the table.
-- New server fn `getSharedSchwabQuotes(symbols)` — public (no auth). Server-side it loads the owner's token from the table using `supabaseAdmin`, auto-refreshes if expired (uses existing `refreshSchwabToken`), then calls Schwab quotes. Returns the same shape as `getSchwabQuotes`.
-- Client switches `schwabQuotes` polling from per-user `getSchwabQuotes` to `getSharedSchwabQuotes` so every visitor on every device sees live Schwab quotes at 1s cadence.
-- Same swap for `getSchwabFundamentals` → `getSharedSchwabFundamentals` and `getSchwabTopStrikes` → `getSharedSchwabTopStrikes`.
+Action: I'll wire the overnight-eligible symbol list (`AAPL`, `TSLA`, `NVDA`, `AMZN`, `MSFT`, `META`, `GOOG`, `SPY`, `QQQ` + ~40 others Schwab supports) into the 24H chart mode so those specific tickers get real 8pm–4am bars.
 
-**Tradeoff you accepted:** uses your account's rate limits and is against Schwab ToS. If Schwab notices and revokes, only the shared-quote path breaks — your per-user OAuth still works.
+## 3. Put/Call Ratio badge
+- Extend `getSchwabTopStrikes` to also return `putVolume/callVolume` (already collected) and expose a **P/C Ratio** in the header for the active symbol: `<0.7 bullish, 0.7–1.0 neutral, >1.0 bearish`, color-coded.
 
-## 2. Schwab WebSocket streamer
+## 4. Real Asia-linked SEMI RISK
+Rebuild `fetchSemiRiskSentimentSnapshot` in `market-pulse.server.ts` to weight:
+- KOSPI (^KS11) 15%
+- STAR 50 (000688.SS) 15%
+- PHLX Semi (^SOX) 25%
+- TAIEX (^TWII) 15%
+- Nikkei 225 (^N225) 15%
+- Hang Seng Tech (^HSTECH) 15%
 
-Schwab's streamer needs a per-account login handshake (userid + token + channel). The clean architecture:
+Compute weighted daily % change → map to a 0-100 risk score → display as "SEMI RISK 62% ↑" with implied ES/NQ drag: `impliedNQ = -weightedPct * 0.6`.
 
-- Server route `/api/public/schwab-stream` (SSE, not WS — Cloudflare Workers don't support persistent outbound WS on the free tier reliably). 
-- On first connect, server opens a single Schwab streamer WS using the owner's token (same shared-feed model as #1), subscribes to LEVELONE_EQUITIES for the union of all symbols any viewer has requested in the last 60s.
-- Server fans out ticks to every connected SSE client filtered by their symbol list.
-- Client hook `useSchwabStream(symbols)` opens an EventSource, merges ticks into the same `live` state your `LiveQuote` map already uses.
-- Polling stays as fallback if the stream drops.
+## 5. Fix CALL/PUT TGT percentages (should reflect real flow)
+Current pct = `topStrikeVolume / totalExpiryVolume` (per side). That never sums to 100% across strikes because we only show the top. Change to:
+- Show **top 2 call strikes + top 2 put strikes** with `strike · pct-of-side-volume`.
+- Add "Σ Calls / Σ Puts" line so the user sees flow distribution.
+- Percentages on each row are share of that side's total volume; the two shown per side won't sum to 100 (rest is spread across other strikes) — label as "flow share".
 
-**Honest caveat:** Cloudflare Workers cap WS connection lifetime (~30s idle, ~5min hard). I'll add auto-reconnect, but a true always-on streamer ideally runs on a long-lived server. This will work but expect occasional reconnects. If reconnects become a problem we move the streamer to a small Node worker on Fly/Render later.
+## 6. 'E' econ-event markers
+- New `src/lib/econ-calendar.functions.ts` pulling from a free source:
+  - Primary: Trading Economics calendar RSS (public) or FRED ALFRED release calendar
+  - Fallback: Federal Reserve calendar JSON
+- Filter to high-impact US releases: CPI, PCE, NFP, FOMC, GDP, PPI, Retail Sales, Unemployment, ISM, Fed speakers.
+- Show yellow **E** markers on Master chart at release timestamp, same rendering pattern as the blue **N** news markers.
 
-## 3. Gap-Trap indicator
+## 7. Replace MACD chart with day-trader chart
+Options (I'll pick **A** unless you say otherwise):
+- **A. VWAP + Anchored VWAP bands + Cumulative Delta proxy** — shows session VWAP, ±1σ / ±2σ bands, plus a rolling "aggressor volume" bar (up-vol − down-vol) which day traders use for exhaustion/absorption reads. Pans/zooms identically to the Master chart.
+- B. Level 2 tape simulation (not possible without L2 entitlement).
+- C. Relative Volume (RVOL) histogram vs 20-day avg per bar.
 
-Per symbol on each tick, compute from existing 2m intraday bars (already in `intradayBars`):
-
-```text
-gapPct  = (todayOpen - yesterdayClose) / yesterdayClose
-vwap    = session VWAP (already have from Schwab)
-firstHr = first 30min after 9:30 ET
-rejection = high(firstHr) > todayOpen * 1.005 AND
-            currentClose < vwap AND
-            currentClose < todayOpen AND
-            volume(firstHr) > 1.5 * avgVol(first30m, 20d)
-```
-
-- `gapPct > +3%` AND `rejection` → **🪤 GAP TRAP (bull trap)** — red pulsing badge
-- `gapPct < -3%` AND inverse rejection → **🪤 GAP TRAP (bear trap)** — green pulsing badge
-- Otherwise hidden.
-
-Renders in the symbol header next to the price, pulses for 5min after first trigger, then becomes a static badge for the rest of the session. Hover shows the trigger reason.
-
-I'll also wire it into the watchlist row so you can see at a glance which names are trapped.
-
-## Files
-
-- `supabase/migrations/<ts>_schwab_owner_tokens.sql` — new table + RLS + grants
-- `src/lib/schwab-shared.functions.ts` — new shared-feed server fns + token refresher
-- `src/lib/schwab.functions.ts` — add `setOwnerSchwabTokens`
-- `src/routes/api/public/schwab-stream.ts` — new SSE route
-- `src/lib/schwab-stream.client.ts` — new `useSchwabStream` hook
-- `src/lib/trap-indicator.ts` — pure detection function
-- `src/components/TradingPlatform.tsx` — swap quote sources, add stream hook, render trap badges
-
-## Out of scope (per your answer)
-
-- 24h overnight bars — holding until you find an overnight-session feed.
-
-Ready for me to build?
+## Files touched
+- `src/routes/auth.schwab.callback.tsx` — persistence fix
+- `src/components/TradingPlatform.tsx` — badge, P/C ratio, flow rows, E markers, new chart, remove MACD
+- `src/lib/schwab.functions.ts` — expose P/C, top-2 strikes
+- `src/lib/schwab-shared.functions.ts` — same
+- `src/lib/market-pulse.server.ts` — Asia-weighted SEMI RISK
+- `src/lib/econ-calendar.functions.ts` — new
