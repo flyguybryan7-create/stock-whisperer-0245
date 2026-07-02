@@ -2916,11 +2916,7 @@ export default function TradingPlatform() {
             <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "3px 0" }}>← swipe to pan · price above VWAP+σ = extended long · Cum Δ divergence vs price = absorption/exhaustion</div>
           </ChartCard>
 
-          {/* Macro market-moving news (CNBC / MarketWatch / WSJ) */}
-          <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 12, marginBottom: 12 }}>
-            {/* Prepended above macro news: dedicated feed for the yellow "E" chart markers */}
-          </div>
-
+          {/* Economic releases feed — matches yellow "E" chart markers */}
           <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 12, marginBottom: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
               <div style={{ fontSize: 10, color: "#e3b341", letterSpacing: 1.5, fontWeight: 700 }}>
