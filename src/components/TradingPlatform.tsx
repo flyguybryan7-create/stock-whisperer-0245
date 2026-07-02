@@ -2916,7 +2916,35 @@ export default function TradingPlatform() {
             <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "3px 0" }}>← swipe to pan · price above VWAP+σ = extended long · Cum Δ divergence vs price = absorption/exhaustion</div>
           </ChartCard>
 
-          {/* Macro market-moving news (CNBC / MarketWatch / WSJ) */}
+          {/* Economic releases feed — matches yellow "E" chart markers */}
+          <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 12, marginBottom: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+              <div style={{ fontSize: 10, color: "#e3b341", letterSpacing: 1.5, fontWeight: 700 }}>
+                🟡 E · ECONOMIC RELEASES (US HIGH-IMPACT)
+              </div>
+              <span style={{ fontSize: 9, color: "#8b949e" }}>Nasdaq Cal · Fed · BEA</span>
+            </div>
+            <div style={{ display: "grid", gap: 6 }}>
+              {econItems.length === 0 && (
+                <div style={{ fontSize: 10, color: "#8b949e" }}>Loading economic calendar…</div>
+              )}
+              {econItems.slice(0, 15).map((e, i) => (
+                <a key={i} href={e.link} target="_blank" rel="noreferrer"
+                  style={{ display: "flex", gap: 8, padding: "6px 8px", background: "#010409", borderRadius: 4, textDecoration: "none", color: "#e6edf3", fontSize: 11, lineHeight: 1.4, border: "1px solid #161b22" }}>
+                  <span style={{ fontSize: 8, fontWeight: 800, color: "#e3b341", letterSpacing: 1, minWidth: 54, paddingTop: 2 }}>
+                    {e.category}
+                  </span>
+                  <span style={{ flex: 1 }}>
+                    {e.title}
+                    <span style={{ display: "block", fontSize: 9, color: "#8b949e", marginTop: 2 }}>
+                      {e.publisher} · {new Date(e.publishedAt * 1000).toLocaleString()}
+                    </span>
+                  </span>
+                </a>
+              ))}
+            </div>
+          </div>
+
           <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 12, marginBottom: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
               <div style={{ fontSize: 10, color: "#8b949e", letterSpacing: 1.5 }}>
