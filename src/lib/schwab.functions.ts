@@ -262,6 +262,9 @@ export type SchwabTopStrikes = {
   topPutPct: number | null;
   callVolume: number;
   putVolume: number;
+  topCalls: { strike: number; pct: number; volume: number }[]; // top 2, share of call volume
+  topPuts: { strike: number; pct: number; volume: number }[];
+  pcRatio: number | null;           // put volume / call volume (all-strike, chosen expiry)
 };
 
 export const getSchwabTopStrikes = createServerFn({ method: "POST" })
@@ -297,17 +300,23 @@ export const getSchwabTopStrikes = createServerFn({ method: "POST" })
     if (!chosen) return null;
     const [expiry, dteStr] = chosen.split(":");
     const dte = Number(dteStr);
-    const pickTopFromExp = (map: any): { strike: number | null; pct: number | null; total: number } => {
+    const pickTopFromExp = (map: any): { strike: number | null; pct: number | null; total: number; top: { strike: number; pct: number; volume: number }[] } => {
       const exp = map?.[chosen!] ?? {};
       let best = 0, bestStrike = 0, total = 0;
+      const rows: { strike: number; volume: number }[] = [];
       for (const strikeKey of Object.keys(exp)) {
         const arr = exp[strikeKey];
         const v = Array.isArray(arr) && arr[0]?.totalVolume ? Number(arr[0].totalVolume) : 0;
         if (!Number.isFinite(v)) continue;
         total += v;
+        if (v > 0) rows.push({ strike: Number(strikeKey), volume: v });
         if (v > best) { best = v; bestStrike = Number(strikeKey); }
       }
-      return { strike: bestStrike || null, pct: bestStrike && total > 0 ? best / total : null, total };
+      rows.sort((a, b) => b.volume - a.volume);
+      const top = rows.slice(0, 2).map((r) => ({
+        strike: r.strike, volume: r.volume, pct: total > 0 ? r.volume / total : 0,
+      }));
+      return { strike: bestStrike || null, pct: bestStrike && total > 0 ? best / total : null, total, top };
     };
     const tc = pickTopFromExp(callMap);
     const tp = pickTopFromExp(putMap);
@@ -315,6 +324,7 @@ export const getSchwabTopStrikes = createServerFn({ method: "POST" })
     const label = Number.isNaN(d.getTime())
       ? expiry
       : `${d.toLocaleString("en-US", { month: "short" })} '${String(d.getFullYear()).slice(-2)}`;
+    const pcRatio = tc.total > 0 ? +(tp.total / tc.total).toFixed(3) : null;
     return {
       symbol: sym,
       expiry,
@@ -326,5 +336,8 @@ export const getSchwabTopStrikes = createServerFn({ method: "POST" })
       topPutPct: tp.pct,
       callVolume: tc.total,
       putVolume: tp.total,
+      topCalls: tc.top,
+      topPuts: tp.top,
+      pcRatio,
     };
   });

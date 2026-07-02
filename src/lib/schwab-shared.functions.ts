@@ -217,25 +217,31 @@ export const getSharedSchwabTopStrikes = createServerFn({ method: "POST" })
     const pickTop = (map: any) => {
       const exp = map?.[chosen!] ?? {};
       let best = 0, bestStrike = 0, total = 0;
+      const rows: { strike: number; volume: number }[] = [];
       for (const sk of Object.keys(exp)) {
         const arr = exp[sk];
         const v = Array.isArray(arr) && arr[0]?.totalVolume ? Number(arr[0].totalVolume) : 0;
         if (!Number.isFinite(v)) continue;
         total += v;
+        if (v > 0) rows.push({ strike: Number(sk), volume: v });
         if (v > best) { best = v; bestStrike = Number(sk); }
       }
-      return { strike: bestStrike || null, pct: bestStrike && total > 0 ? best / total : null, total };
+      rows.sort((a, b) => b.volume - a.volume);
+      const top = rows.slice(0, 2).map((r) => ({ strike: r.strike, volume: r.volume, pct: total > 0 ? r.volume / total : 0 }));
+      return { strike: bestStrike || null, pct: bestStrike && total > 0 ? best / total : null, total, top };
     };
     const tc = pickTop(callMap);
     const tp = pickTop(putMap);
     const d = new Date(expiry + "T00:00:00");
     const label = Number.isNaN(d.getTime()) ? expiry
       : `${d.toLocaleString("en-US", { month: "short" })} '${String(d.getFullYear()).slice(-2)}`;
+    const pcRatio = tc.total > 0 ? +(tp.total / tc.total).toFixed(3) : null;
     return {
       symbol: sym, expiry, dte: Number.isFinite(dte) ? dte : null, label,
       topCallStrike: tc.strike, topCallPct: tc.pct,
       topPutStrike: tp.strike, topPutPct: tp.pct,
       callVolume: tc.total, putVolume: tp.total,
+      topCalls: tc.top, topPuts: tp.top, pcRatio,
     };
   });
 

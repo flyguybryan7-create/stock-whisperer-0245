@@ -87,6 +87,7 @@ export type GlobalSemiIndexResponse = {
   level: "LOW" | "ELEVATED" | "HIGH" | "EXTREME";
   score: number; // 0-100; higher = more risk
   reason: string;
+  impliedNasdaqPct: number | null; // implied NQ drag from Asian/Philly semi tape
   asOf: number;
   error?: string;
 };
