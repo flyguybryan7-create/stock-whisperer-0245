@@ -474,10 +474,13 @@ export async function fetchGlobalSemiIndexSnapshot(): Promise<GlobalSemiIndexRes
       `Asian/Philly semi tape: ` +
       components.map((c) => `${c.name} ${c.changePct == null ? "—" : fmt(c.changePct)}`).join(" · ") +
       `\nAvg ${avgChangePct == null ? "—" : fmt(avgChangePct)} · ${decliners} of ${valid.length} declining`;
-    return { avgChangePct, components, level, score, reason, asOf: Date.now() };
+    // Historical beta of NQ vs Asian-semi weighted move ≈ 0.55–0.65 during
+    // overnight sessions when Asia leads. Use 0.6 as a reasonable proxy.
+    const impliedNasdaqPct = valid.length ? +(weighted * 0.6).toFixed(2) : null;
+    return { avgChangePct, components, level, score, reason, impliedNasdaqPct, asOf: Date.now() };
   } catch (error) {
     console.error("[global-semis] snapshot failed", error);
-    return { avgChangePct: null, components: [], level: "ELEVATED", score: 40, reason: "unavailable", asOf: Date.now(), error: "SERVICE_UNAVAILABLE" };
+    return { avgChangePct: null, components: [], level: "ELEVATED", score: 40, reason: "unavailable", impliedNasdaqPct: null, asOf: Date.now(), error: "SERVICE_UNAVAILABLE" };
   }
 }
 
