@@ -1570,7 +1570,7 @@ export default function TradingPlatform() {
       };
     });
     return out;
-  }, [macdDisplayData]);
+  }, [macdDisplayData, chartMode]);
   const last = chartData[chartData.length - 1] || ({} as Row);
   const prev = chartData[chartData.length - 2] || ({} as Row);
   const liveSel = selectedLiveQuote;
