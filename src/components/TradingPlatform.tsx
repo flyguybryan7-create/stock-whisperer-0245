@@ -2829,18 +2829,22 @@ export default function TradingPlatform() {
             <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "3px 0" }}>← swipe to pan · pinch or ± to zoom · live edge on right →</div>
           </ChartCard>
 
-          {/* MACD candlestick + oscillator — restored as its own chart */}
+          {/* Day-trader VWAP + Cumulative Delta — replaces MACD momentum.
+              Top pane: candles with session-anchored VWAP and ±1σ bands.
+              Bottom pane: signed-volume Cumulative Delta (aggressor proxy)
+              with per-bar delta histogram — highlights absorption/exhaustion
+              divergences that day traders use for reversal reads. */}
           <ChartCard
-            title="📊 MACD MOMENTUM · CANDLES + OSCILLATOR"
+            title="⚡ DAY-TRADER · VWAP BANDS + CUMULATIVE DELTA"
             titleRight={<span style={{ fontSize: 9, color: "#8b949e", marginLeft: 6 }}>{chartMode === "D" ? `${chartRange}D` : `${intradayRange} : ${intradayInterval}`}</span>}
             legend={[
               { label: "Bullish candle", color: "#39d353" },
               { label: "Bearish candle", color: "#f85149" },
-              { label: "EMA21", color: "#79c0ff" },
-              { label: "MACD", color: "#58a6ff" },
-              { label: "Signal", color: "#f0883e" },
-              { label: "BUY", color: "#39d353" },
-              { label: "SELL", color: "#f85149" },
+              { label: "VWAP", color: "#d2a8ff" },
+              { label: "VWAP ±1σ", color: "#484f58" },
+              { label: "Cum Δ (aggressor)", color: "#58a6ff" },
+              { label: "Buy Δ bar", color: "#39d353" },
+              { label: "Sell Δ bar", color: "#f85149" },
             ]}
           >
             <div style={{ position: "relative" }}>
@@ -2859,7 +2863,9 @@ export default function TradingPlatform() {
                     <XAxis dataKey="date" stroke="#8b949e" fontSize={8} tick={{ fontFamily: mono, fontSize: 8 }} interval="preserveStartEnd" minTickGap={20} hide />
                     <YAxis orientation="right" hide domain={macdPriceDomain} allowDataOverflow width={0} />
                     <Bar dataKey="candleRange" name="Candle" isAnimationActive={false} shape={<Candle />} />
-                    <Line type="monotone" dataKey="ema21" stroke="#79c0ff" strokeWidth={1.5} dot={false} name="EMA21" connectNulls />
+                    <Line type="monotone" dataKey="vwapUpper" stroke="#484f58" strokeWidth={1} strokeDasharray="3 3" dot={false} name="VWAP +1σ" connectNulls />
+                    <Line type="monotone" dataKey="vwapLower" stroke="#484f58" strokeWidth={1} strokeDasharray="3 3" dot={false} name="VWAP -1σ" connectNulls />
+                    <Line type="monotone" dataKey="vwap" stroke="#d2a8ff" strokeWidth={1.75} dot={false} name="VWAP" connectNulls />
                     <Scatter dataKey="buyArrowY" isAnimationActive={false}
                       shape={(p: any) => p?.payload?.buyArrowY == null ? <g /> : (
                         <g>
@@ -2880,18 +2886,19 @@ export default function TradingPlatform() {
                   <ComposedChart data={macdCandleData} margin={{ top: 0, right: 8, left: 0, bottom: 16 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                     <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} interval="preserveStartEnd" minTickGap={20} />
-                    <YAxis orientation="right" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={macdOscDomain} width={60} />
-                    <Bar dataKey="macdHist" name="Hist" isAnimationActive={false} maxBarSize={6}
-                      shape={(p: any) => <rect x={p.x} y={Math.min(p.y, p.y + p.height)} width={p.width} height={Math.abs(p.height)} fill={(p.payload?.macdHist ?? 0) >= 0 ? "#39d353" : "#f85149"} />}
+                    <YAxis yAxisId="delta" orientation="right" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} width={64}
+                      tickFormatter={(v: number) => Math.abs(v) >= 1e6 ? `${(v/1e6).toFixed(1)}M` : Math.abs(v) >= 1e3 ? `${(v/1e3).toFixed(0)}k` : `${v}`}
                     />
-                    <Line type="monotone" dataKey="macd" stroke="#58a6ff" strokeWidth={1.5} dot={false} name="MACD" connectNulls />
-                    <Line type="monotone" dataKey="macdSignal" stroke="#f0883e" strokeWidth={1.5} dot={false} name="Signal" connectNulls />
+                    <Bar yAxisId="delta" dataKey="deltaBar" name="Δ bar" isAnimationActive={false} maxBarSize={6}
+                      shape={(p: any) => <rect x={p.x} y={Math.min(p.y, p.y + p.height)} width={p.width} height={Math.abs(p.height)} fill={(p.payload?.deltaBar ?? 0) >= 0 ? "#39d353" : "#f85149"} opacity={0.55} />}
+                    />
+                    <Line yAxisId="delta" type="monotone" dataKey="cumDelta" stroke="#58a6ff" strokeWidth={1.75} dot={false} name="Cum Δ" connectNulls />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
             </div>
             </div>
-            <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "3px 0" }}>← swipe to pan · BUY/SELL arrows = MACD crossovers</div>
+            <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "3px 0" }}>← swipe to pan · price above VWAP+σ = extended long · Cum Δ divergence vs price = absorption/exhaustion</div>
           </ChartCard>
 
           {/* Macro market-moving news (CNBC / MarketWatch / WSJ) */}
