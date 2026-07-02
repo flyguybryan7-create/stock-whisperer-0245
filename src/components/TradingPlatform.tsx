@@ -1504,9 +1504,24 @@ export default function TradingPlatform() {
     let cumTPV = 0, cumV = 0, cumTPV2 = 0;
     let cumDelta = 0;
     let currentDay = "";
-    const getDay = (d: any): string => {
-      const dt = new Date(d.date);
-      return Number.isNaN(dt.getTime()) ? String(d.date) : dt.toISOString().slice(0, 10);
+    // Chart rows carry display-formatted date strings, not ISO timestamps:
+    //   1D intraday   -> "HH:MM"        (single session)
+    //   multi-day     -> "M/D, HH:MM"   (group by "M/D")
+    //   daily (D)     -> "M/D" or ISO   (accumulate across the whole window
+    //                                    so anchored VWAP + bands + cum-delta
+    //                                    remain meaningful instead of resetting
+    //                                    every single bar)
+    const getDay = (raw: any): string => {
+      // Daily view: anchor across the full displayed window so anchored VWAP,
+      // ±1σ bands, and cumulative delta actually build up across bars.
+      if (chartMode === "D") return "D-WINDOW";
+      const s = String(raw?.date ?? "");
+      if (/^\d{1,2}:\d{2}$/.test(s)) return "1D-SESSION";
+      const md = s.match(/^(\d{1,2}\/\d{1,2})/);
+      if (md) return md[1];
+      const dt = new Date(s);
+      if (!Number.isNaN(dt.getTime())) return dt.toISOString().slice(0, 10);
+      return "ALL";
     };
     const out = src.map((d, i) => {
       const o = (d as any).open ?? d.close;
@@ -1555,7 +1570,7 @@ export default function TradingPlatform() {
       };
     });
     return out;
-  }, [macdDisplayData]);
+  }, [macdDisplayData, chartMode]);
   const last = chartData[chartData.length - 1] || ({} as Row);
   const prev = chartData[chartData.length - 2] || ({} as Row);
   const liveSel = selectedLiveQuote;
