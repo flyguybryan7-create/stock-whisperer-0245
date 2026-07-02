@@ -35,6 +35,7 @@ import {
   type SchwabTopStrikes,
 } from "@/lib/schwab.functions";
 import { SCHWAB_TOKEN_KEY } from "@/routes/auth.schwab.callback";
+import { fetchEconCalendar } from "@/lib/econ-calendar.functions";
 import {
   getSharedSchwabQuotes,
   getSharedSchwabFundamentals,
@@ -702,12 +703,15 @@ export default function TradingPlatform() {
   const [schwabErr, setSchwabErr] = useState<string | null>(null);
   useEffect(() => {
     try {
-      const raw = sessionStorage.getItem(SCHWAB_TOKEN_KEY);
+      // Prefer localStorage (survives closing the OAuth tab); fall back to
+      // sessionStorage for legacy sessions.
+      const raw = localStorage.getItem(SCHWAB_TOKEN_KEY) || sessionStorage.getItem(SCHWAB_TOKEN_KEY);
       if (raw) setSchwabTokens(JSON.parse(raw) as SchwabTokens);
     } catch {}
   }, []);
   const persistTokens = useCallback((t: SchwabTokens) => {
     setSchwabTokens(t);
+    try { localStorage.setItem(SCHWAB_TOKEN_KEY, JSON.stringify(t)); } catch {}
     try { sessionStorage.setItem(SCHWAB_TOKEN_KEY, JSON.stringify(t)); } catch {}
   }, []);
   const connectSchwab = useCallback(async () => {
@@ -1087,6 +1091,18 @@ export default function TradingPlatform() {
     staleTime: 5 * 60_000,
     refetchInterval: 5 * 60_000,
   });
+
+  // Economic calendar — Fed / BLS / BEA / Treasury releases. Refresh every
+  // 5 min; drives the yellow 'E' markers on the Master chart.
+  const fetchEconCal = useServerFn(fetchEconCalendar);
+  const { data: econData } = useQuery({
+    queryKey: ["econCalendar"],
+    queryFn: () => fetchEconCal(),
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
+    refetchIntervalInBackground: true,
+  });
+  const econItems = econData?.items ?? [];
 
   // Split market pulse into two lanes so each can refresh at max safe speed:
   //   • fastPulse  = futures (ES/NQ/YM/RTY) + VIX  → 5 symbols → 2s
@@ -1469,6 +1485,8 @@ export default function TradingPlatform() {
       candleRange: [number, number];
       buyArrowY: number | null; sellArrowY: number | null;
       ema21: number;
+      vwap: number | null; vwapUpper: number | null; vwapLower: number | null;
+      cumDelta: number; deltaBar: number;
     }>;
     const kEma21 = 2 / 22;
     let ema21 = src[0].close;
@@ -1480,6 +1498,16 @@ export default function TradingPlatform() {
       if (src[i].macdAlert === "BUY" && buyKept < 3) { keepBuy.add(i); buyKept++; }
       else if (src[i].macdAlert === "SELL" && sellKept < 3) { keepSell.add(i); sellKept++; }
     }
+    // Session-anchored VWAP (resets per calendar day) + rolling ±1σ VWAP bands.
+    // Cumulative Delta = signed volume, sign = candle direction (proxy for
+    // aggressor volume when true tick data isn't available).
+    let cumTPV = 0, cumV = 0, cumTPV2 = 0;
+    let cumDelta = 0;
+    let currentDay = "";
+    const getDay = (d: any): string => {
+      const dt = new Date(d.date);
+      return Number.isNaN(dt.getTime()) ? String(d.date) : dt.toISOString().slice(0, 10);
+    };
     const out = src.map((d, i) => {
       const o = (d as any).open ?? d.close;
       const h = (d as any).high ?? d.close;
@@ -1490,6 +1518,22 @@ export default function TradingPlatform() {
       if (i === 0) ema21 = d.close;
       else ema21 = d.close * kEma21 + ema21 * (1 - kEma21);
       const offset = Math.max((h - l) * 0.015, d.close * 0.00005, 0.005);
+      const day = getDay(d);
+      if (day !== currentDay) {
+        currentDay = day; cumTPV = 0; cumV = 0; cumTPV2 = 0; cumDelta = 0;
+      }
+      const tp = (h + l + d.close) / 3;
+      const v = d.volume ?? 0;
+      cumTPV += tp * v;
+      cumV += v;
+      cumTPV2 += tp * tp * v;
+      const vwap = cumV > 0 ? cumTPV / cumV : null;
+      const variance = cumV > 0 ? Math.max(0, cumTPV2 / cumV - (vwap as number) * (vwap as number)) : 0;
+      const sigma = Math.sqrt(variance);
+      const vwapUpper = vwap != null ? vwap + sigma : null;
+      const vwapLower = vwap != null ? vwap - sigma : null;
+      const deltaBar = (green ? 1 : -1) * v;
+      cumDelta += deltaBar;
       return {
         ...d,
         candleStart: +start.toFixed(4),
@@ -1503,6 +1547,11 @@ export default function TradingPlatform() {
         buyArrowY: keepBuy.has(i) ? +(l - offset).toFixed(4) : null,
         sellArrowY: keepSell.has(i) ? +(h + offset).toFixed(4) : null,
         ema21: +ema21.toFixed(4),
+        vwap: vwap != null ? +vwap.toFixed(4) : null,
+        vwapUpper: vwapUpper != null ? +vwapUpper.toFixed(4) : null,
+        vwapLower: vwapLower != null ? +vwapLower.toFixed(4) : null,
+        cumDelta: +cumDelta.toFixed(0),
+        deltaBar: +deltaBar.toFixed(0),
       };
     });
     return out;
@@ -1562,6 +1611,9 @@ export default function TradingPlatform() {
     isElephant: boolean;
     newsMarkerY: number | null;
     newsCount: number;
+    econMarkerY: number | null;
+    econCount: number;
+    econCat: string | null;
   };
   const masterData = useMemo<MasterRow[]>(() => {
     if (!displayData.length) return [];
@@ -1587,6 +1639,27 @@ export default function TradingPlatform() {
         }
         if (best >= 0 && bestDiff <= stepSec * 2) {
           newsBarMap.set(best, (newsBarMap.get(best) ?? 0) + 1);
+        }
+      }
+    }
+    // Econ event markers 'E' (Fed / BLS / BEA / Treasury) — same mapping.
+    const econBarMap = new Map<number, { count: number; cat: string }>();
+    if (chartMode !== "D" && stitchedIntradayBars.length === bars.length && econItems.length) {
+      const ts = stitchedIntradayBars.map((b) => b.t);
+      const stepSec = ts.length >= 2 ? Math.max(60, ts[ts.length - 1] - ts[ts.length - 2]) : 120;
+      const winStart = ts[0], winEnd = ts[ts.length - 1];
+      for (const e of econItems) {
+        if (!e.publishedAt || e.publishedAt < winStart - stepSec || e.publishedAt > winEnd + stepSec) continue;
+        let lo = 0, hi = ts.length - 1, best = -1, bestDiff = Infinity;
+        while (lo <= hi) {
+          const mid = (lo + hi) >> 1;
+          const d = Math.abs(ts[mid] - e.publishedAt);
+          if (d < bestDiff) { bestDiff = d; best = mid; }
+          if (ts[mid] < e.publishedAt) lo = mid + 1; else hi = mid - 1;
+        }
+        if (best >= 0 && bestDiff <= stepSec * 3) {
+          const prev = econBarMap.get(best) ?? { count: 0, cat: e.category };
+          econBarMap.set(best, { count: prev.count + 1, cat: e.category });
         }
       }
     }
@@ -1683,9 +1756,12 @@ export default function TradingPlatform() {
         isElephant: flags[i].isElephant,
         newsMarkerY: newsBarMap.has(i) ? +(high + offset * 2.2).toFixed(4) : null,
         newsCount: newsBarMap.get(i) ?? 0,
+        econMarkerY: econBarMap.has(i) ? +(high + offset * 3.6).toFixed(4) : null,
+        econCount: econBarMap.get(i)?.count ?? 0,
+        econCat: econBarMap.get(i)?.cat ?? null,
       };
     });
-  }, [displayData, chartMode, stitchedIntradayBars, newsItems]);
+  }, [displayData, chartMode, stitchedIntradayBars, newsItems, econItems]);
 
   const masterVisibleData = useMemo(() => {
     if (!masterData.length) return [];
@@ -2011,12 +2087,17 @@ export default function TradingPlatform() {
           {globalSemis && (() => {
             const r = globalSemis;
             const color = r.level === "EXTREME" ? "#f85149" : r.level === "HIGH" ? "#ff7b29" : r.level === "ELEVATED" ? "#e3b341" : "#39d353";
-            const tip = `Semi risk from Asian/Philly indices — ${r.level} (${r.score}/100)\n\n${r.reason}`;
+            const impl = r.impliedNasdaqPct;
+            const implStr = impl == null ? null : `${impl >= 0 ? "+" : ""}${impl.toFixed(2)}%`;
+            const tip = `Semi risk from Asian/Philly indices — ${r.level} (${r.score}/100)\n\n${r.reason}\n\nImplied NQ drag: ${implStr ?? "—"}`;
             return (
               <span title={tip}
                 style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px", letterSpacing: 0.5, flexShrink: 0 }}>
                 <span style={{ color: "#8b949e", fontWeight: 800 }}>SEMI RISK</span>
                 {r.level} <span style={{ opacity: 0.7 }}>{r.score}</span>
+                {implStr && (
+                  <span style={{ color: impl! >= 0 ? "#39d353" : "#f85149", fontWeight: 700, opacity: 0.9 }}>NQ {implStr}</span>
+                )}
               </span>
             );
           })()}
@@ -2505,28 +2586,39 @@ export default function TradingPlatform() {
                     if (!oa && !sts) return null;
                     const buckets = oa?.expiries ?? [];
                     const bucket = buckets[0];
-                    const view = sts
+                    // Build unified view with top-2 strikes per side when Schwab
+                    // is connected; fall back to top-1 from Yahoo/CBOE otherwise.
+                    const view: {
+                      label: string; dte: number | null;
+                      topCalls: { strike: number; pct: number }[];
+                      topPuts: { strike: number; pct: number }[];
+                      pcRatio: number | null;
+                      callVolume: number | null; putVolume: number | null;
+                    } = sts
                       ? {
-                          label: sts.label ?? "Next",
-                          dte: sts.dte,
-                          topCallStrike: sts.topCallStrike,
-                          topCallPct: sts.topCallPct,
-                          topPutStrike: sts.topPutStrike,
-                          topPutPct: sts.topPutPct,
+                          label: sts.label ?? "Next", dte: sts.dte,
+                          topCalls: (sts.topCalls && sts.topCalls.length ? sts.topCalls : (sts.topCallStrike != null && sts.topCallPct != null ? [{ strike: sts.topCallStrike, pct: sts.topCallPct }] : [])),
+                          topPuts:  (sts.topPuts  && sts.topPuts.length  ? sts.topPuts  : (sts.topPutStrike  != null && sts.topPutPct  != null ? [{ strike: sts.topPutStrike,  pct: sts.topPutPct  }] : [])),
+                          pcRatio: sts.pcRatio ?? null,
+                          callVolume: sts.callVolume, putVolume: sts.putVolume,
                         }
-                      : bucket ?? {
-                          label: "All",
-                          dte: null as number | null,
-                          topCallStrike: oa!.topCallStrike,
-                          topCallPct: oa!.topCallPct,
-                          topPutStrike: oa!.topPutStrike,
-                          topPutPct: oa!.topPutPct,
-                        };
-                    const hasCall = view.topCallStrike != null && view.topCallPct != null;
-                    const hasPut = view.topPutStrike != null && view.topPutPct != null;
+                      : bucket
+                        ? { label: bucket.label, dte: bucket.dte,
+                            topCalls: bucket.topCallStrike != null && bucket.topCallPct != null ? [{ strike: bucket.topCallStrike, pct: bucket.topCallPct }] : [],
+                            topPuts:  bucket.topPutStrike  != null && bucket.topPutPct  != null ? [{ strike: bucket.topPutStrike,  pct: bucket.topPutPct  }] : [],
+                            pcRatio: null, callVolume: null, putVolume: null }
+                        : { label: "All", dte: null,
+                            topCalls: oa!.topCallStrike != null && oa!.topCallPct != null ? [{ strike: oa!.topCallStrike, pct: oa!.topCallPct }] : [],
+                            topPuts:  oa!.topPutStrike  != null && oa!.topPutPct  != null ? [{ strike: oa!.topPutStrike,  pct: oa!.topPutPct  }] : [],
+                            pcRatio: null, callVolume: null, putVolume: null };
+                    const hasCall = view.topCalls.length > 0;
+                    const hasPut = view.topPuts.length > 0;
                     if (!hasCall && !hasPut && buckets.length === 0 && !sts) return null;
-                    const nextLabel = sts ? sts.label : bucket?.label;
-                    const nextDte = sts ? sts.dte : bucket?.dte;
+                    const nextLabel = view.label;
+                    const nextDte = view.dte;
+                    const pcr = view.pcRatio;
+                    const pcColor = pcr == null ? "#8b949e" : pcr >= 1.0 ? "#f85149" : pcr >= 0.7 ? "#e3b341" : "#39d353";
+                    const pcLabel = pcr == null ? "" : pcr >= 1.0 ? "BEARISH" : pcr >= 0.7 ? "NEUTRAL" : "BULLISH";
                     return (
                       <span style={{ display: "flex", gap: 10, flexBasis: "100%", flexWrap: "wrap", alignItems: "center" }}>
                         {nextLabel && (
@@ -2534,20 +2626,26 @@ export default function TradingPlatform() {
                             NEXT EXP {nextLabel}{nextDte != null ? ` · ${nextDte}d` : ""}{sts ? " · Schwab" : ""}
                           </span>
                         )}
-                        {hasCall && (
-                          <span title={`${(view.topCallPct! * 100).toFixed(0)}% of ${view.label} call volume at $${view.topCallStrike} (CBOE).`}>
-                            CALL TGT <span style={{ color: "#39d353", fontWeight: 800 }}>${view.topCallStrike!.toFixed(2)}</span>
-                            <span style={{ color: "#39d353", marginLeft: 3 }}>· {(view.topCallPct! * 100).toFixed(0)}%</span>
-                            <span style={{ color: "#8b949e", marginLeft: 4 }}>({view.label}{view.dte != null ? ` · ${view.dte}d` : ""})</span>
+                        {pcr != null && (
+                          <span title={`Put/Call ratio for ${view.label}: ${pcr.toFixed(2)}\n<0.70 bullish · 0.70-1.00 neutral · ≥1.00 bearish\nCall vol ${view.callVolume?.toLocaleString() ?? "—"} · Put vol ${view.putVolume?.toLocaleString() ?? "—"}`}
+                            style={{ color: pcColor, border: `1px solid ${pcColor}`, borderRadius: 4, padding: "2px 4px", fontWeight: 800 }}>
+                            P/C {pcr.toFixed(2)} <span style={{ opacity: 0.75, marginLeft: 2 }}>{pcLabel}</span>
                           </span>
                         )}
-                        {hasPut && (
-                          <span title={`${(view.topPutPct! * 100).toFixed(0)}% of ${view.label} put volume at $${view.topPutStrike} (CBOE).`}>
-                            PUT TGT <span style={{ color: "#f85149", fontWeight: 800 }}>${view.topPutStrike!.toFixed(2)}</span>
-                            <span style={{ color: "#f85149", marginLeft: 3 }}>· {(view.topPutPct! * 100).toFixed(0)}%</span>
-                            <span style={{ color: "#8b949e", marginLeft: 4 }}>({view.label}{view.dte != null ? ` · ${view.dte}d` : ""})</span>
+                        {hasCall && view.topCalls.map((c, i) => (
+                          <span key={`c${i}`} title={`${(c.pct * 100).toFixed(1)}% of ${view.label} call flow at $${c.strike}`}>
+                            {i === 0 ? "CALL TGT" : "→"} <span style={{ color: "#39d353", fontWeight: 800 }}>${c.strike.toFixed(2)}</span>
+                            <span style={{ color: "#39d353", marginLeft: 3 }}>· {(c.pct * 100).toFixed(1)}%</span>
+                            {i === 0 && <span style={{ color: "#8b949e", marginLeft: 4 }}>flow share</span>}
                           </span>
-                        )}
+                        ))}
+                        {hasPut && view.topPuts.map((p, i) => (
+                          <span key={`p${i}`} title={`${(p.pct * 100).toFixed(1)}% of ${view.label} put flow at $${p.strike}`}>
+                            {i === 0 ? "PUT TGT" : "→"} <span style={{ color: "#f85149", fontWeight: 800 }}>${p.strike.toFixed(2)}</span>
+                            <span style={{ color: "#f85149", marginLeft: 3 }}>· {(p.pct * 100).toFixed(1)}%</span>
+                            {i === 0 && <span style={{ color: "#8b949e", marginLeft: 4 }}>flow share</span>}
+                          </span>
+                        ))}
                       </span>
                     );
                   })()}
@@ -2703,6 +2801,17 @@ export default function TradingPlatform() {
                       )}
                     </g>
                   )} />
+                {/* 🟡 E — high-impact economic release (CPI/PCE/NFP/FOMC…) */}
+                <Scatter dataKey="econMarkerY" isAnimationActive={false}
+                  shape={(p: any) => p?.payload?.econMarkerY == null ? <g /> : (
+                    <g>
+                      <rect x={p.cx - 7} y={p.cy - 7} width={14} height={14} rx={2} fill="#e3b341" stroke="#0d1117" strokeWidth={1} />
+                      <text x={p.cx} y={p.cy + 3} textAnchor="middle" fontSize={9} fontWeight={900} fill="#0d1117">E</text>
+                      {p.payload.econCat && (
+                        <text x={p.cx + 9} y={p.cy - 4} fontSize={7} fontWeight={900} fill="#e3b341">{p.payload.econCat}</text>
+                      )}
+                    </g>
+                  )} />
               </ComposedChart>
             </ResponsiveContainer>
             {/* Volume sub-panel — yellow bars rising with volume, synced X with master chart */}
@@ -2720,18 +2829,22 @@ export default function TradingPlatform() {
             <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "3px 0" }}>← swipe to pan · pinch or ± to zoom · live edge on right →</div>
           </ChartCard>
 
-          {/* MACD candlestick + oscillator — restored as its own chart */}
+          {/* Day-trader VWAP + Cumulative Delta — replaces MACD momentum.
+              Top pane: candles with session-anchored VWAP and ±1σ bands.
+              Bottom pane: signed-volume Cumulative Delta (aggressor proxy)
+              with per-bar delta histogram — highlights absorption/exhaustion
+              divergences that day traders use for reversal reads. */}
           <ChartCard
-            title="📊 MACD MOMENTUM · CANDLES + OSCILLATOR"
+            title="⚡ DAY-TRADER · VWAP BANDS + CUMULATIVE DELTA"
             titleRight={<span style={{ fontSize: 9, color: "#8b949e", marginLeft: 6 }}>{chartMode === "D" ? `${chartRange}D` : `${intradayRange} : ${intradayInterval}`}</span>}
             legend={[
               { label: "Bullish candle", color: "#39d353" },
               { label: "Bearish candle", color: "#f85149" },
-              { label: "EMA21", color: "#79c0ff" },
-              { label: "MACD", color: "#58a6ff" },
-              { label: "Signal", color: "#f0883e" },
-              { label: "BUY", color: "#39d353" },
-              { label: "SELL", color: "#f85149" },
+              { label: "VWAP", color: "#d2a8ff" },
+              { label: "VWAP ±1σ", color: "#484f58" },
+              { label: "Cum Δ (aggressor)", color: "#58a6ff" },
+              { label: "Buy Δ bar", color: "#39d353" },
+              { label: "Sell Δ bar", color: "#f85149" },
             ]}
           >
             <div style={{ position: "relative" }}>
@@ -2750,7 +2863,9 @@ export default function TradingPlatform() {
                     <XAxis dataKey="date" stroke="#8b949e" fontSize={8} tick={{ fontFamily: mono, fontSize: 8 }} interval="preserveStartEnd" minTickGap={20} hide />
                     <YAxis orientation="right" hide domain={macdPriceDomain} allowDataOverflow width={0} />
                     <Bar dataKey="candleRange" name="Candle" isAnimationActive={false} shape={<Candle />} />
-                    <Line type="monotone" dataKey="ema21" stroke="#79c0ff" strokeWidth={1.5} dot={false} name="EMA21" connectNulls />
+                    <Line type="monotone" dataKey="vwapUpper" stroke="#484f58" strokeWidth={1} strokeDasharray="3 3" dot={false} name="VWAP +1σ" connectNulls />
+                    <Line type="monotone" dataKey="vwapLower" stroke="#484f58" strokeWidth={1} strokeDasharray="3 3" dot={false} name="VWAP -1σ" connectNulls />
+                    <Line type="monotone" dataKey="vwap" stroke="#d2a8ff" strokeWidth={1.75} dot={false} name="VWAP" connectNulls />
                     <Scatter dataKey="buyArrowY" isAnimationActive={false}
                       shape={(p: any) => p?.payload?.buyArrowY == null ? <g /> : (
                         <g>
@@ -2771,18 +2886,19 @@ export default function TradingPlatform() {
                   <ComposedChart data={macdCandleData} margin={{ top: 0, right: 8, left: 0, bottom: 16 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                     <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} interval="preserveStartEnd" minTickGap={20} />
-                    <YAxis orientation="right" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={macdOscDomain} width={60} />
-                    <Bar dataKey="macdHist" name="Hist" isAnimationActive={false} maxBarSize={6}
-                      shape={(p: any) => <rect x={p.x} y={Math.min(p.y, p.y + p.height)} width={p.width} height={Math.abs(p.height)} fill={(p.payload?.macdHist ?? 0) >= 0 ? "#39d353" : "#f85149"} />}
+                    <YAxis yAxisId="delta" orientation="right" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} width={64}
+                      tickFormatter={(v: number) => Math.abs(v) >= 1e6 ? `${(v/1e6).toFixed(1)}M` : Math.abs(v) >= 1e3 ? `${(v/1e3).toFixed(0)}k` : `${v}`}
                     />
-                    <Line type="monotone" dataKey="macd" stroke="#58a6ff" strokeWidth={1.5} dot={false} name="MACD" connectNulls />
-                    <Line type="monotone" dataKey="macdSignal" stroke="#f0883e" strokeWidth={1.5} dot={false} name="Signal" connectNulls />
+                    <Bar yAxisId="delta" dataKey="deltaBar" name="Δ bar" isAnimationActive={false} maxBarSize={6}
+                      shape={(p: any) => <rect x={p.x} y={Math.min(p.y, p.y + p.height)} width={p.width} height={Math.abs(p.height)} fill={(p.payload?.deltaBar ?? 0) >= 0 ? "#39d353" : "#f85149"} opacity={0.55} />}
+                    />
+                    <Line yAxisId="delta" type="monotone" dataKey="cumDelta" stroke="#58a6ff" strokeWidth={1.75} dot={false} name="Cum Δ" connectNulls />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
             </div>
             </div>
-            <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "3px 0" }}>← swipe to pan · BUY/SELL arrows = MACD crossovers</div>
+            <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "3px 0" }}>← swipe to pan · price above VWAP+σ = extended long · Cum Δ divergence vs price = absorption/exhaustion</div>
           </ChartCard>
 
           {/* Macro market-moving news (CNBC / MarketWatch / WSJ) */}

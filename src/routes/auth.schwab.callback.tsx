@@ -5,6 +5,7 @@ import { exchangeSchwabCode } from "@/lib/schwab.functions";
 import { setOwnerSchwabTokens } from "@/lib/schwab-shared.functions";
 
 export const SCHWAB_TOKEN_KEY = "bryantrade.schwab.tokens.v1";
+export const SCHWAB_CONNECTED_FLAG = "bryantrade.schwab.connected.v1";
 
 export const Route = createFileRoute("/auth/schwab/callback")({
   component: SchwabCallback,
@@ -27,11 +28,12 @@ function SchwabCallback() {
     const redirectUri = `${window.location.origin}/auth/schwab/callback`;
     exchange({ data: { code, redirectUri, state } })
       .then((tokens) => {
-        // Use sessionStorage (cleared on tab close) to reduce XSS exposure window
-        // for sensitive OAuth tokens.
-        sessionStorage.setItem(SCHWAB_TOKEN_KEY, JSON.stringify(tokens));
-        // Clean up any token previously written to localStorage.
-        try { localStorage.removeItem(SCHWAB_TOKEN_KEY); } catch {}
+        // Persist tokens to localStorage so closing the Schwab tab and coming
+        // back to BryanTrade keeps the connection alive (sessionStorage was
+        // dropping the token when the user X-ed the OAuth tab).
+        try { localStorage.setItem(SCHWAB_TOKEN_KEY, JSON.stringify(tokens)); } catch {}
+        try { sessionStorage.setItem(SCHWAB_TOKEN_KEY, JSON.stringify(tokens)); } catch {}
+        try { localStorage.setItem(SCHWAB_CONNECTED_FLAG, "1"); } catch {}
         // Best-effort: persist tokens to the shared owner row so every viewer
         // (including signed-out share-link viewers) sees live Schwab quotes.
         // Requires the caller to be signed into Lovable; safe to ignore failures.
@@ -41,8 +43,10 @@ function SchwabCallback() {
           expiresIn: tokens.expires_in,
           scope: tokens.scope,
           tokenType: tokens.token_type,
-        }}).catch((e) => console.warn("[schwab] could not persist owner token", e));
-        setStatus("Connected! Redirecting…");
+        }})
+          .then(() => console.info("[schwab] shared owner token persisted"))
+          .catch((e) => console.warn("[schwab] could not persist owner token", e));
+        setStatus("✅ Schwab connected — redirecting…");
         setTimeout(() => navigate({ to: "/" }), 800);
       })
       .catch((e) => setStatus(`Failed: ${e instanceof Error ? e.message : String(e)}`));
