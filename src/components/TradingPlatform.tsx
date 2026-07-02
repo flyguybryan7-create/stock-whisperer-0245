@@ -2100,7 +2100,7 @@ export default function TradingPlatform() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {globalSemis && (() => {
-            // Abbrev display of the Asian / PHLX semi tape — points + % on one line.
+            // Abbrev display of the Asian / PHLX semi tape — % only.
             const ABBREV: Record<string, string> = {
               "^KS11": "KOSPI",
               "^SOX": "SOX",
@@ -2112,8 +2112,6 @@ export default function TradingPlatform() {
             const comps = order
               .map((s) => globalSemis.components.find((c) => c.symbol === s))
               .filter(Boolean) as typeof globalSemis.components;
-            const fmtPts = (n: number | null) =>
-              n == null ? "—" : n >= 1000 ? Math.round(n).toLocaleString() : n.toFixed(2);
             return (
               <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "nowrap", flexShrink: 0 }}>
                 {comps.map((c) => {
@@ -2127,7 +2125,6 @@ export default function TradingPlatform() {
                       style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 800, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 5px", whiteSpace: "nowrap" }}
                     >
                       <span style={{ color: "#8b949e", fontWeight: 800 }}>{ABBREV[c.symbol]}</span>
-                      <span style={{ color: "#c9d1d9", fontWeight: 700 }}>{fmtPts(c.price)}</span>
                       <span>{pctStr}</span>
                     </span>
                   );
