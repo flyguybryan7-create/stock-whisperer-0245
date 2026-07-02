@@ -2553,28 +2553,39 @@ export default function TradingPlatform() {
                     if (!oa && !sts) return null;
                     const buckets = oa?.expiries ?? [];
                     const bucket = buckets[0];
-                    const view = sts
+                    // Build unified view with top-2 strikes per side when Schwab
+                    // is connected; fall back to top-1 from Yahoo/CBOE otherwise.
+                    const view: {
+                      label: string; dte: number | null;
+                      topCalls: { strike: number; pct: number }[];
+                      topPuts: { strike: number; pct: number }[];
+                      pcRatio: number | null;
+                      callVolume: number | null; putVolume: number | null;
+                    } = sts
                       ? {
-                          label: sts.label ?? "Next",
-                          dte: sts.dte,
-                          topCallStrike: sts.topCallStrike,
-                          topCallPct: sts.topCallPct,
-                          topPutStrike: sts.topPutStrike,
-                          topPutPct: sts.topPutPct,
+                          label: sts.label ?? "Next", dte: sts.dte,
+                          topCalls: (sts.topCalls && sts.topCalls.length ? sts.topCalls : (sts.topCallStrike != null && sts.topCallPct != null ? [{ strike: sts.topCallStrike, pct: sts.topCallPct }] : [])),
+                          topPuts:  (sts.topPuts  && sts.topPuts.length  ? sts.topPuts  : (sts.topPutStrike  != null && sts.topPutPct  != null ? [{ strike: sts.topPutStrike,  pct: sts.topPutPct  }] : [])),
+                          pcRatio: sts.pcRatio ?? null,
+                          callVolume: sts.callVolume, putVolume: sts.putVolume,
                         }
-                      : bucket ?? {
-                          label: "All",
-                          dte: null as number | null,
-                          topCallStrike: oa!.topCallStrike,
-                          topCallPct: oa!.topCallPct,
-                          topPutStrike: oa!.topPutStrike,
-                          topPutPct: oa!.topPutPct,
-                        };
-                    const hasCall = view.topCallStrike != null && view.topCallPct != null;
-                    const hasPut = view.topPutStrike != null && view.topPutPct != null;
+                      : bucket
+                        ? { label: bucket.label, dte: bucket.dte,
+                            topCalls: bucket.topCallStrike != null && bucket.topCallPct != null ? [{ strike: bucket.topCallStrike, pct: bucket.topCallPct }] : [],
+                            topPuts:  bucket.topPutStrike  != null && bucket.topPutPct  != null ? [{ strike: bucket.topPutStrike,  pct: bucket.topPutPct  }] : [],
+                            pcRatio: null, callVolume: null, putVolume: null }
+                        : { label: "All", dte: null,
+                            topCalls: oa!.topCallStrike != null && oa!.topCallPct != null ? [{ strike: oa!.topCallStrike, pct: oa!.topCallPct }] : [],
+                            topPuts:  oa!.topPutStrike  != null && oa!.topPutPct  != null ? [{ strike: oa!.topPutStrike,  pct: oa!.topPutPct  }] : [],
+                            pcRatio: null, callVolume: null, putVolume: null };
+                    const hasCall = view.topCalls.length > 0;
+                    const hasPut = view.topPuts.length > 0;
                     if (!hasCall && !hasPut && buckets.length === 0 && !sts) return null;
-                    const nextLabel = sts ? sts.label : bucket?.label;
-                    const nextDte = sts ? sts.dte : bucket?.dte;
+                    const nextLabel = view.label;
+                    const nextDte = view.dte;
+                    const pcr = view.pcRatio;
+                    const pcColor = pcr == null ? "#8b949e" : pcr >= 1.0 ? "#f85149" : pcr >= 0.7 ? "#e3b341" : "#39d353";
+                    const pcLabel = pcr == null ? "" : pcr >= 1.0 ? "BEARISH" : pcr >= 0.7 ? "NEUTRAL" : "BULLISH";
                     return (
                       <span style={{ display: "flex", gap: 10, flexBasis: "100%", flexWrap: "wrap", alignItems: "center" }}>
                         {nextLabel && (
@@ -2582,20 +2593,26 @@ export default function TradingPlatform() {
                             NEXT EXP {nextLabel}{nextDte != null ? ` · ${nextDte}d` : ""}{sts ? " · Schwab" : ""}
                           </span>
                         )}
-                        {hasCall && (
-                          <span title={`${(view.topCallPct! * 100).toFixed(0)}% of ${view.label} call volume at $${view.topCallStrike} (CBOE).`}>
-                            CALL TGT <span style={{ color: "#39d353", fontWeight: 800 }}>${view.topCallStrike!.toFixed(2)}</span>
-                            <span style={{ color: "#39d353", marginLeft: 3 }}>· {(view.topCallPct! * 100).toFixed(0)}%</span>
-                            <span style={{ color: "#8b949e", marginLeft: 4 }}>({view.label}{view.dte != null ? ` · ${view.dte}d` : ""})</span>
+                        {pcr != null && (
+                          <span title={`Put/Call ratio for ${view.label}: ${pcr.toFixed(2)}\n<0.70 bullish · 0.70-1.00 neutral · ≥1.00 bearish\nCall vol ${view.callVolume?.toLocaleString() ?? "—"} · Put vol ${view.putVolume?.toLocaleString() ?? "—"}`}
+                            style={{ color: pcColor, border: `1px solid ${pcColor}`, borderRadius: 4, padding: "2px 4px", fontWeight: 800 }}>
+                            P/C {pcr.toFixed(2)} <span style={{ opacity: 0.75, marginLeft: 2 }}>{pcLabel}</span>
                           </span>
                         )}
-                        {hasPut && (
-                          <span title={`${(view.topPutPct! * 100).toFixed(0)}% of ${view.label} put volume at $${view.topPutStrike} (CBOE).`}>
-                            PUT TGT <span style={{ color: "#f85149", fontWeight: 800 }}>${view.topPutStrike!.toFixed(2)}</span>
-                            <span style={{ color: "#f85149", marginLeft: 3 }}>· {(view.topPutPct! * 100).toFixed(0)}%</span>
-                            <span style={{ color: "#8b949e", marginLeft: 4 }}>({view.label}{view.dte != null ? ` · ${view.dte}d` : ""})</span>
+                        {hasCall && view.topCalls.map((c, i) => (
+                          <span key={`c${i}`} title={`${(c.pct * 100).toFixed(1)}% of ${view.label} call flow at $${c.strike}`}>
+                            {i === 0 ? "CALL TGT" : "→"} <span style={{ color: "#39d353", fontWeight: 800 }}>${c.strike.toFixed(2)}</span>
+                            <span style={{ color: "#39d353", marginLeft: 3 }}>· {(c.pct * 100).toFixed(1)}%</span>
+                            {i === 0 && <span style={{ color: "#8b949e", marginLeft: 4 }}>flow share</span>}
                           </span>
-                        )}
+                        ))}
+                        {hasPut && view.topPuts.map((p, i) => (
+                          <span key={`p${i}`} title={`${(p.pct * 100).toFixed(1)}% of ${view.label} put flow at $${p.strike}`}>
+                            {i === 0 ? "PUT TGT" : "→"} <span style={{ color: "#f85149", fontWeight: 800 }}>${p.strike.toFixed(2)}</span>
+                            <span style={{ color: "#f85149", marginLeft: 3 }}>· {(p.pct * 100).toFixed(1)}%</span>
+                            {i === 0 && <span style={{ color: "#8b949e", marginLeft: 4 }}>flow share</span>}
+                          </span>
+                        ))}
                       </span>
                     );
                   })()}
