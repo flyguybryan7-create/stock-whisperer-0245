@@ -1485,6 +1485,8 @@ export default function TradingPlatform() {
       candleRange: [number, number];
       buyArrowY: number | null; sellArrowY: number | null;
       ema21: number;
+      vwap: number | null; vwapUpper: number | null; vwapLower: number | null;
+      cumDelta: number; deltaBar: number;
     }>;
     const kEma21 = 2 / 22;
     let ema21 = src[0].close;
@@ -1496,6 +1498,16 @@ export default function TradingPlatform() {
       if (src[i].macdAlert === "BUY" && buyKept < 3) { keepBuy.add(i); buyKept++; }
       else if (src[i].macdAlert === "SELL" && sellKept < 3) { keepSell.add(i); sellKept++; }
     }
+    // Session-anchored VWAP (resets per calendar day) + rolling ±1σ VWAP bands.
+    // Cumulative Delta = signed volume, sign = candle direction (proxy for
+    // aggressor volume when true tick data isn't available).
+    let cumTPV = 0, cumV = 0, cumTPV2 = 0;
+    let cumDelta = 0;
+    let currentDay = "";
+    const getDay = (d: any): string => {
+      const dt = new Date(d.date);
+      return Number.isNaN(dt.getTime()) ? String(d.date) : dt.toISOString().slice(0, 10);
+    };
     const out = src.map((d, i) => {
       const o = (d as any).open ?? d.close;
       const h = (d as any).high ?? d.close;
@@ -1506,6 +1518,22 @@ export default function TradingPlatform() {
       if (i === 0) ema21 = d.close;
       else ema21 = d.close * kEma21 + ema21 * (1 - kEma21);
       const offset = Math.max((h - l) * 0.015, d.close * 0.00005, 0.005);
+      const day = getDay(d);
+      if (day !== currentDay) {
+        currentDay = day; cumTPV = 0; cumV = 0; cumTPV2 = 0; cumDelta = 0;
+      }
+      const tp = (h + l + d.close) / 3;
+      const v = d.volume ?? 0;
+      cumTPV += tp * v;
+      cumV += v;
+      cumTPV2 += tp * tp * v;
+      const vwap = cumV > 0 ? cumTPV / cumV : null;
+      const variance = cumV > 0 ? Math.max(0, cumTPV2 / cumV - (vwap as number) * (vwap as number)) : 0;
+      const sigma = Math.sqrt(variance);
+      const vwapUpper = vwap != null ? vwap + sigma : null;
+      const vwapLower = vwap != null ? vwap - sigma : null;
+      const deltaBar = (green ? 1 : -1) * v;
+      cumDelta += deltaBar;
       return {
         ...d,
         candleStart: +start.toFixed(4),
@@ -1519,6 +1547,11 @@ export default function TradingPlatform() {
         buyArrowY: keepBuy.has(i) ? +(l - offset).toFixed(4) : null,
         sellArrowY: keepSell.has(i) ? +(h + offset).toFixed(4) : null,
         ema21: +ema21.toFixed(4),
+        vwap: vwap != null ? +vwap.toFixed(4) : null,
+        vwapUpper: vwapUpper != null ? +vwapUpper.toFixed(4) : null,
+        vwapLower: vwapLower != null ? +vwapLower.toFixed(4) : null,
+        cumDelta: +cumDelta.toFixed(0),
+        deltaBar: +deltaBar.toFixed(0),
       };
     });
     return out;
