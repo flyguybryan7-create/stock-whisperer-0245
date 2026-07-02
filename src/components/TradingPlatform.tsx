@@ -35,6 +35,7 @@ import {
   type SchwabTopStrikes,
 } from "@/lib/schwab.functions";
 import { SCHWAB_TOKEN_KEY } from "@/routes/auth.schwab.callback";
+import { fetchEconCalendar } from "@/lib/econ-calendar.functions";
 import {
   getSharedSchwabQuotes,
   getSharedSchwabFundamentals,
@@ -702,12 +703,15 @@ export default function TradingPlatform() {
   const [schwabErr, setSchwabErr] = useState<string | null>(null);
   useEffect(() => {
     try {
-      const raw = sessionStorage.getItem(SCHWAB_TOKEN_KEY);
+      // Prefer localStorage (survives closing the OAuth tab); fall back to
+      // sessionStorage for legacy sessions.
+      const raw = localStorage.getItem(SCHWAB_TOKEN_KEY) || sessionStorage.getItem(SCHWAB_TOKEN_KEY);
       if (raw) setSchwabTokens(JSON.parse(raw) as SchwabTokens);
     } catch {}
   }, []);
   const persistTokens = useCallback((t: SchwabTokens) => {
     setSchwabTokens(t);
+    try { localStorage.setItem(SCHWAB_TOKEN_KEY, JSON.stringify(t)); } catch {}
     try { sessionStorage.setItem(SCHWAB_TOKEN_KEY, JSON.stringify(t)); } catch {}
   }, []);
   const connectSchwab = useCallback(async () => {
