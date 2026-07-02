@@ -1512,6 +1512,9 @@ export default function TradingPlatform() {
     //                                    remain meaningful instead of resetting
     //                                    every single bar)
     const getDay = (raw: any): string => {
+      // Daily view: anchor across the full displayed window so anchored VWAP,
+      // ±1σ bands, and cumulative delta actually build up across bars.
+      if (chartMode === "D") return "D-WINDOW";
       const s = String(raw?.date ?? "");
       if (/^\d{1,2}:\d{2}$/.test(s)) return "1D-SESSION";
       const md = s.match(/^(\d{1,2}\/\d{1,2})/);
