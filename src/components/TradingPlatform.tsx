@@ -1092,6 +1092,18 @@ export default function TradingPlatform() {
     refetchInterval: 5 * 60_000,
   });
 
+  // Economic calendar — Fed / BLS / BEA / Treasury releases. Refresh every
+  // 5 min; drives the yellow 'E' markers on the Master chart.
+  const fetchEconCal = useServerFn(fetchEconCalendar);
+  const { data: econData } = useQuery({
+    queryKey: ["econCalendar"],
+    queryFn: () => fetchEconCal(),
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
+    refetchIntervalInBackground: true,
+  });
+  const econItems = econData?.items ?? [];
+
   // Split market pulse into two lanes so each can refresh at max safe speed:
   //   • fastPulse  = futures (ES/NQ/YM/RTY) + VIX  → 5 symbols → 2s
   //   • semisPulse = SOXX + SMH + 12-name basket + risk gauge → 15 symbols → 3s
