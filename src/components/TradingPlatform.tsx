@@ -2746,6 +2746,17 @@ export default function TradingPlatform() {
                       )}
                     </g>
                   )} />
+                {/* 🟡 E — high-impact economic release (CPI/PCE/NFP/FOMC…) */}
+                <Scatter dataKey="econMarkerY" isAnimationActive={false}
+                  shape={(p: any) => p?.payload?.econMarkerY == null ? <g /> : (
+                    <g>
+                      <rect x={p.cx - 7} y={p.cy - 7} width={14} height={14} rx={2} fill="#e3b341" stroke="#0d1117" strokeWidth={1} />
+                      <text x={p.cx} y={p.cy + 3} textAnchor="middle" fontSize={9} fontWeight={900} fill="#0d1117">E</text>
+                      {p.payload.econCat && (
+                        <text x={p.cx + 9} y={p.cy - 4} fontSize={7} fontWeight={900} fill="#e3b341">{p.payload.econCat}</text>
+                      )}
+                    </g>
+                  )} />
               </ComposedChart>
             </ResponsiveContainer>
             {/* Volume sub-panel — yellow bars rising with volume, synced X with master chart */}
