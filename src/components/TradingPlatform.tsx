@@ -2054,12 +2054,17 @@ export default function TradingPlatform() {
           {globalSemis && (() => {
             const r = globalSemis;
             const color = r.level === "EXTREME" ? "#f85149" : r.level === "HIGH" ? "#ff7b29" : r.level === "ELEVATED" ? "#e3b341" : "#39d353";
-            const tip = `Semi risk from Asian/Philly indices — ${r.level} (${r.score}/100)\n\n${r.reason}`;
+            const impl = r.impliedNasdaqPct;
+            const implStr = impl == null ? null : `${impl >= 0 ? "+" : ""}${impl.toFixed(2)}%`;
+            const tip = `Semi risk from Asian/Philly indices — ${r.level} (${r.score}/100)\n\n${r.reason}\n\nImplied NQ drag: ${implStr ?? "—"}`;
             return (
               <span title={tip}
                 style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px", letterSpacing: 0.5, flexShrink: 0 }}>
                 <span style={{ color: "#8b949e", fontWeight: 800 }}>SEMI RISK</span>
                 {r.level} <span style={{ opacity: 0.7 }}>{r.score}</span>
+                {implStr && (
+                  <span style={{ color: impl! >= 0 ? "#39d353" : "#f85149", fontWeight: 700, opacity: 0.9 }}>NQ {implStr}</span>
+                )}
               </span>
             );
           })()}
