@@ -1578,6 +1578,9 @@ export default function TradingPlatform() {
     isElephant: boolean;
     newsMarkerY: number | null;
     newsCount: number;
+    econMarkerY: number | null;
+    econCount: number;
+    econCat: string | null;
   };
   const masterData = useMemo<MasterRow[]>(() => {
     if (!displayData.length) return [];
@@ -1603,6 +1606,27 @@ export default function TradingPlatform() {
         }
         if (best >= 0 && bestDiff <= stepSec * 2) {
           newsBarMap.set(best, (newsBarMap.get(best) ?? 0) + 1);
+        }
+      }
+    }
+    // Econ event markers 'E' (Fed / BLS / BEA / Treasury) — same mapping.
+    const econBarMap = new Map<number, { count: number; cat: string }>();
+    if (chartMode !== "D" && stitchedIntradayBars.length === bars.length && econItems.length) {
+      const ts = stitchedIntradayBars.map((b) => b.t);
+      const stepSec = ts.length >= 2 ? Math.max(60, ts[ts.length - 1] - ts[ts.length - 2]) : 120;
+      const winStart = ts[0], winEnd = ts[ts.length - 1];
+      for (const e of econItems) {
+        if (!e.publishedAt || e.publishedAt < winStart - stepSec || e.publishedAt > winEnd + stepSec) continue;
+        let lo = 0, hi = ts.length - 1, best = -1, bestDiff = Infinity;
+        while (lo <= hi) {
+          const mid = (lo + hi) >> 1;
+          const d = Math.abs(ts[mid] - e.publishedAt);
+          if (d < bestDiff) { bestDiff = d; best = mid; }
+          if (ts[mid] < e.publishedAt) lo = mid + 1; else hi = mid - 1;
+        }
+        if (best >= 0 && bestDiff <= stepSec * 3) {
+          const prev = econBarMap.get(best) ?? { count: 0, cat: e.category };
+          econBarMap.set(best, { count: prev.count + 1, cat: e.category });
         }
       }
     }
@@ -1699,9 +1723,12 @@ export default function TradingPlatform() {
         isElephant: flags[i].isElephant,
         newsMarkerY: newsBarMap.has(i) ? +(high + offset * 2.2).toFixed(4) : null,
         newsCount: newsBarMap.get(i) ?? 0,
+        econMarkerY: econBarMap.has(i) ? +(high + offset * 3.6).toFixed(4) : null,
+        econCount: econBarMap.get(i)?.count ?? 0,
+        econCat: econBarMap.get(i)?.cat ?? null,
       };
     });
-  }, [displayData, chartMode, stitchedIntradayBars, newsItems]);
+  }, [displayData, chartMode, stitchedIntradayBars, newsItems, econItems]);
 
   const masterVisibleData = useMemo(() => {
     if (!masterData.length) return [];
