@@ -2100,31 +2100,38 @@ export default function TradingPlatform() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {globalSemis && (() => {
-            const r = globalSemis;
-            const color = r.level === "EXTREME" ? "#f85149" : r.level === "HIGH" ? "#ff7b29" : r.level === "ELEVATED" ? "#e3b341" : "#39d353";
-            const impl = r.impliedNasdaqPct;
-            const implStr = impl == null ? null : `${impl >= 0 ? "+" : ""}${impl.toFixed(2)}%`;
-            const tip = `Semi risk from Asian/Philly indices — ${r.level} (${r.score}/100)\n\n${r.reason}\n\nImplied NQ drag: ${implStr ?? "—"}`;
+            // Abbrev display of the Asian / PHLX semi tape — points + % on one line.
+            const ABBREV: Record<string, string> = {
+              "^KS11": "KOSPI",
+              "^SOX": "SOX",
+              "^HSTECH": "HSTECH",
+              "^TWII": "TAIEX",
+              "^N225": "N225",
+            };
+            const order = ["^KS11", "^SOX", "^HSTECH", "^TWII", "^N225"];
+            const comps = order
+              .map((s) => globalSemis.components.find((c) => c.symbol === s))
+              .filter(Boolean) as typeof globalSemis.components;
+            const fmtPts = (n: number | null) =>
+              n == null ? "—" : n >= 1000 ? Math.round(n).toLocaleString() : n.toFixed(2);
             return (
-              <span title={tip}
-                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px", letterSpacing: 0.5, flexShrink: 0 }}>
-                <span style={{ color: "#8b949e", fontWeight: 800 }}>SEMI RISK</span>
-                {r.level} <span style={{ opacity: 0.7 }}>{r.score}</span>
-                {implStr && (
-                  <span style={{ color: impl! >= 0 ? "#39d353" : "#f85149", fontWeight: 700, opacity: 0.9 }}>NQ {implStr}</span>
-                )}
-              </span>
-            );
-          })()}
-          {marketPulse?.vix?.price != null && (() => {
-            const v = marketPulse.vix;
-            const pct = v.changePct ?? 0;
-            const color = (v.price ?? 0) >= 22 ? "#f85149" : (v.price ?? 0) >= 18 ? "#e3b341" : "#39d353";
-            return (
-              <span title={`CBOE Volatility Index (fear gauge)`}
-                style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px", flexShrink: 0 }}>
-                <span style={{ color: "#8b949e", fontWeight: 800 }}>VIX</span>
-                {v.price!.toFixed(2)} <span style={{ opacity: 0.7 }}>{pct >= 0 ? "+" : ""}{pct.toFixed(2)}%</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "nowrap", flexShrink: 0 }}>
+                {comps.map((c) => {
+                  const pct = c.changePct;
+                  const color = pct == null ? "#8b949e" : pct >= 0 ? "#39d353" : "#f85149";
+                  const pctStr = pct == null ? "—" : `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;
+                  return (
+                    <span
+                      key={c.symbol}
+                      title={`${c.name} (${c.symbol})`}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 800, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 5px", whiteSpace: "nowrap" }}
+                    >
+                      <span style={{ color: "#8b949e", fontWeight: 800 }}>{ABBREV[c.symbol]}</span>
+                      <span style={{ color: "#c9d1d9", fontWeight: 700 }}>{fmtPts(c.price)}</span>
+                      <span>{pctStr}</span>
+                    </span>
+                  );
+                })}
               </span>
             );
           })()}
@@ -2155,6 +2162,18 @@ export default function TradingPlatform() {
               CONNECT SCHWAB
             </button>
           )}
+          {marketPulse?.vix?.price != null && (() => {
+            const v = marketPulse.vix;
+            const pct = v.changePct ?? 0;
+            const color = (v.price ?? 0) >= 22 ? "#f85149" : (v.price ?? 0) >= 18 ? "#e3b341" : "#39d353";
+            return (
+              <span title={`CBOE Volatility Index (fear gauge)`}
+                style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 6px", flexShrink: 0 }}>
+                <span style={{ color: "#8b949e", fontWeight: 800 }}>VIX</span>
+                {v.price!.toFixed(2)} <span style={{ opacity: 0.7 }}>{pct >= 0 ? "+" : ""}{pct.toFixed(2)}%</span>
+              </span>
+            );
+          })()}
           {trap.kind && (() => {
             const isBull = trap.kind === "BULL_TRAP";
             const color = isBull ? "#f85149" : "#39d353";

@@ -80,7 +80,7 @@ export type SemisPulseResponse = {
   error?: string;
 };
 
-export type GlobalSemiComponent = { symbol: string; name: string; changePct: number | null };
+export type GlobalSemiComponent = { symbol: string; name: string; price: number | null; changePct: number | null };
 export type GlobalSemiIndexResponse = {
   avgChangePct: number | null;
   components: GlobalSemiComponent[];
@@ -452,7 +452,7 @@ export async function fetchGlobalSemiIndexSnapshot(): Promise<GlobalSemiIndexRes
       GLOBAL_SEMI_INDICES.map(async (idx) => {
         const { price, prev } = await fetchYahooSnap(idx.symbol);
         const changePct = price != null && prev != null && prev > 0 ? ((price - prev) / prev) * 100 : null;
-        return { symbol: idx.symbol, name: idx.name, changePct };
+        return { symbol: idx.symbol, name: idx.name, price, changePct };
       }),
     );
     const valid = components.filter((c) => c.changePct != null) as Array<GlobalSemiComponent & { changePct: number }>;
