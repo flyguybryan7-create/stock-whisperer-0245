@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import type { SchwabQuote, SchwabFundamental, SchwabTopStrikes, SchwabBar } from "./schwab.functions";
+import type { SchwabQuote, SchwabFundamental, SchwabTopStrikes, SchwabBar, SchwabOptionsLadder } from "./schwab.functions";
+import { _buildLadderFromChain } from "./schwab.functions";
 
 /**
  * Shared Schwab feed.
