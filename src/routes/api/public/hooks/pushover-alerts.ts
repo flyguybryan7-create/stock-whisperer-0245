@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { timingSafeEqual } from "node:crypto";
 
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
@@ -102,6 +103,22 @@ function bucketFor(pct: number): string | null {
   return `${day}:${sign}${step}`;
 }
 
+function requireWebhookSecret(request: Request): Response | null {
+  const secret = process.env.PUSHOVER_WEBHOOK_SECRET;
+  if (!secret) return new Response("Unauthorized", { status: 401 });
+  const provided =
+    request.headers.get("x-webhook-secret") ??
+    request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
+    new URL(request.url).searchParams.get("secret") ??
+    "";
+  const a = Buffer.from(provided);
+  const b = Buffer.from(secret);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+  return null;
+}
+
 async function runAlerts() {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   // Collect first 20 unique symbols across all user watchlists (deterministic order).
@@ -199,7 +216,9 @@ async function runAlerts() {
 export const Route = createFileRoute("/api/public/hooks/pushover-alerts")({
   server: {
     handlers: {
-      POST: async () => {
+      POST: async ({ request }) => {
+        const unauth = requireWebhookSecret(request);
+        if (unauth) return unauth;
         try {
           const result = await runAlerts();
           return new Response(JSON.stringify({ ok: true, ...result }), {
@@ -213,7 +232,9 @@ export const Route = createFileRoute("/api/public/hooks/pushover-alerts")({
           });
         }
       },
-      GET: async () => {
+      GET: async ({ request }) => {
+        const unauth = requireWebhookSecret(request);
+        if (unauth) return unauth;
         try {
           const result = await runAlerts();
           return new Response(JSON.stringify({ ok: true, ...result }), {

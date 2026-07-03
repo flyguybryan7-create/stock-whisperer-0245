@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 // ============ Yahoo crumb+cookie cache (required for v7 quote endpoint) ============
 let yahooAuth: { cookie: string; crumb: string; at: number } | undefined;
@@ -727,6 +728,7 @@ export type SentimentResult = {
 };
 
 export const analyzeNewsSentiment = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((input: { symbol: string; headlines: { title: string; scope: string }[] }) => ({
     symbol: String(input.symbol).toUpperCase().slice(0, 10),
     headlines: (Array.isArray(input.headlines) ? input.headlines : [])
