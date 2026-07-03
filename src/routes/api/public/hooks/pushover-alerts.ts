@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { timingSafeEqual } from "node:crypto";
 
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
@@ -199,7 +200,9 @@ async function runAlerts() {
 export const Route = createFileRoute("/api/public/hooks/pushover-alerts")({
   server: {
     handlers: {
-      POST: async () => {
+      POST: async ({ request }) => {
+        const unauth = requireWebhookSecret(request);
+        if (unauth) return unauth;
         try {
           const result = await runAlerts();
           return new Response(JSON.stringify({ ok: true, ...result }), {
@@ -213,7 +216,9 @@ export const Route = createFileRoute("/api/public/hooks/pushover-alerts")({
           });
         }
       },
-      GET: async () => {
+      GET: async ({ request }) => {
+        const unauth = requireWebhookSecret(request);
+        if (unauth) return unauth;
         try {
           const result = await runAlerts();
           return new Response(JSON.stringify({ ok: true, ...result }), {
