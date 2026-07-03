@@ -963,6 +963,31 @@ export default function TradingPlatform() {
   });
   const schwabTopStrikesPerUser = (schwabStrikesData as SchwabTopStrikes | null) ?? null;
 
+  // ---- Schwab options ladder (per-user) — full strike-by-strike volume ----
+  const fetchSchwabLadder = useServerFn(getSchwabOptionsLadder);
+  const { data: schwabLadderData } = useQuery({
+    queryKey: ["schwabLadder", selectedStock, todayKey],
+    queryFn: async () => {
+      if (!schwabTokens?.access_token) return null;
+      try {
+        return await fetchSchwabLadder({ data: { accessToken: schwabTokens.access_token, symbol: selectedStock } });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes("schwab_unauthorized") && schwabTokens.refresh_token) {
+          try {
+            const fresh = await refreshSchwab({ data: { refreshToken: schwabTokens.refresh_token } });
+            persistTokens(fresh);
+            return await fetchSchwabLadder({ data: { accessToken: fresh.access_token, symbol: selectedStock } });
+          } catch { return null; }
+        }
+        return null;
+      }
+    },
+    enabled: !!schwabTokens?.access_token && !!selectedStock,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+
   // ============================================================
   // SHARED SCHWAB FEED
   // Runs for EVERY visitor (including shared/published-link viewers who
