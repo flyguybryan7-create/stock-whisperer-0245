@@ -28,11 +28,13 @@ import {
   getSchwabPriceHistory,
   getSchwabFundamentals,
   getSchwabTopStrikes,
+  getSchwabOptionsLadder,
   type SchwabTokens,
   type SchwabQuote,
   type SchwabBar,
   type SchwabFundamental,
   type SchwabTopStrikes,
+  type SchwabOptionsLadder,
 } from "@/lib/schwab.functions";
 import { SCHWAB_TOKEN_KEY } from "@/routes/auth.schwab.callback";
 import { fetchEconCalendar } from "@/lib/econ-calendar.functions";
@@ -41,6 +43,7 @@ import {
   getSharedSchwabFundamentals,
   getSharedSchwabTopStrikes,
   getSharedSchwabPriceHistory,
+  getSharedSchwabOptionsLadder,
 } from "@/lib/schwab-shared.functions";
 import { detectTrap, type TrapResult } from "@/lib/trap-indicator";
 import { useAuthUser } from "@/hooks/useAuthUser";
