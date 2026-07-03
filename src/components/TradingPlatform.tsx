@@ -1055,6 +1055,8 @@ export default function TradingPlatform() {
   }, [sharedFundData, schwabFundData]);
   const mergedSchwabStrikes: SchwabTopStrikes | null =
     (schwabStrikesData as SchwabTopStrikes | null) ?? (sharedStrikesData as SchwabTopStrikes | null) ?? null;
+  const mergedSchwabLadder: SchwabOptionsLadder | null =
+    (schwabLadderData as SchwabOptionsLadder | null) ?? (sharedLadderData as SchwabOptionsLadder | null) ?? null;
 
   // Public aliases the rest of the component already uses. Now backed by the
   // merged feed so shared/published-link viewers see the same live data.
@@ -1062,6 +1064,7 @@ export default function TradingPlatform() {
   const schwabQuote: SchwabQuote | null = mergedSchwabQuotes[selectedStock] ?? null;
   const schwabFundamentals = mergedSchwabFund;
   const schwabTopStrikes = mergedSchwabStrikes;
+  const schwabLadder = mergedSchwabLadder;
   const liveBase = live[selectedStock];
   const selectedMark = schwabQuote?.last ?? liveBase?.price;
   const selectedSchwabNbbo = bidAskNearMark(selectedMark, schwabQuote?.bid, schwabQuote?.ask);
