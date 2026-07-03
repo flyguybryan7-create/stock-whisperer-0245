@@ -1033,6 +1033,16 @@ export default function TradingPlatform() {
     staleTime: 5_000,
   });
 
+  // Shared ladder for signed-out viewers.
+  const fetchSharedLadder = useServerFn(getSharedSchwabOptionsLadder);
+  const { data: sharedLadderData } = useQuery({
+    queryKey: ["sharedSchwabLadder", selectedStock, sharedStrikesTodayKey],
+    queryFn: () => fetchSharedLadder({ data: { symbol: selectedStock } }),
+    enabled: !!selectedStock,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+
   // Merge per-user (preferred) with shared (fallback) so signed-out viewers
   // still see live Schwab quotes via the owner's account.
   const mergedSchwabQuotes: Record<string, SchwabQuote> = useMemo(() => {
