@@ -104,6 +104,26 @@ function bucketFor(pct: number): string | null {
 }
 
 async function runAlerts() {
+
+}
+
+function requireWebhookSecret(request: Request): Response | null {
+  const secret = process.env.PUSHOVER_WEBHOOK_SECRET;
+  if (!secret) return new Response("Unauthorized", { status: 401 });
+  const provided =
+    request.headers.get("x-webhook-secret") ??
+    request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
+    new URL(request.url).searchParams.get("secret") ??
+    "";
+  const a = Buffer.from(provided);
+  const b = Buffer.from(secret);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+  return null;
+}
+
+async function _runAlerts_orig_marker() {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   // Collect first 20 unique symbols across all user watchlists (deterministic order).
   const { data: lists, error } = await supabaseAdmin
