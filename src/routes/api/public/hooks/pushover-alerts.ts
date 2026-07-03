@@ -103,10 +103,6 @@ function bucketFor(pct: number): string | null {
   return `${day}:${sign}${step}`;
 }
 
-async function runAlerts() {
-
-}
-
 function requireWebhookSecret(request: Request): Response | null {
   const secret = process.env.PUSHOVER_WEBHOOK_SECRET;
   if (!secret) return new Response("Unauthorized", { status: 401 });
@@ -123,7 +119,7 @@ function requireWebhookSecret(request: Request): Response | null {
   return null;
 }
 
-async function _runAlerts_orig_marker() {
+async function runAlerts() {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   // Collect first 20 unique symbols across all user watchlists (deterministic order).
   const { data: lists, error } = await supabaseAdmin
