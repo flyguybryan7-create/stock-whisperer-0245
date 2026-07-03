@@ -341,3 +341,117 @@ export const getSchwabTopStrikes = createServerFn({ method: "POST" })
       pcRatio,
     };
   });
+
+// ============ Schwab options ladder — full strike-by-strike flow ============
+// Powers the Options-Flow day-trader chart. Returns the whole strike ladder
+// (call/put volume + OI) for the nearest weekly expiry so the UI can render
+// a magnet map of where premium is flowing.
+export type SchwabLadderRung = {
+  strike: number;
+  callVol: number;
+  putVol: number;
+  callOi: number;
+  putOi: number;
+};
+export type SchwabOptionsLadder = {
+  symbol: string;
+  expiry: string | null;      // YYYY-MM-DD
+  dte: number | null;
+  label: string | null;
+  hasWeeklies: boolean;       // true when nearest expiry is ≤ 10 DTE
+  spot: number | null;        // underlying last price (from chain payload)
+  callVolume: number;         // totals across the chosen expiry
+  putVolume: number;
+  magnetCall: { strike: number; pct: number; volume: number } | null;
+  magnetPut: { strike: number; pct: number; volume: number } | null;
+  ladder: SchwabLadderRung[]; // sorted ascending by strike, trimmed near spot
+};
+
+function buildLadderFromChain(sym: string, json: any): SchwabOptionsLadder | null {
+  const callMap = json?.callExpDateMap ?? {};
+  const putMap = json?.putExpDateMap ?? {};
+  const spot = Number.isFinite(json?.underlyingPrice) ? Number(json.underlyingPrice) : null;
+  const allKeys = Array.from(new Set([...Object.keys(callMap), ...Object.keys(putMap)])).sort();
+  let chosen: string | null = null;
+  for (const k of allKeys) {
+    const dte = Number(k.split(":")[1]);
+    if (!Number.isFinite(dte) || dte < 0) continue;
+    chosen = k; break;
+  }
+  if (!chosen) return null;
+  const [expiry, dteStr] = chosen.split(":");
+  const dte = Number(dteStr);
+  const cExp = callMap?.[chosen] ?? {};
+  const pExp = putMap?.[chosen] ?? {};
+  const strikes = new Set<number>();
+  for (const k of Object.keys(cExp)) strikes.add(Number(k));
+  for (const k of Object.keys(pExp)) strikes.add(Number(k));
+  const rungs: SchwabLadderRung[] = [];
+  let callTot = 0, putTot = 0;
+  let magC: { strike: number; volume: number } | null = null;
+  let magP: { strike: number; volume: number } | null = null;
+  for (const strike of Array.from(strikes).sort((a, b) => a - b)) {
+    const c = cExp[strike];
+    const p = pExp[strike];
+    const cv = Array.isArray(c) && c[0]?.totalVolume ? Number(c[0].totalVolume) : 0;
+    const pv = Array.isArray(p) && p[0]?.totalVolume ? Number(p[0].totalVolume) : 0;
+    const coi = Array.isArray(c) && c[0]?.openInterest ? Number(c[0].openInterest) : 0;
+    const poi = Array.isArray(p) && p[0]?.openInterest ? Number(p[0].openInterest) : 0;
+    callTot += cv; putTot += pv;
+    if (cv > (magC?.volume ?? 0)) magC = { strike, volume: cv };
+    if (pv > (magP?.volume ?? 0)) magP = { strike, volume: pv };
+    rungs.push({ strike, callVol: cv, putVol: pv, callOi: coi, putOi: poi });
+  }
+  // Trim to ±25% around spot (or ±20 strikes) so the chart isn't dominated
+  // by dead LEAP-style tails.
+  let trimmed = rungs;
+  if (spot && spot > 0) {
+    const lo = spot * 0.75, hi = spot * 1.25;
+    trimmed = rungs.filter((r) => r.strike >= lo && r.strike <= hi);
+    if (trimmed.length < 8) {
+      // fallback: 20 strikes closest to spot
+      trimmed = [...rungs]
+        .sort((a, b) => Math.abs(a.strike - spot) - Math.abs(b.strike - spot))
+        .slice(0, 20)
+        .sort((a, b) => a.strike - b.strike);
+    }
+  }
+  const d = new Date(expiry + "T00:00:00");
+  const label = Number.isNaN(d.getTime()) ? expiry
+    : `${d.toLocaleString("en-US", { month: "short" })} ${d.getDate()}`;
+  return {
+    symbol: sym,
+    expiry,
+    dte: Number.isFinite(dte) ? dte : null,
+    label,
+    hasWeeklies: Number.isFinite(dte) && dte <= 10,
+    spot,
+    callVolume: callTot,
+    putVolume: putTot,
+    magnetCall: magC ? { strike: magC.strike, volume: magC.volume, pct: callTot > 0 ? magC.volume / callTot : 0 } : null,
+    magnetPut: magP ? { strike: magP.strike, volume: magP.volume, pct: putTot > 0 ? magP.volume / putTot : 0 } : null,
+    ladder: trimmed,
+  };
+}
+
+export const getSchwabOptionsLadder = createServerFn({ method: "POST" })
+  .inputValidator((d: { accessToken: string; symbol: string }) => d)
+  .handler(async ({ data }): Promise<SchwabOptionsLadder | null> => {
+    const sym = (data.symbol || "").toUpperCase();
+    if (!sym) return null;
+    const url =
+      `https://api.schwabapi.com/marketdata/v1/chains?symbol=${encodeURIComponent(sym)}` +
+      `&contractType=ALL&includeQuotes=false&range=ALL&strikeCount=200`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${data.accessToken}`, Accept: "application/json" },
+    });
+    if (res.status === 401) throw new Error("schwab_unauthorized");
+    if (!res.ok) {
+      console.error("[schwab] ladder", sym, res.status, (await res.text()).slice(0, 200));
+      return null;
+    }
+    const json: any = await res.json().catch(() => ({}));
+    return buildLadderFromChain(sym, json);
+  });
+
+export { buildLadderFromChain as _buildLadderFromChain };

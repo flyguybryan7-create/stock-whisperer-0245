@@ -28,11 +28,13 @@ import {
   getSchwabPriceHistory,
   getSchwabFundamentals,
   getSchwabTopStrikes,
+  getSchwabOptionsLadder,
   type SchwabTokens,
   type SchwabQuote,
   type SchwabBar,
   type SchwabFundamental,
   type SchwabTopStrikes,
+  type SchwabOptionsLadder,
 } from "@/lib/schwab.functions";
 import { SCHWAB_TOKEN_KEY } from "@/routes/auth.schwab.callback";
 import { fetchEconCalendar } from "@/lib/econ-calendar.functions";
@@ -41,8 +43,10 @@ import {
   getSharedSchwabFundamentals,
   getSharedSchwabTopStrikes,
   getSharedSchwabPriceHistory,
+  getSharedSchwabOptionsLadder,
 } from "@/lib/schwab-shared.functions";
 import { detectTrap, type TrapResult } from "@/lib/trap-indicator";
+import { OptionsFlowChart } from "./OptionsFlowChart";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { useSubscription } from "@/hooks/useSubscription";
 import { supabase } from "@/integrations/supabase/client";
@@ -960,6 +964,31 @@ export default function TradingPlatform() {
   });
   const schwabTopStrikesPerUser = (schwabStrikesData as SchwabTopStrikes | null) ?? null;
 
+  // ---- Schwab options ladder (per-user) — full strike-by-strike volume ----
+  const fetchSchwabLadder = useServerFn(getSchwabOptionsLadder);
+  const { data: schwabLadderData } = useQuery({
+    queryKey: ["schwabLadder", selectedStock, todayKey],
+    queryFn: async () => {
+      if (!schwabTokens?.access_token) return null;
+      try {
+        return await fetchSchwabLadder({ data: { accessToken: schwabTokens.access_token, symbol: selectedStock } });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes("schwab_unauthorized") && schwabTokens.refresh_token) {
+          try {
+            const fresh = await refreshSchwab({ data: { refreshToken: schwabTokens.refresh_token } });
+            persistTokens(fresh);
+            return await fetchSchwabLadder({ data: { accessToken: fresh.access_token, symbol: selectedStock } });
+          } catch { return null; }
+        }
+        return null;
+      }
+    },
+    enabled: !!schwabTokens?.access_token && !!selectedStock,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+
   // ============================================================
   // SHARED SCHWAB FEED
   // Runs for EVERY visitor (including shared/published-link viewers who
@@ -1005,6 +1034,16 @@ export default function TradingPlatform() {
     staleTime: 5_000,
   });
 
+  // Shared ladder for signed-out viewers.
+  const fetchSharedLadder = useServerFn(getSharedSchwabOptionsLadder);
+  const { data: sharedLadderData } = useQuery({
+    queryKey: ["sharedSchwabLadder", selectedStock, sharedStrikesTodayKey],
+    queryFn: () => fetchSharedLadder({ data: { symbol: selectedStock } }),
+    enabled: !!selectedStock,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+
   // Merge per-user (preferred) with shared (fallback) so signed-out viewers
   // still see live Schwab quotes via the owner's account.
   const mergedSchwabQuotes: Record<string, SchwabQuote> = useMemo(() => {
@@ -1017,6 +1056,8 @@ export default function TradingPlatform() {
   }, [sharedFundData, schwabFundData]);
   const mergedSchwabStrikes: SchwabTopStrikes | null =
     (schwabStrikesData as SchwabTopStrikes | null) ?? (sharedStrikesData as SchwabTopStrikes | null) ?? null;
+  const mergedSchwabLadder: SchwabOptionsLadder | null =
+    (schwabLadderData as SchwabOptionsLadder | null) ?? (sharedLadderData as SchwabOptionsLadder | null) ?? null;
 
   // Public aliases the rest of the component already uses. Now backed by the
   // merged feed so shared/published-link viewers see the same live data.
@@ -1024,6 +1065,7 @@ export default function TradingPlatform() {
   const schwabQuote: SchwabQuote | null = mergedSchwabQuotes[selectedStock] ?? null;
   const schwabFundamentals = mergedSchwabFund;
   const schwabTopStrikes = mergedSchwabStrikes;
+  const schwabLadder = mergedSchwabLadder;
   const liveBase = live[selectedStock];
   const selectedMark = schwabQuote?.last ?? liveBase?.price;
   const selectedSchwabNbbo = bidAskNearMark(selectedMark, schwabQuote?.bid, schwabQuote?.ask);
@@ -2860,77 +2902,15 @@ export default function TradingPlatform() {
             <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "3px 0" }}>← swipe to pan · pinch or ± to zoom · live edge on right →</div>
           </ChartCard>
 
-          {/* Day-trader VWAP + Cumulative Delta — replaces MACD momentum.
-              Top pane: candles with session-anchored VWAP and ±1σ bands.
-              Bottom pane: signed-volume Cumulative Delta (aggressor proxy)
-              with per-bar delta histogram — highlights absorption/exhaustion
-              divergences that day traders use for reversal reads. */}
-          <ChartCard
-            title="⚡ DAY-TRADER · VWAP BANDS + CUMULATIVE DELTA"
-            titleRight={<span style={{ fontSize: 9, color: "#8b949e", marginLeft: 6 }}>{chartMode === "D" ? `${chartRange}D` : `${intradayRange} : ${intradayInterval}`}</span>}
-            legend={[
-              { label: "Bullish candle", color: "#39d353" },
-              { label: "Bearish candle", color: "#f85149" },
-              { label: "VWAP", color: "#d2a8ff" },
-              { label: "VWAP ±1σ", color: "#484f58" },
-              { label: "Cum Δ (aggressor)", color: "#58a6ff" },
-              { label: "Buy Δ bar", color: "#39d353" },
-              { label: "Sell Δ bar", color: "#f85149" },
-            ]}
-          >
-            <div style={{ position: "relative" }}>
-              <div style={{ position: "absolute", right: 0, top: 0, width: PRICE_AXIS_WIDTH, height: 300, pointerEvents: "none", zIndex: 2, background: "linear-gradient(to left, #0d1117 78%, rgba(13,17,23,0))" }}>
-                <ResponsiveContainer width="100%" height={300}>
-                  <ComposedChart data={macdVisibleData} margin={{ top: 8, right: 0, left: 0, bottom: 0 }}>
-                    <YAxis orientation="right" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} domain={macdPriceDomain} allowDataOverflow ticks={niceTicks(macdPriceDomain, 6)} tickFormatter={(v: number) => `$${v.toFixed(2)}`} width={PRICE_AXIS_WIDTH - 2} />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-            <div ref={macdScrollRef} onScroll={(e) => syncVisibleRange(e.currentTarget, macdCandleData.length, macdChartWidth, setMacdVisibleRange)} style={{ width: `calc(100% - ${PRICE_AXIS_WIDTH}px)`, overflowX: "auto", WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}>
-              <div style={{ width: macdChartWidth }}>
-                <ResponsiveContainer width="100%" height={300}>
-                  <ComposedChart data={macdCandleData} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-                    <XAxis dataKey="date" stroke="#8b949e" fontSize={8} tick={{ fontFamily: mono, fontSize: 8 }} interval="preserveStartEnd" minTickGap={20} hide />
-                    <YAxis orientation="right" hide domain={macdPriceDomain} allowDataOverflow width={0} />
-                    <Bar dataKey="candleRange" name="Candle" isAnimationActive={false} shape={<Candle />} />
-                    <Line type="monotone" dataKey="vwapUpper" stroke="#484f58" strokeWidth={1} strokeDasharray="3 3" dot={false} name="VWAP +1σ" connectNulls />
-                    <Line type="monotone" dataKey="vwapLower" stroke="#484f58" strokeWidth={1} strokeDasharray="3 3" dot={false} name="VWAP -1σ" connectNulls />
-                    <Line type="monotone" dataKey="vwap" stroke="#d2a8ff" strokeWidth={1.75} dot={false} name="VWAP" connectNulls />
-                    <Scatter dataKey="buyArrowY" isAnimationActive={false}
-                      shape={(p: any) => p?.payload?.buyArrowY == null ? <g /> : (
-                        <g>
-                          <polygon points={`${p.cx - 5},${p.cy} ${p.cx + 5},${p.cy} ${p.cx},${p.cy - 7}`} fill="#39d353" />
-                          <text x={p.cx} y={p.cy + 11} textAnchor="middle" fill="#39d353" fontSize={9} fontWeight={900}>BUY</text>
-                        </g>
-                      )} />
-                    <Scatter dataKey="sellArrowY" isAnimationActive={false}
-                      shape={(p: any) => p?.payload?.sellArrowY == null ? <g /> : (
-                        <g>
-                          <text x={p.cx} y={p.cy - 8} textAnchor="middle" fill="#f85149" fontSize={9} fontWeight={900}>SELL</text>
-                          <polygon points={`${p.cx - 5},${p.cy} ${p.cx + 5},${p.cy} ${p.cx},${p.cy + 7}`} fill="#f85149" />
-                        </g>
-                      )} />
-                  </ComposedChart>
-                </ResponsiveContainer>
-                <ResponsiveContainer width="100%" height={150}>
-                  <ComposedChart data={macdCandleData} margin={{ top: 0, right: 8, left: 0, bottom: 16 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-                    <XAxis dataKey="date" stroke="#8b949e" fontSize={8} angle={-30} textAnchor="end" tick={{ fontFamily: mono, fontSize: 8 }} interval="preserveStartEnd" minTickGap={20} />
-                    <YAxis yAxisId="delta" orientation="right" stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} width={64}
-                      tickFormatter={(v: number) => Math.abs(v) >= 1e6 ? `${(v/1e6).toFixed(1)}M` : Math.abs(v) >= 1e3 ? `${(v/1e3).toFixed(0)}k` : `${v}`}
-                    />
-                    <Bar yAxisId="delta" dataKey="deltaBar" name="Δ bar" isAnimationActive={false} maxBarSize={6}
-                      shape={(p: any) => <rect x={p.x} y={Math.min(p.y, p.y + p.height)} width={p.width} height={Math.abs(p.height)} fill={(p.payload?.deltaBar ?? 0) >= 0 ? "#39d353" : "#f85149"} opacity={0.55} />}
-                    />
-                    <Line yAxisId="delta" type="monotone" dataKey="cumDelta" stroke="#58a6ff" strokeWidth={1.75} dot={false} name="Cum Δ" connectNulls />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-            </div>
-            <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "3px 0" }}>← swipe to pan · price above VWAP+σ = extended long · Cum Δ divergence vs price = absorption/exhaustion</div>
-          </ChartCard>
+          {/* Day-trader OPTIONS FLOW MAGNET — where premium is targeting.
+              Horizontal ladder of strikes with call/put volume for the nearest
+              weekly expiry. Spot price line + magnet-strike callout show where
+              flow is pulling the underlying with a live time-to-close clock. */}
+          <OptionsFlowChart
+            symbol={selectedStock}
+            spot={selectedMark ?? null}
+            ladder={schwabLadder && schwabLadder.symbol === selectedStock ? schwabLadder : null}
+          />
 
           {/* Economic releases feed — matches yellow "E" chart markers */}
           <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 12, marginBottom: 12 }}>

@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import type { SchwabQuote, SchwabFundamental, SchwabTopStrikes, SchwabBar } from "./schwab.functions";
+import type { SchwabQuote, SchwabFundamental, SchwabTopStrikes, SchwabBar, SchwabOptionsLadder } from "./schwab.functions";
+import { _buildLadderFromChain } from "./schwab.functions";
 
 /**
  * Shared Schwab feed.
@@ -269,4 +270,21 @@ export const getSharedSchwabPriceHistory = createServerFn({ method: "POST" })
         open: Number(c.open), high: Number(c.high), low: Number(c.low),
         close: Number(c.close), volume: Number(c.volume) || 0,
       }));
+  });
+
+// ============ Shared options ladder (public) ============
+export const getSharedSchwabOptionsLadder = createServerFn({ method: "POST" })
+  .inputValidator((d: { symbol: string }) => d)
+  .handler(async ({ data }): Promise<SchwabOptionsLadder | null> => {
+    const sym = (data.symbol || "").toUpperCase();
+    if (!sym) return null;
+    const tok = await loadOwnerTokenFresh();
+    if (!tok) return null;
+    const res = await schwabGet(
+      `/marketdata/v1/chains?symbol=${encodeURIComponent(sym)}&contractType=ALL&includeQuotes=false&range=ALL&strikeCount=200`,
+      tok.accessToken,
+    );
+    if (!res.ok) return null;
+    const json: any = await res.json().catch(() => ({}));
+    return _buildLadderFromChain(sym, json);
   });
