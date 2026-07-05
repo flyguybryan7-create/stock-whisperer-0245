@@ -1409,7 +1409,7 @@ export default function TradingPlatform() {
         headlines: newsItems.map((n) => ({ title: n.title, scope: n.scope })),
       },
     }),
-    enabled: newsItems.length > 0,
+    enabled: newsItems.length > 0 && !!user,
     staleTime: 5 * 60_000,
   });
   const sentiment: SentimentResult = sentimentData ?? { score: 0, label: "NEUTRAL", summary: "", drivers: [] };
