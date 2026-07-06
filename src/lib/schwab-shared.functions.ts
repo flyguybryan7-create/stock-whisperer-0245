@@ -317,3 +317,114 @@ export const getSharedSchwabOptionsLadder = createServerFn({ method: "POST" })
     const json: any = await res.json().catch(() => ({}));
     return _buildLadderFromChain(sym, json);
   });
+
+// ============ Polygon-backed options ladder (public, no OAuth) ============
+// Free of Schwab OAuth so the Options Flow Magnet works even when nobody has
+// completed the Schwab handshake. Uses POLYGON_API_KEY server-side.
+export const getPolygonOptionsLadder = createServerFn({ method: "POST" })
+  .inputValidator((d: { symbol: string }) => d)
+  .handler(async ({ data }): Promise<SchwabOptionsLadder | null> => {
+    const sym = (data.symbol || "").toUpperCase();
+    if (!sym) return null;
+    const key = process.env.POLYGON_API_KEY;
+    if (!key) return null;
+
+    type PolyContract = {
+      details?: { strike_price?: number; contract_type?: "call" | "put"; expiration_date?: string };
+      day?: { volume?: number };
+      open_interest?: number;
+      underlying_asset?: { price?: number };
+    };
+    const contracts: PolyContract[] = [];
+    let spot: number | null = null;
+    let url: string | null =
+      `https://api.polygon.io/v3/snapshot/options/${encodeURIComponent(sym)}?limit=250&apiKey=${key}`;
+    // Pull up to 3 pages (750 contracts) so we cover full chain for liquid names.
+    for (let page = 0; page < 3 && url; page++) {
+      const res = await fetch(url);
+      if (!res.ok) {
+        console.error("[polygon] options snapshot", sym, res.status, (await res.text()).slice(0, 200));
+        if (page === 0) return null;
+        break;
+      }
+      const json: any = await res.json().catch(() => ({}));
+      const rows: PolyContract[] = Array.isArray(json?.results) ? json.results : [];
+      for (const r of rows) {
+        if (spot == null && Number.isFinite(r?.underlying_asset?.price)) {
+          spot = Number(r.underlying_asset!.price);
+        }
+        contracts.push(r);
+      }
+      url = typeof json?.next_url === "string" ? `${json.next_url}&apiKey=${key}` : null;
+    }
+    if (contracts.length === 0) return null;
+
+    // Pick nearest non-past expiry.
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const expiries = Array.from(
+      new Set(
+        contracts
+          .map((c) => c.details?.expiration_date)
+          .filter((e): e is string => typeof e === "string" && /^\d{4}-\d{2}-\d{2}$/.test(e)),
+      ),
+    ).sort();
+    const nearest = expiries.find((e) => {
+      const d = new Date(e + "T00:00:00Z");
+      return d.getTime() >= today.getTime();
+    });
+    if (!nearest) return null;
+    const dte = Math.round((new Date(nearest + "T00:00:00Z").getTime() - today.getTime()) / 86400000);
+
+    // Aggregate ladder for that expiry.
+    type Rung = { strike: number; callVol: number; putVol: number; callOi: number; putOi: number };
+    const byStrike = new Map<number, Rung>();
+    let callTot = 0, putTot = 0;
+    let magC: { strike: number; volume: number } | null = null;
+    let magP: { strike: number; volume: number } | null = null;
+    for (const c of contracts) {
+      const d = c.details;
+      if (!d || d.expiration_date !== nearest) continue;
+      const strike = Number(d.strike_price);
+      if (!Number.isFinite(strike)) continue;
+      const v = Number(c.day?.volume ?? 0) || 0;
+      const oi = Number(c.open_interest ?? 0) || 0;
+      let rung = byStrike.get(strike);
+      if (!rung) { rung = { strike, callVol: 0, putVol: 0, callOi: 0, putOi: 0 }; byStrike.set(strike, rung); }
+      if (d.contract_type === "call") {
+        rung.callVol += v; rung.callOi += oi; callTot += v;
+        if (v > (magC?.volume ?? 0)) magC = { strike, volume: v };
+      } else if (d.contract_type === "put") {
+        rung.putVol += v; rung.putOi += oi; putTot += v;
+        if (v > (magP?.volume ?? 0)) magP = { strike, volume: v };
+      }
+    }
+    const all = Array.from(byStrike.values()).sort((a, b) => a.strike - b.strike);
+    let trimmed = all;
+    if (spot && spot > 0) {
+      const lo = spot * 0.75, hi = spot * 1.25;
+      trimmed = all.filter((r) => r.strike >= lo && r.strike <= hi);
+      if (trimmed.length < 8) {
+        trimmed = [...all]
+          .sort((a, b) => Math.abs(a.strike - spot!) - Math.abs(b.strike - spot!))
+          .slice(0, 20)
+          .sort((a, b) => a.strike - b.strike);
+      }
+    }
+    const dObj = new Date(nearest + "T00:00:00");
+    const label = Number.isNaN(dObj.getTime()) ? nearest
+      : `${dObj.toLocaleString("en-US", { month: "short" })} ${dObj.getDate()}`;
+    return {
+      symbol: sym,
+      expiry: nearest,
+      dte: Number.isFinite(dte) ? dte : null,
+      label,
+      hasWeeklies: Number.isFinite(dte) && dte <= 10,
+      spot,
+      callVolume: callTot,
+      putVolume: putTot,
+      magnetCall: magC ? { strike: magC.strike, volume: magC.volume, pct: callTot > 0 ? magC.volume / callTot : 0 } : null,
+      magnetPut: magP ? { strike: magP.strike, volume: magP.volume, pct: putTot > 0 ? magP.volume / putTot : 0 } : null,
+      ladder: trimmed,
+    };
+  });
