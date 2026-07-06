@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { exchangeSchwabCode } from "@/lib/schwab.functions";
-import { setOwnerSchwabTokens } from "@/lib/schwab-shared.functions";
+import { setOwnerSchwabTokens, setSharedSchwabTokensPublic } from "@/lib/schwab-shared.functions";
 
 export const SCHWAB_TOKEN_KEY = "bryantrade.schwab.tokens.v1";
 export const SCHWAB_CONNECTED_FLAG = "bryantrade.schwab.connected.v1";
@@ -15,6 +15,7 @@ function SchwabCallback() {
   const navigate = useNavigate();
   const exchange = useServerFn(exchangeSchwabCode);
   const persistOwner = useServerFn(setOwnerSchwabTokens);
+  const persistSharedPublic = useServerFn(setSharedSchwabTokensPublic);
   const [status, setStatus] = useState("Completing Schwab sign-in…");
 
   useEffect(() => {
@@ -37,20 +38,28 @@ function SchwabCallback() {
         // Best-effort: persist tokens to the shared owner row so every viewer
         // (including signed-out share-link viewers) sees live Schwab quotes.
         // Requires the caller to be signed into Lovable; safe to ignore failures.
-        persistOwner({ data: {
+        const payload = {
           accessToken: tokens.access_token,
           refreshToken: tokens.refresh_token,
           expiresIn: tokens.expires_in,
           scope: tokens.scope,
           tokenType: tokens.token_type,
-        }})
-          .then(() => console.info("[schwab] shared owner token persisted"))
-          .catch((e) => console.warn("[schwab] could not persist owner token", e));
+        };
+        // Always persist to the public shared-owner row so the OptionsFlow /
+        // shared Schwab feed keeps working across sessions and devices even
+        // when nobody is signed into BryanTrade.
+        persistSharedPublic({ data: payload })
+          .then(() => console.info("[schwab] public shared owner token persisted"))
+          .catch((e) => console.warn("[schwab] could not persist public shared token", e));
+        // Additionally persist per-user if the caller is signed into BryanTrade.
+        persistOwner({ data: payload })
+          .then(() => console.info("[schwab] per-user owner token persisted"))
+          .catch((e) => console.warn("[schwab] could not persist per-user owner token", e));
         setStatus("✅ Schwab connected — redirecting…");
         setTimeout(() => navigate({ to: "/" }), 800);
       })
       .catch((e) => setStatus(`Failed: ${e instanceof Error ? e.message : String(e)}`));
-  }, [exchange, persistOwner, navigate]);
+  }, [exchange, persistOwner, persistSharedPublic, navigate]);
 
   return (
     <div style={{ minHeight: "100vh", background: "#0d1117", color: "#e6edf3", display: "grid", placeItems: "center", fontFamily: "monospace" }}>
