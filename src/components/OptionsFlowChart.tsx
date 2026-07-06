@@ -179,14 +179,14 @@ export function OptionsFlowChart({ symbol, spot, ladder }: Props) {
                 {data.map((d, i) => (
                   <Cell key={`p${i}`} fill={magnet?.side === "PUT" && d.strike === magnet.strike ? "#f85149" : "#8b3b3b"} />
                 ))}
-                <LabelList dataKey="putVol" position="insideLeft" fill="#ffb4b4" fontSize={9} fontFamily={mono} offset={4}
+                <LabelList dataKey="putVol" position="left" fill="#f85149" fontSize={9} fontFamily={mono} offset={4}
                   formatter={(v: number) => (v > 0 ? fmtVol(v) : "")} />
               </Bar>
               <Bar dataKey="callVol" name="Calls" isAnimationActive={false} maxBarSize={14}>
                 {data.map((d, i) => (
                   <Cell key={`c${i}`} fill={magnet?.side === "CALL" && d.strike === magnet.strike ? "#39d353" : "#3b7a4b"} />
                 ))}
-                <LabelList dataKey="callVol" position="insideRight" fill="#b6f5c5" fontSize={9} fontFamily={mono} offset={4}
+                <LabelList dataKey="callVol" position="right" fill="#39d353" fontSize={9} fontFamily={mono} offset={4}
                   formatter={(v: number) => (v > 0 ? fmtVol(v) : "")} />
               </Bar>
               {magnet && (
