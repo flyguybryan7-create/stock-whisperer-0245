@@ -44,6 +44,7 @@ import {
   getSharedSchwabTopStrikes,
   getSharedSchwabPriceHistory,
   getSharedSchwabOptionsLadder,
+  getPolygonOptionsLadder,
 } from "@/lib/schwab-shared.functions";
 import { detectTrap, type TrapResult } from "@/lib/trap-indicator";
 import { OptionsFlowChart } from "./OptionsFlowChart";
@@ -1044,6 +1045,17 @@ export default function TradingPlatform() {
     staleTime: 30_000,
   });
 
+  // Final fallback: Polygon options snapshot (no OAuth) — powers the Options
+  // Flow Magnet when no Schwab token is available (per-user or shared).
+  const fetchPolygonLadder = useServerFn(getPolygonOptionsLadder);
+  const { data: polygonLadderData } = useQuery({
+    queryKey: ["polygonLadder", selectedStock, sharedStrikesTodayKey],
+    queryFn: () => fetchPolygonLadder({ data: { symbol: selectedStock } }),
+    enabled: !!selectedStock,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+
   // Merge per-user (preferred) with shared (fallback) so signed-out viewers
   // still see live Schwab quotes via the owner's account.
   const mergedSchwabQuotes: Record<string, SchwabQuote> = useMemo(() => {
@@ -1057,7 +1069,10 @@ export default function TradingPlatform() {
   const mergedSchwabStrikes: SchwabTopStrikes | null =
     (schwabStrikesData as SchwabTopStrikes | null) ?? (sharedStrikesData as SchwabTopStrikes | null) ?? null;
   const mergedSchwabLadder: SchwabOptionsLadder | null =
-    (schwabLadderData as SchwabOptionsLadder | null) ?? (sharedLadderData as SchwabOptionsLadder | null) ?? null;
+    (schwabLadderData as SchwabOptionsLadder | null)
+    ?? (sharedLadderData as SchwabOptionsLadder | null)
+    ?? (polygonLadderData as SchwabOptionsLadder | null)
+    ?? null;
 
   // Public aliases the rest of the component already uses. Now backed by the
   // merged feed so shared/published-link viewers see the same live data.
