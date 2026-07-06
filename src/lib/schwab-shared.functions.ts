@@ -15,6 +15,8 @@ import { _buildLadderFromChain } from "./schwab.functions";
  */
 
 const TOKEN_URL = "https://api.schwabapi.com/v1/oauth/token";
+const NASDAQ_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
 
 type OwnerTokenRow = {
   user_id: string;
@@ -376,12 +378,17 @@ export const getPolygonOptionsLadder = createServerFn({ method: "POST" })
     if (!nearest) return null;
     const dte = Math.round((new Date(nearest + "T00:00:00Z").getTime() - today.getTime()) / 86400000);
 
-    // Aggregate ladder for that expiry.
+    // Aggregate ladder for that expiry. Polygon sometimes returns open
+    // interest before day-volume fields are populated; keep OI around as a
+    // fallback so the magnet still renders instead of showing an empty card.
     type Rung = { strike: number; callVol: number; putVol: number; callOi: number; putOi: number };
     const byStrike = new Map<number, Rung>();
     let callTot = 0, putTot = 0;
     let magC: { strike: number; volume: number } | null = null;
     let magP: { strike: number; volume: number } | null = null;
+    let callOiTot = 0, putOiTot = 0;
+    let oiMagC: { strike: number; volume: number } | null = null;
+    let oiMagP: { strike: number; volume: number } | null = null;
     for (const c of contracts) {
       const d = c.details;
       if (!d || d.expiration_date !== nearest) continue;
@@ -392,12 +399,24 @@ export const getPolygonOptionsLadder = createServerFn({ method: "POST" })
       let rung = byStrike.get(strike);
       if (!rung) { rung = { strike, callVol: 0, putVol: 0, callOi: 0, putOi: 0 }; byStrike.set(strike, rung); }
       if (d.contract_type === "call") {
-        rung.callVol += v; rung.callOi += oi; callTot += v;
+        rung.callVol += v; rung.callOi += oi; callTot += v; callOiTot += oi;
         if (v > (magC?.volume ?? 0)) magC = { strike, volume: v };
+        if (oi > (oiMagC?.volume ?? 0)) oiMagC = { strike, volume: oi };
       } else if (d.contract_type === "put") {
-        rung.putVol += v; rung.putOi += oi; putTot += v;
+        rung.putVol += v; rung.putOi += oi; putTot += v; putOiTot += oi;
         if (v > (magP?.volume ?? 0)) magP = { strike, volume: v };
+        if (oi > (oiMagP?.volume ?? 0)) oiMagP = { strike, volume: oi };
       }
+    }
+    if (callTot === 0 && putTot === 0 && (callOiTot > 0 || putOiTot > 0)) {
+      for (const rung of byStrike.values()) {
+        rung.callVol = rung.callOi;
+        rung.putVol = rung.putOi;
+      }
+      callTot = callOiTot;
+      putTot = putOiTot;
+      magC = oiMagC;
+      magP = oiMagP;
     }
     const all = Array.from(byStrike.values()).sort((a, b) => a.strike - b.strike);
     let trimmed = all;
@@ -420,6 +439,267 @@ export const getPolygonOptionsLadder = createServerFn({ method: "POST" })
       dte: Number.isFinite(dte) ? dte : null,
       label,
       hasWeeklies: Number.isFinite(dte) && dte <= 10,
+      spot,
+      callVolume: callTot,
+      putVolume: putTot,
+      magnetCall: magC ? { strike: magC.strike, volume: magC.volume, pct: callTot > 0 ? magC.volume / callTot : 0 } : null,
+      magnetPut: magP ? { strike: magP.strike, volume: magP.volume, pct: putTot > 0 ? magP.volume / putTot : 0 } : null,
+      ladder: trimmed,
+    };
+  });
+
+// ============ Cboe delayed options ladder (public, no OAuth) ============
+// Reliable no-login fallback for the Options Flow Magnet. It provides the full
+// listed chain plus volume/open interest, so the chart can render even when the
+// shared Schwab token is absent and Polygon has no snapshot entitlement.
+export const getCboeOptionsLadder = createServerFn({ method: "POST" })
+  .inputValidator((d: { symbol: string }) => d)
+  .handler(async ({ data }): Promise<SchwabOptionsLadder | null> => {
+    const sym = (data.symbol || "").toUpperCase();
+    if (!sym) return null;
+    const res = await fetch(`https://cdn.cboe.com/api/global/delayed_quotes/options/${encodeURIComponent(sym)}.json`, {
+      headers: { "User-Agent": NASDAQ_UA, Accept: "application/json" },
+    });
+    if (!res.ok) {
+      console.error("[cboe-ladder] status", sym, res.status);
+      return null;
+    }
+    const json: any = await res.json().catch(() => ({}));
+    const options: any[] = Array.isArray(json?.data?.options) ? json.data.options : [];
+    if (!options.length) return null;
+    const spot = Number.isFinite(json?.data?.current_price) ? Number(json.data.current_price) : null;
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    type Parsed = { expiry: string; dte: number; type: "call" | "put"; strike: number; volume: number; oi: number };
+    const parsed: Parsed[] = [];
+    for (const row of options) {
+      const raw = typeof row?.option === "string" ? row.option : "";
+      const m = raw.match(/^(.+?)(\d{6})([CP])(\d{8})$/);
+      if (!m) continue;
+      const yy = Number(m[2].slice(0, 2));
+      const mm = Number(m[2].slice(2, 4));
+      const dd = Number(m[2].slice(4, 6));
+      const year = 2000 + yy;
+      const expDate = new Date(Date.UTC(year, mm - 1, dd));
+      if (Number.isNaN(expDate.getTime())) continue;
+      const dte = Math.round((expDate.getTime() - today.getTime()) / 86400000);
+      if (dte < 0) continue;
+      const strike = Number(m[4]) / 1000;
+      if (!Number.isFinite(strike) || strike <= 0) continue;
+      const volume = Number(row?.volume ?? 0) || 0;
+      const oi = Number(row?.open_interest ?? 0) || 0;
+      if (volume <= 0 && oi <= 0) continue;
+      parsed.push({
+        expiry: `${year}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`,
+        dte,
+        type: m[3] === "C" ? "call" : "put",
+        strike,
+        volume,
+        oi,
+      });
+    }
+    if (!parsed.length) return null;
+    const expiries = Array.from(new Set(parsed.map((p) => p.expiry))).sort();
+    const nearest = expiries.find((expiry) => parsed.some((p) => p.expiry === expiry && p.dte <= 10)) ?? expiries[0];
+    const chosenRows = parsed.filter((p) => p.expiry === nearest);
+    const dte = chosenRows[0]?.dte ?? null;
+    type Rung = { strike: number; callVol: number; putVol: number; callOi: number; putOi: number };
+    const byStrike = new Map<number, Rung>();
+    let callTot = 0, putTot = 0, callOiTot = 0, putOiTot = 0;
+    let magC: { strike: number; volume: number } | null = null;
+    let magP: { strike: number; volume: number } | null = null;
+    let oiMagC: { strike: number; volume: number } | null = null;
+    let oiMagP: { strike: number; volume: number } | null = null;
+    for (const opt of chosenRows) {
+      let rung = byStrike.get(opt.strike);
+      if (!rung) { rung = { strike: opt.strike, callVol: 0, putVol: 0, callOi: 0, putOi: 0 }; byStrike.set(opt.strike, rung); }
+      if (opt.type === "call") {
+        rung.callVol += opt.volume; rung.callOi += opt.oi; callTot += opt.volume; callOiTot += opt.oi;
+        if (opt.volume > (magC?.volume ?? 0)) magC = { strike: opt.strike, volume: opt.volume };
+        if (opt.oi > (oiMagC?.volume ?? 0)) oiMagC = { strike: opt.strike, volume: opt.oi };
+      } else {
+        rung.putVol += opt.volume; rung.putOi += opt.oi; putTot += opt.volume; putOiTot += opt.oi;
+        if (opt.volume > (magP?.volume ?? 0)) magP = { strike: opt.strike, volume: opt.volume };
+        if (opt.oi > (oiMagP?.volume ?? 0)) oiMagP = { strike: opt.strike, volume: opt.oi };
+      }
+    }
+    if (callTot === 0 && putTot === 0 && (callOiTot > 0 || putOiTot > 0)) {
+      for (const rung of byStrike.values()) {
+        rung.callVol = rung.callOi;
+        rung.putVol = rung.putOi;
+      }
+      callTot = callOiTot;
+      putTot = putOiTot;
+      magC = oiMagC;
+      magP = oiMagP;
+    }
+    const all = Array.from(byStrike.values()).sort((a, b) => a.strike - b.strike);
+    if (!all.length || (callTot === 0 && putTot === 0)) return null;
+    let trimmed = all;
+    if (spot && spot > 0) {
+      const lo = spot * 0.75, hi = spot * 1.25;
+      trimmed = all.filter((r) => r.strike >= lo && r.strike <= hi);
+      if (trimmed.length < 8) {
+        trimmed = [...all]
+          .sort((a, b) => Math.abs(a.strike - spot) - Math.abs(b.strike - spot))
+          .slice(0, 20)
+          .sort((a, b) => a.strike - b.strike);
+      }
+    }
+    const dObj = new Date(nearest + "T00:00:00");
+    const label = Number.isNaN(dObj.getTime()) ? nearest
+      : `${dObj.toLocaleString("en-US", { month: "short" })} ${dObj.getDate()}`;
+    return {
+      symbol: sym,
+      expiry: nearest,
+      dte,
+      label,
+      hasWeeklies: typeof dte === "number" && dte <= 10,
+      spot,
+      callVolume: callTot,
+      putVolume: putTot,
+      magnetCall: magC ? { strike: magC.strike, volume: magC.volume, pct: callTot > 0 ? magC.volume / callTot : 0 } : null,
+      magnetPut: magP ? { strike: magP.strike, volume: magP.volume, pct: putTot > 0 ? magP.volume / putTot : 0 } : null,
+      ladder: trimmed,
+    };
+  });
+
+// ============ Nasdaq public options ladder (no OAuth/no API key) ============
+// Last-resort fallback for the Options Flow Magnet. Nasdaq's public chain often
+// exposes open interest even when same-day volume is blank/pre-market; use OI as
+// a readable proxy so the chart still shows where strikes are concentrated.
+export const getNasdaqOptionsLadder = createServerFn({ method: "POST" })
+  .inputValidator((d: { symbol: string; spot?: number | null }) => d)
+  .handler(async ({ data }): Promise<SchwabOptionsLadder | null> => {
+    const sym = (data.symbol || "").toUpperCase();
+    if (!sym) return null;
+    const url =
+      `https://api.nasdaq.com/api/quote/${encodeURIComponent(sym)}/option-chain` +
+      `?assetclass=stocks&limit=2000&fromdate=all&todate=undefined` +
+      `&excode=oprac&callput=callput&money=all&type=all`;
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": NASDAQ_UA,
+        Accept: "application/json",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+    });
+    if (!res.ok) {
+      console.error("[nasdaq-ladder] status", sym, res.status);
+      return null;
+    }
+    const json: any = await res.json().catch(() => ({}));
+    const rows: any[] = json?.data?.table?.rows ?? [];
+    if (!rows.length) return null;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const num = (v: any) => {
+      if (v == null || v === "--" || v === "") return 0;
+      const n = Number(String(v).replace(/[$,%\s,]/g, ""));
+      return Number.isFinite(n) ? n : 0;
+    };
+    const parseExp = (s: string): { time: number; dte: number; expiry: string; label: string } | null => {
+      let d: Date | null = null;
+      const slash4 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      const slash2 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
+      const dash = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+      const monthDay = s.match(/^([A-Za-z]{3,9})\s+(\d{1,2})$/);
+      if (slash4) d = new Date(+slash4[3], +slash4[1] - 1, +slash4[2]);
+      else if (slash2) {
+        const yy = +slash2[3];
+        d = new Date(yy < 80 ? 2000 + yy : 1900 + yy, +slash2[1] - 1, +slash2[2]);
+      } else if (dash) d = new Date(+dash[1], +dash[2] - 1, +dash[3]);
+      else if (monthDay) {
+        const month = new Date(`${monthDay[1]} 1, ${today.getFullYear()}`).getMonth();
+        if (Number.isFinite(month)) {
+          d = new Date(today.getFullYear(), month, +monthDay[2]);
+          if (d.getTime() < today.getTime()) d = new Date(today.getFullYear() + 1, month, +monthDay[2]);
+        }
+      } else {
+        const t = Date.parse(s);
+        if (!Number.isNaN(t)) d = new Date(t);
+      }
+      if (!d || Number.isNaN(d.getTime())) return null;
+      d.setHours(0, 0, 0, 0);
+      const dte = Math.round((d.getTime() - today.getTime()) / 86400000);
+      if (dte < 0) return null;
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      return {
+        time: d.getTime(),
+        dte,
+        expiry: `${yyyy}-${mm}-${dd}`,
+        label: `${d.toLocaleString("en-US", { month: "short" })} ${d.getDate()}`,
+      };
+    };
+
+    type RawBucket = { meta: NonNullable<ReturnType<typeof parseExp>>; rows: any[]; activity: number };
+    const buckets = new Map<string, RawBucket>();
+    for (const row of rows) {
+      const expRaw = row?.expiryDate ? String(row.expiryDate) : "";
+      const meta = parseExp(expRaw);
+      const strike = num(row?.strike);
+      if (!meta || strike <= 0) continue;
+      const activity = num(row?.c_Volume) + num(row?.p_Volume) + num(row?.c_Openinterest) + num(row?.p_Openinterest);
+      if (activity <= 0) continue;
+      const existing = buckets.get(meta.expiry) ?? { meta, rows: [], activity: 0 };
+      existing.rows.push(row);
+      existing.activity += activity;
+      buckets.set(meta.expiry, existing);
+    }
+    const chosen = Array.from(buckets.values())
+      .filter((b) => b.meta.dte <= 10 || buckets.size === 1)
+      .sort((a, b) => a.meta.dte - b.meta.dte || b.activity - a.activity)[0]
+      ?? Array.from(buckets.values()).sort((a, b) => a.meta.dte - b.meta.dte || b.activity - a.activity)[0];
+    if (!chosen) return null;
+
+    type Rung = { strike: number; callVol: number; putVol: number; callOi: number; putOi: number };
+    const byStrike = new Map<number, Rung>();
+    let callTot = 0, putTot = 0;
+    let magC: { strike: number; volume: number } | null = null;
+    let magP: { strike: number; volume: number } | null = null;
+    for (const row of chosen.rows) {
+      const strike = num(row?.strike);
+      if (strike <= 0) continue;
+      const callRawVol = num(row?.c_Volume);
+      const putRawVol = num(row?.p_Volume);
+      const callOi = num(row?.c_Openinterest);
+      const putOi = num(row?.p_Openinterest);
+      const callVol = callRawVol > 0 ? callRawVol : callOi;
+      const putVol = putRawVol > 0 ? putRawVol : putOi;
+      let rung = byStrike.get(strike);
+      if (!rung) { rung = { strike, callVol: 0, putVol: 0, callOi: 0, putOi: 0 }; byStrike.set(strike, rung); }
+      rung.callVol += callVol; rung.putVol += putVol; rung.callOi += callOi; rung.putOi += putOi;
+      callTot += callVol; putTot += putVol;
+      if (callVol > (magC?.volume ?? 0)) magC = { strike, volume: callVol };
+      if (putVol > (magP?.volume ?? 0)) magP = { strike, volume: putVol };
+    }
+    const all = Array.from(byStrike.values()).sort((a, b) => a.strike - b.strike);
+    if (!all.length || (callTot === 0 && putTot === 0)) return null;
+    let spot = typeof data.spot === "number" && Number.isFinite(data.spot) && data.spot > 0 ? data.spot : null;
+    if (!spot) {
+      const active = magC && magP ? (magC.volume >= magP.volume ? magC.strike : magP.strike) : (magC?.strike ?? magP?.strike ?? all[Math.floor(all.length / 2)].strike);
+      spot = active;
+    }
+    let trimmed = all;
+    if (spot && spot > 0) {
+      const lo = spot * 0.75, hi = spot * 1.25;
+      trimmed = all.filter((r) => r.strike >= lo && r.strike <= hi);
+      if (trimmed.length < 8) {
+        trimmed = [...all]
+          .sort((a, b) => Math.abs(a.strike - spot!) - Math.abs(b.strike - spot!))
+          .slice(0, 20)
+          .sort((a, b) => a.strike - b.strike);
+      }
+    }
+    return {
+      symbol: sym,
+      expiry: chosen.meta.expiry,
+      dte: chosen.meta.dte,
+      label: chosen.meta.label,
+      hasWeeklies: chosen.meta.dte <= 10,
       spot,
       callVolume: callTot,
       putVolume: putTot,
