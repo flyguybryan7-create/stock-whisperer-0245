@@ -154,7 +154,7 @@ export function OptionsFlowChart({ symbol, spot, ladder }: Props) {
           <ResponsiveContainer width="100%" height={Math.max(220, data.length * 20)}>
             <ComposedChart data={data} layout="vertical" margin={{ top: 4, right: 56, left: 56, bottom: 8 }} stackOffset="sign">
               <CartesianGrid strokeDasharray="3 3" stroke="#21262d" horizontal={false} />
-              <XAxis type="number" domain={[-maxVol, maxVol]} tickFormatter={(v: number) => fmtVol(Math.abs(v))} stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} />
+              <XAxis type="number" domain={[-maxVol * 1.2, maxVol * 1.2]} tickFormatter={(v: number) => fmtVol(Math.abs(v))} stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} />
               <YAxis type="category" dataKey="strikeLabel" stroke="#8b949e" fontSize={10} tick={{ fontFamily: mono, fontWeight: 600 }} width={56} reversed />
               <ReferenceLine x={0} stroke="#484f58" />
               {spot != null && (() => {
