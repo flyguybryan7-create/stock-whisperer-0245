@@ -117,6 +117,35 @@ export const setOwnerSchwabTokens = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// Sentinel user_id for the shared/public owner row. Written when a visitor
+// completes Schwab OAuth without being signed into BryanTrade, so the shared
+// feed keeps working across sessions/devices even when nobody is logged in.
+const SHARED_OWNER_UUID = "00000000-0000-0000-0000-000000000001";
+
+// Public variant of setOwnerSchwabTokens. No auth required — anyone who
+// completes a Schwab OAuth handshake (which itself requires valid Schwab
+// credentials + user login on Schwab's side) becomes the shared owner.
+export const setSharedSchwabTokensPublic = createServerFn({ method: "POST" })
+  .inputValidator((d: { accessToken: string; refreshToken: string; expiresIn: number; scope?: string; tokenType?: string }) => d)
+  .handler(async ({ data }) => {
+    if (!data.accessToken || !data.refreshToken) throw new Error("Missing Schwab tokens");
+    const expiresAt = new Date(Date.now() + (Number(data.expiresIn) || 1800) * 1000).toISOString();
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin
+      .from("schwab_owner_tokens")
+      .upsert({
+        user_id: SHARED_OWNER_UUID,
+        access_token: data.accessToken,
+        refresh_token: data.refreshToken,
+        expires_at: expiresAt,
+        obtained_at: new Date().toISOString(),
+        scope: data.scope ?? null,
+        token_type: data.tokenType ?? null,
+      }, { onConflict: "user_id" });
+    if (error) throw new Error(`Failed to store shared Schwab tokens: ${error.message}`);
+    return { ok: true };
+  });
+
 // ============ Shared quotes (public) ============
 export const getSharedSchwabQuotes = createServerFn({ method: "POST" })
   .inputValidator((d: { symbols: string[] }) => d)
