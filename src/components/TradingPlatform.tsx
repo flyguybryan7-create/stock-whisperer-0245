@@ -2874,7 +2874,10 @@ export default function TradingPlatform() {
                 {/* 📰 News markers — anchored above the bar a headline landed on */}
                 <Scatter dataKey="newsMarkerY" isAnimationActive={false}
                   shape={(p: any) => p?.payload?.newsMarkerY == null ? <g /> : (
-                    <g>
+                    <g
+                      style={{ cursor: p.payload.newsLink ? "pointer" : "default" }}
+                      onClick={() => { if (p.payload.newsLink) window.open(p.payload.newsLink, "_blank", "noopener,noreferrer"); }}
+                    >
                       <circle cx={p.cx} cy={p.cy} r={7} fill="#58a6ff" stroke="#0d1117" strokeWidth={1} />
                       <text x={p.cx} y={p.cy + 3} textAnchor="middle" fontSize={9} fontWeight={900} fill="#0d1117">N</text>
                       {p.payload.newsCount > 1 && (
@@ -2885,7 +2888,10 @@ export default function TradingPlatform() {
                 {/* 🟡 E — high-impact economic release (CPI/PCE/NFP/FOMC…) */}
                 <Scatter dataKey="econMarkerY" isAnimationActive={false}
                   shape={(p: any) => p?.payload?.econMarkerY == null ? <g /> : (
-                    <g>
+                    <g
+                      style={{ cursor: p.payload.econLink ? "pointer" : "default" }}
+                      onClick={() => { if (p.payload.econLink) window.open(p.payload.econLink, "_blank", "noopener,noreferrer"); }}
+                    >
                       <rect x={p.cx - 7} y={p.cy - 7} width={14} height={14} rx={2} fill="#e3b341" stroke="#0d1117" strokeWidth={1} />
                       <text x={p.cx} y={p.cy + 3} textAnchor="middle" fontSize={9} fontWeight={900} fill="#0d1117">E</text>
                       {p.payload.econCat && (
