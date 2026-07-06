@@ -45,6 +45,8 @@ import {
   getSharedSchwabPriceHistory,
   getSharedSchwabOptionsLadder,
   getPolygonOptionsLadder,
+  getCboeOptionsLadder,
+  getNasdaqOptionsLadder,
 } from "@/lib/schwab-shared.functions";
 import { detectTrap, type TrapResult } from "@/lib/trap-indicator";
 import { OptionsFlowChart } from "./OptionsFlowChart";
@@ -162,6 +164,15 @@ function bidAskNearMark(mark: number | null | undefined, bid: number | null | un
     return { ...tightEstimatedBidAsk(mark), syntheticBidAsk: true };
   }
   return { bid, ask, syntheticBidAsk: false };
+}
+
+function isUsableOptionsLadder(ladder: SchwabOptionsLadder | null | undefined, symbol: string) {
+  if (!ladder || ladder.symbol !== symbol || !Array.isArray(ladder.ladder) || ladder.ladder.length === 0) return false;
+  const hasStrikeData = ladder.ladder.some((r) =>
+    (r.callVol > 0 || r.putVol > 0 || r.callOi > 0 || r.putOi > 0),
+  );
+  const hasMagnet = (ladder.magnetCall?.volume ?? 0) > 0 || (ladder.magnetPut?.volume ?? 0) > 0;
+  return hasStrikeData && hasMagnet;
 }
 
 function getVisiblePriceDomain(rows: any[]): [number, number] | ["auto", "auto"] {
@@ -1056,6 +1067,24 @@ export default function TradingPlatform() {
     staleTime: 30_000,
   });
 
+  const fetchCboeLadder = useServerFn(getCboeOptionsLadder);
+  const { data: cboeLadderData } = useQuery({
+    queryKey: ["cboeLadder", selectedStock, sharedStrikesTodayKey],
+    queryFn: () => fetchCboeLadder({ data: { symbol: selectedStock } }),
+    enabled: !!selectedStock,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+
+  const fetchNasdaqLadder = useServerFn(getNasdaqOptionsLadder);
+  const { data: nasdaqLadderData } = useQuery({
+    queryKey: ["nasdaqLadder", selectedStock, sharedStrikesTodayKey],
+    queryFn: () => fetchNasdaqLadder({ data: { symbol: selectedStock } }),
+    enabled: !!selectedStock,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+
   // Merge per-user (preferred) with shared (fallback) so signed-out viewers
   // still see live Schwab quotes via the owner's account.
   const mergedSchwabQuotes: Record<string, SchwabQuote> = useMemo(() => {
@@ -1068,11 +1097,16 @@ export default function TradingPlatform() {
   }, [sharedFundData, schwabFundData]);
   const mergedSchwabStrikes: SchwabTopStrikes | null =
     (schwabStrikesData as SchwabTopStrikes | null) ?? (sharedStrikesData as SchwabTopStrikes | null) ?? null;
-  const mergedSchwabLadder: SchwabOptionsLadder | null =
-    (schwabLadderData as SchwabOptionsLadder | null)
-    ?? (sharedLadderData as SchwabOptionsLadder | null)
-    ?? (polygonLadderData as SchwabOptionsLadder | null)
-    ?? null;
+  const mergedSchwabLadder: SchwabOptionsLadder | null = useMemo(() => {
+    const candidates = [
+      schwabLadderData as SchwabOptionsLadder | null,
+      sharedLadderData as SchwabOptionsLadder | null,
+      polygonLadderData as SchwabOptionsLadder | null,
+      cboeLadderData as SchwabOptionsLadder | null,
+      nasdaqLadderData as SchwabOptionsLadder | null,
+    ];
+    return candidates.find((ladder) => isUsableOptionsLadder(ladder, selectedStock)) ?? null;
+  }, [schwabLadderData, sharedLadderData, polygonLadderData, cboeLadderData, nasdaqLadderData, selectedStock]);
 
   // Public aliases the rest of the component already uses. Now backed by the
   // merged feed so shared/published-link viewers see the same live data.

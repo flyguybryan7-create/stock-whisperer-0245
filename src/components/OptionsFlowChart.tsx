@@ -140,7 +140,7 @@ export function OptionsFlowChart({ symbol, spot, ladder }: Props) {
 
       {empty ? (
         <div style={{ padding: 20, textAlign: "center", fontSize: 10, color: "#6e7681" }}>
-          {ladder === null ? "Connect Schwab to see live options flow." : "No option volume yet for the nearest expiry."}
+          {ladder === null ? "Loading options flow…" : "No option activity yet for the nearest expiry."}
         </div>
       ) : (
         <>
@@ -196,7 +196,7 @@ export function OptionsFlowChart({ symbol, spot, ladder }: Props) {
             </ComposedChart>
           </ResponsiveContainer>
           <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "4px 0 0" }}>
-            Live Schwab option volume · refreshes every 60s · magnet strike = highest-volume contract on the winning side
+            Option volume / open interest · refreshes every 60s · magnet strike = heaviest contract concentration
           </div>
         </>
       )}
