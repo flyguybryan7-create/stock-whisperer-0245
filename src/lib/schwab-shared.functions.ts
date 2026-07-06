@@ -430,6 +430,16 @@ export const getPolygonOptionsLadder = createServerFn({ method: "POST" })
           .sort((a, b) => a.strike - b.strike);
       }
     }
+    // Ensure magnet strikes are always visible in the ladder even if they
+    // fall outside the ±25% window around spot.
+    {
+      const need = new Set<number>();
+      if (magC) need.add(magC.strike);
+      if (magP) need.add(magP.strike);
+      const have = new Set(trimmed.map((r) => r.strike));
+      const extras = all.filter((r) => need.has(r.strike) && !have.has(r.strike));
+      if (extras.length) trimmed = [...trimmed, ...extras].sort((a, b) => a.strike - b.strike);
+    }
     const dObj = new Date(nearest + "T00:00:00");
     const label = Number.isNaN(dObj.getTime()) ? nearest
       : `${dObj.toLocaleString("en-US", { month: "short" })} ${dObj.getDate()}`;
@@ -545,6 +555,16 @@ export const getCboeOptionsLadder = createServerFn({ method: "POST" })
           .slice(0, 20)
           .sort((a, b) => a.strike - b.strike);
       }
+    }
+    // Ensure magnet strikes are always visible in the ladder even if they
+    // fall outside the ±25% window around spot.
+    {
+      const need = new Set<number>();
+      if (magC) need.add(magC.strike);
+      if (magP) need.add(magP.strike);
+      const have = new Set(trimmed.map((r) => r.strike));
+      const extras = all.filter((r) => need.has(r.strike) && !have.has(r.strike));
+      if (extras.length) trimmed = [...trimmed, ...extras].sort((a, b) => a.strike - b.strike);
     }
     const dObj = new Date(nearest + "T00:00:00");
     const label = Number.isNaN(dObj.getTime()) ? nearest
@@ -693,6 +713,16 @@ export const getNasdaqOptionsLadder = createServerFn({ method: "POST" })
           .slice(0, 20)
           .sort((a, b) => a.strike - b.strike);
       }
+    }
+    // Ensure magnet strikes are always visible in the ladder even if they
+    // fall outside the ±25% window around spot.
+    {
+      const need = new Set<number>();
+      if (magC) need.add(magC.strike);
+      if (magP) need.add(magP.strike);
+      const have = new Set(trimmed.map((r) => r.strike));
+      const extras = all.filter((r) => need.has(r.strike) && !have.has(r.strike));
+      if (extras.length) trimmed = [...trimmed, ...extras].sort((a, b) => a.strike - b.strike);
     }
     return {
       symbol: sym,
