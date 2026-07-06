@@ -152,7 +152,7 @@ export function OptionsFlowChart({ symbol, spot, ladder }: Props) {
           {/* Horizontal ladder — puts left (red), calls right (green),
               zero axis is strike price. Spot marked with a horizontal line. */}
           <ResponsiveContainer width="100%" height={Math.max(220, data.length * 20)}>
-            <ComposedChart data={data} layout="vertical" margin={{ top: 4, right: 12, left: 8, bottom: 8 }} stackOffset="sign">
+            <ComposedChart data={data} layout="vertical" margin={{ top: 4, right: 56, left: 56, bottom: 8 }} stackOffset="sign">
               <CartesianGrid strokeDasharray="3 3" stroke="#21262d" horizontal={false} />
               <XAxis type="number" domain={[-maxVol, maxVol]} tickFormatter={(v: number) => fmtVol(Math.abs(v))} stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} />
               <YAxis type="category" dataKey="strikeLabel" stroke="#8b949e" fontSize={10} tick={{ fontFamily: mono, fontWeight: 600 }} width={56} reversed />
@@ -179,14 +179,14 @@ export function OptionsFlowChart({ symbol, spot, ladder }: Props) {
                 {data.map((d, i) => (
                   <Cell key={`p${i}`} fill={magnet?.side === "PUT" && d.strike === magnet.strike ? "#f85149" : "#8b3b3b"} />
                 ))}
-                <LabelList dataKey="putVol" position="left" fill="#f85149" fontSize={9} fontFamily={mono}
+                <LabelList dataKey="putVol" position="insideLeft" fill="#ffb4b4" fontSize={9} fontFamily={mono} offset={4}
                   formatter={(v: number) => (v > 0 ? fmtVol(v) : "")} />
               </Bar>
               <Bar dataKey="callVol" name="Calls" isAnimationActive={false} maxBarSize={14}>
                 {data.map((d, i) => (
                   <Cell key={`c${i}`} fill={magnet?.side === "CALL" && d.strike === magnet.strike ? "#39d353" : "#3b7a4b"} />
                 ))}
-                <LabelList dataKey="callVol" position="right" fill="#39d353" fontSize={9} fontFamily={mono}
+                <LabelList dataKey="callVol" position="insideRight" fill="#b6f5c5" fontSize={9} fontFamily={mono} offset={4}
                   formatter={(v: number) => (v > 0 ? fmtVol(v) : "")} />
               </Bar>
               {magnet && (
