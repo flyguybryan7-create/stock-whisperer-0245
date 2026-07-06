@@ -1671,6 +1671,8 @@ export default function TradingPlatform() {
     econMarkerY: number | null;
     econCount: number;
     econCat: string | null;
+    newsLink: string | null;
+    econLink: string | null;
   };
   const masterData = useMemo<MasterRow[]>(() => {
     if (!displayData.length) return [];
@@ -1680,6 +1682,7 @@ export default function TradingPlatform() {
     // candle the news landed on. Only valid for intraday mode (where bars[i]
     // aligns with stitchedIntradayBars[i]); daily mode skips.
     const newsBarMap = new Map<number, number>(); // idx -> count
+    const newsLinkMap = new Map<number, string>();
     if (chartMode !== "D" && stitchedIntradayBars.length === bars.length && newsItems.length) {
       const ts = stitchedIntradayBars.map((b) => b.t);
       const stepSec = ts.length >= 2 ? Math.max(60, ts[ts.length - 1] - ts[ts.length - 2]) : 120;
@@ -1696,11 +1699,13 @@ export default function TradingPlatform() {
         }
         if (best >= 0 && bestDiff <= stepSec * 2) {
           newsBarMap.set(best, (newsBarMap.get(best) ?? 0) + 1);
+          if (!newsLinkMap.has(best) && (n as any).link) newsLinkMap.set(best, (n as any).link);
         }
       }
     }
     // Econ event markers 'E' (Fed / BLS / BEA / Treasury) — same mapping.
     const econBarMap = new Map<number, { count: number; cat: string }>();
+    const econLinkMap = new Map<number, string>();
     if (chartMode !== "D" && stitchedIntradayBars.length === bars.length && econItems.length) {
       const ts = stitchedIntradayBars.map((b) => b.t);
       const stepSec = ts.length >= 2 ? Math.max(60, ts[ts.length - 1] - ts[ts.length - 2]) : 120;
@@ -1717,6 +1722,7 @@ export default function TradingPlatform() {
         if (best >= 0 && bestDiff <= stepSec * 3) {
           const prev = econBarMap.get(best) ?? { count: 0, cat: e.category };
           econBarMap.set(best, { count: prev.count + 1, cat: e.category });
+          if (!econLinkMap.has(best) && e.link) econLinkMap.set(best, e.link);
         }
       }
     }
@@ -1816,6 +1822,8 @@ export default function TradingPlatform() {
         econMarkerY: econBarMap.has(i) ? +(high + offset * 3.6).toFixed(4) : null,
         econCount: econBarMap.get(i)?.count ?? 0,
         econCat: econBarMap.get(i)?.cat ?? null,
+        newsLink: newsLinkMap.get(i) ?? null,
+        econLink: econLinkMap.get(i) ?? null,
       };
     });
   }, [displayData, chartMode, stitchedIntradayBars, newsItems, econItems]);
