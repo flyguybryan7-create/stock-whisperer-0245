@@ -2700,6 +2700,18 @@ export default function TradingPlatform() {
                       {liveSel?.open != null && (
                         <span title="Today's regular-session open">OPEN <span style={{ color: "#e6edf3", fontWeight: 700 }}>${liveSel.open.toFixed(2)}</span></span>
                       )}
+                      {(() => {
+                        const sts = schwabTopStrikes && schwabTopStrikes.symbol === selectedStock ? schwabTopStrikes : null;
+                        const oa = selectedOptionsActivity?.items?.[selectedStock] ?? optionsActivity[selectedStock];
+                        const pcr = sts?.pcRatio ?? (oa as any)?.pcRatio ?? null;
+                        if (pcr == null) return null;
+                        const pcColor = pcr >= 1.0 ? "#f85149" : pcr >= 0.7 ? "#e3b341" : "#39d353";
+                        return (
+                          <span title={`Put/Call ratio: ${pcr.toFixed(3)}\n<0.70 bullish · 0.70-1.00 neutral · ≥1.00 bearish`}>
+                            P/C <span style={{ color: pcColor, fontWeight: 700 }}>{pcr.toFixed(3)}</span>
+                          </span>
+                        );
+                      })()}
                     </span>
                   )}
                   {(liveSel?.fiftyTwoWeekHigh != null || liveSel?.fiftyTwoWeekLow != null) && (
