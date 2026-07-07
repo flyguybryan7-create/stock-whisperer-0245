@@ -971,8 +971,9 @@ export default function TradingPlatform() {
       }
     },
     enabled: !!schwabTokens?.access_token && !!selectedStock,
-    refetchInterval: 60_000,
-    staleTime: 30_000,
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: true,
+    staleTime: 5_000,
   });
   const schwabTopStrikesPerUser = (schwabStrikesData as SchwabTopStrikes | null) ?? null;
 
@@ -997,8 +998,9 @@ export default function TradingPlatform() {
       }
     },
     enabled: !!schwabTokens?.access_token && !!selectedStock,
-    refetchInterval: 60_000,
-    staleTime: 30_000,
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: true,
+    staleTime: 5_000,
   });
 
   // ============================================================
@@ -1031,8 +1033,9 @@ export default function TradingPlatform() {
     queryKey: ["sharedSchwabStrikes", selectedStock, sharedStrikesTodayKey],
     queryFn: () => fetchSharedStrikes({ data: { symbol: selectedStock } }),
     enabled: !!selectedStock,
-    refetchInterval: 60_000,
-    staleTime: 30_000,
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: true,
+    staleTime: 5_000,
   });
   const fetchSharedHistory = useServerFn(getSharedSchwabPriceHistory);
   const { data: sharedHistoryData } = useQuery({
@@ -1052,8 +1055,9 @@ export default function TradingPlatform() {
     queryKey: ["sharedSchwabLadder", selectedStock, sharedStrikesTodayKey],
     queryFn: () => fetchSharedLadder({ data: { symbol: selectedStock } }),
     enabled: !!selectedStock,
-    refetchInterval: 60_000,
-    staleTime: 30_000,
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: true,
+    staleTime: 5_000,
   });
 
   // Final fallback: Polygon options snapshot (no OAuth) — powers the Options
@@ -1063,8 +1067,9 @@ export default function TradingPlatform() {
     queryKey: ["polygonLadder", selectedStock, sharedStrikesTodayKey],
     queryFn: () => fetchPolygonLadder({ data: { symbol: selectedStock } }),
     enabled: !!selectedStock,
-    refetchInterval: 60_000,
-    staleTime: 30_000,
+    refetchInterval: 20_000,
+    refetchIntervalInBackground: true,
+    staleTime: 10_000,
   });
 
   const fetchCboeLadder = useServerFn(getCboeOptionsLadder);
@@ -1072,8 +1077,9 @@ export default function TradingPlatform() {
     queryKey: ["cboeLadder", selectedStock, sharedStrikesTodayKey],
     queryFn: () => fetchCboeLadder({ data: { symbol: selectedStock } }),
     enabled: !!selectedStock,
-    refetchInterval: 60_000,
-    staleTime: 30_000,
+    refetchInterval: 20_000,
+    refetchIntervalInBackground: true,
+    staleTime: 10_000,
   });
 
   const fetchNasdaqLadder = useServerFn(getNasdaqOptionsLadder);
@@ -1081,8 +1087,9 @@ export default function TradingPlatform() {
     queryKey: ["nasdaqLadder", selectedStock, sharedStrikesTodayKey],
     queryFn: () => fetchNasdaqLadder({ data: { symbol: selectedStock } }),
     enabled: !!selectedStock,
-    refetchInterval: 60_000,
-    staleTime: 30_000,
+    refetchInterval: 20_000,
+    refetchIntervalInBackground: true,
+    staleTime: 10_000,
   });
 
   // Merge per-user (preferred) with shared (fallback) so signed-out viewers
