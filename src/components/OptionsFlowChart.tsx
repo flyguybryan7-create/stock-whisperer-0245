@@ -196,7 +196,7 @@ export function OptionsFlowChart({ symbol, spot, ladder }: Props) {
             </ComposedChart>
           </ResponsiveContainer>
           <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "4px 0 0" }}>
-            Option volume / open interest · refreshes every 60s · magnet strike = heaviest contract concentration
+            Option volume / open interest · refreshes every 10s · magnet strike = heaviest contract concentration
           </div>
         </>
       )}
