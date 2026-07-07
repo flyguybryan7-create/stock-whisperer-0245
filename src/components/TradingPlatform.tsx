@@ -2527,6 +2527,17 @@ export default function TradingPlatform() {
                         }}
                       >{oaLabel}</span>
                     )}
+                    {(() => {
+                      const pcr = (oa as any)?.pcRatio ?? null;
+                      if (pcr == null) return null;
+                      const c = pcr >= 1.0 ? "#f85149" : pcr >= 0.7 ? "#e3b341" : "#39d353";
+                      return (
+                        <span
+                          title={`Put/Call ratio: ${pcr.toFixed(3)}\n<0.70 bullish · 0.70-1.00 neutral · ≥1.00 bearish`}
+                          style={{ fontSize: 9, fontWeight: 800, color: c, border: `1px solid ${c}`, borderRadius: 2, padding: "0 3px", marginLeft: 3 }}
+                        >P/C {pcr.toFixed(2)}</span>
+                      );
+                    })()}
                   </div>
 
                   {/* Inline position editor overlay */}
