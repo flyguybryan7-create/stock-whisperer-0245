@@ -2836,8 +2836,11 @@ export default function TradingPlatform() {
             legend={[
               { label: "Bullish candle", color: "#39d353" },
               { label: "Bearish candle", color: "#f85149" },
+              { label: "SMA9", color: "#79c0ff" },
+              { label: "SMA15", color: "#d2a8ff" },
               { label: "20MA", color: "#ffffcc" },
               { label: "200MA", color: "#8b1a1a" },
+              { label: "BB Upper/Lower", color: "#6e7681" },
               { label: "BUY signal", color: "#39d353" },
               { label: "SELL signal", color: "#f85149" },
             ]}
