@@ -2462,9 +2462,24 @@ export default function TradingPlatform() {
                     </div>
                   </div>
 
-                  {/* Row 2 — company name */}
-                  <div style={{ fontSize: "clamp(9px, 2.2vw, 11px)", color: "#8b949e", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.1 }}>
-                    {stockNames[sym] || ""}
+                  {/* Row 2 — company name + P/C ratio */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4, marginTop: 2, lineHeight: 1.1, minWidth: 0 }}>
+                    <div style={{ fontSize: "clamp(9px, 2.2vw, 11px)", color: "#8b949e", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, flex: 1 }}>
+                      {stockNames[sym] || ""}
+                    </div>
+                    {(() => {
+                      const pcr = (oa as any)?.pcRatio ?? null;
+                      if (pcr == null) return null;
+                      const c = pcr >= 1.0 ? "#f85149" : pcr >= 0.7 ? "#e3b341" : "#39d353";
+                      return (
+                        <span
+                          title={`Put/Call ratio: ${pcr.toFixed(3)}\n<0.70 bullish · 0.70-1.00 neutral · ≥1.00 bearish`}
+                          style={{ fontSize: 8, fontWeight: 800, color: c, border: `1px solid ${c}`, borderRadius: 2, padding: "0 3px", flexShrink: 0, lineHeight: 1.2 }}
+                        >
+                          P/C {pcr.toFixed(2)}
+                        </span>
+                      );
+                    })()}
                   </div>
 
                   {/* Row 3 — price (line 1) + change (line 2) */}
