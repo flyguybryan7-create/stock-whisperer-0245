@@ -2399,9 +2399,6 @@ export default function TradingPlatform() {
                 sig === "SELL" ? "#f85149" :
                 "#e3b341";
               const oa = optionsActivity[sym];
-              const oaShow = oa && (oa.callVolume + oa.putVolume) >= 50;
-              const oaColor = oa?.bias === "BULL" ? "#39d353" : oa?.bias === "BEAR" ? "#f85149" : "#d29922";
-              const oaLabel = oa?.bias === "BULL" ? "C↑" : oa?.bias === "BEAR" ? "P↓" : "UNU";
               const border =
                 reorderModeSym === sym ? "2px solid #d2a8ff"
                 : selectedStock === sym ? "1px solid #58a6ff"
