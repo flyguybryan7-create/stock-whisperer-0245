@@ -2517,16 +2517,6 @@ export default function TradingPlatform() {
                         </>
                       ) : null}
                     </div>
-                    {oaShow && (
-                      <span
-                        title={`Options flow ${oa.bias}${oa.unusual ? " · UNUSUAL" : ""}`}
-                        style={{
-                          fontSize: 9, fontWeight: 900, color: oaColor,
-                          border: `1px solid ${oaColor}`, borderRadius: 2, padding: "0 3px",
-                          background: oa.unusual ? `${oaColor}22` : undefined,
-                        }}
-                      >{oaLabel}</span>
-                    )}
                     {(() => {
                       const pcr = (oa as any)?.pcRatio ?? null;
                       if (pcr == null) return null;
