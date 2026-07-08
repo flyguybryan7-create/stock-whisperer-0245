@@ -2399,6 +2399,8 @@ export default function TradingPlatform() {
                 sig === "SELL" ? "#f85149" :
                 "#e3b341";
               const oa = optionsActivity[sym];
+              const pcr = (oa as any)?.pcRatio ?? null;
+              const pcrColor = pcr != null ? (pcr >= 1.0 ? "#f85149" : pcr >= 0.7 ? "#e3b341" : "#39d353") : null;
               const border =
                 reorderModeSym === sym ? "2px solid #d2a8ff"
                 : selectedStock === sym ? "1px solid #58a6ff"
