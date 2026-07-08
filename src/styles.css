@@ -142,3 +142,15 @@
     color: var(--color-foreground);
   }
 }
+
+/* Watchlist grid: more columns on wider tablet/desktop viewports so tiles
+   stay compact and all rows (price, change, options badge, P/C) fit. */
+@media (min-width: 640px) {
+  .watchlist-grid { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+}
+@media (min-width: 900px) {
+  .watchlist-grid { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; }
+}
+@media (min-width: 1200px) {
+  .watchlist-grid { grid-template-columns: repeat(6, minmax(0, 1fr)) !important; }
+}
