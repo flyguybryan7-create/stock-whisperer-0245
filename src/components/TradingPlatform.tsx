@@ -2498,51 +2498,38 @@ export default function TradingPlatform() {
                     )}
                   </div>
 
-                  {/* Row 4 — position P&L + $ button + options badge */}
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4, marginTop: 3, fontSize: 9, lineHeight: 1.1, overflow: "hidden", whiteSpace: "nowrap" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0, overflow: "hidden" }}>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const existing = positions[sym];
-                          setEditingPos((cur) => (cur === sym ? null : sym));
-                          setPosDraft({
-                            shares: existing ? String(existing.shares) : "",
-                            entry: existing ? String(existing.entry) : "",
-                          });
-                        }}
-                        title={pos ? "Edit position" : "Add position"}
-                        style={{ background: "transparent", border: "1px solid #30363d", color: pos ? "#e3b341" : "#6e7681", cursor: "pointer", fontSize: 9, fontWeight: 800, padding: "0 4px", borderRadius: 3, lineHeight: 1.4 }}
-                      >$</button>
-                      {pos && livePrice != null ? (
-                        <>
-                          <span style={{ color: "#8b949e", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {pos.shares}sh @ ${pos.entry.toFixed(2)}
-                          </span>
-                          <span style={{ color: plColor, fontWeight: 700 }}>
-                            {pl >= 0 ? "+" : "-"}${Math.abs(pl).toFixed(2)} ({plPct >= 0 ? "+" : ""}{plPct.toFixed(2)}%)
-                          </span>
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); setPositions((p) => { const n = { ...p }; delete n[sym]; return n; }); }}
-                            title="Clear position"
-                            style={{ background: "transparent", border: "1px solid #f85149", color: "#f85149", fontSize: 8, fontWeight: 800, padding: "1px 4px", borderRadius: 3, cursor: "pointer", marginLeft: 4 }}
-                          >✕ CLEAR</button>
-                        </>
-                      ) : null}
-                    </div>
-                    {(() => {
-                      const pcr = (oa as any)?.pcRatio ?? null;
-                      if (pcr == null) return null;
-                      const c = pcr >= 1.0 ? "#f85149" : pcr >= 0.7 ? "#e3b341" : "#39d353";
-                      return (
-                        <span
-                          title={`Put/Call ratio: ${pcr.toFixed(3)}\n<0.70 bullish · 0.70-1.00 neutral · ≥1.00 bearish`}
-                          style={{ fontSize: 9, fontWeight: 800, color: c, border: `1px solid ${c}`, borderRadius: 2, padding: "0 3px", marginLeft: 3 }}
-                        >P/C {pcr.toFixed(2)}</span>
-                      );
-                    })()}
+                  {/* Row 4 — position P&L + $ button */}
+                  <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4, marginTop: 3, fontSize: 9, lineHeight: 1.1, minWidth: 0 }}>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const existing = positions[sym];
+                        setEditingPos((cur) => (cur === sym ? null : sym));
+                        setPosDraft({
+                          shares: existing ? String(existing.shares) : "",
+                          entry: existing ? String(existing.entry) : "",
+                        });
+                      }}
+                      title={pos ? "Edit position" : "Add position"}
+                      style={{ background: "transparent", border: "1px solid #30363d", color: pos ? "#e3b341" : "#6e7681", cursor: "pointer", fontSize: 9, fontWeight: 800, padding: "0 4px", borderRadius: 3, lineHeight: 1.4, flexShrink: 0 }}
+                    >$</button>
+                    {pos && livePrice != null ? (
+                      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4, minWidth: 0, overflow: "hidden" }}>
+                        <span style={{ color: "#8b949e", whiteSpace: "nowrap" }}>
+                          {pos.shares}sh @ ${pos.entry.toFixed(2)}
+                        </span>
+                        <span style={{ color: plColor, fontWeight: 700, whiteSpace: "nowrap" }}>
+                          {pl >= 0 ? "+" : "-"}${Math.abs(pl).toFixed(2)} ({plPct >= 0 ? "+" : ""}{plPct.toFixed(2)}%)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setPositions((p) => { const n = { ...p }; delete n[sym]; return n; }); }}
+                          title="Clear position"
+                          style={{ background: "transparent", border: "1px solid #f85149", color: "#f85149", fontSize: 8, fontWeight: 800, padding: "1px 4px", borderRadius: 3, cursor: "pointer", flexShrink: 0 }}
+                        >✕ CLEAR</button>
+                      </div>
+                    ) : null}
                   </div>
 
                   {/* Inline position editor overlay */}
