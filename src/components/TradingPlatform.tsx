@@ -2372,7 +2372,10 @@ export default function TradingPlatform() {
               </div>
             )}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 5, padding: "6px", width: "100vw", maxWidth: "100vw", boxSizing: "border-box" }}>
+          <div
+            className="watchlist-grid"
+            style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 5, padding: "6px", width: "100vw", maxWidth: "100vw", boxSizing: "border-box" }}
+          >
             {filteredStocks.map(sym => {
               const d = allData[sym] || [];
               const l = d[d.length - 1]; const p = d[d.length - 2];
@@ -2413,7 +2416,7 @@ export default function TradingPlatform() {
                   style={{
                     position: "relative",
                     minWidth: 0,
-                    height: 90,
+                    minHeight: 90,
                     padding: "10px 8px",
                     borderRadius: 6,
                     overflow: "hidden",
