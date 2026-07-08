@@ -2461,6 +2461,14 @@ export default function TradingPlatform() {
                           borderRadius: 3, touchAction: "manipulation",
                         }}
                       >{reorderModeSym === sym ? "✕" : "⋮⋮"}</button>
+                      {pcr != null && pcrColor ? (
+                        <span
+                          title={`Put/Call ratio: ${pcr.toFixed(3)}\n<0.70 bullish · 0.70-1.00 neutral · ≥1.00 bearish`}
+                          style={{ fontSize: 8, fontWeight: 800, color: pcrColor, border: `1px solid ${pcrColor}`, borderRadius: 2, padding: "0 3px", flexShrink: 0, lineHeight: 1.2 }}
+                        >
+                          P/C {pcr.toFixed(2)}
+                        </span>
+                      ) : null}
                     </div>
                   </div>
 
