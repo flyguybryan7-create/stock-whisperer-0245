@@ -162,18 +162,25 @@ async function fetchYahooSnap(
       // (previousClose). chartPreviousClose can equal the start-of-range bar
       // and skew the percent on multi-day ranges.
       const prev = Number(meta?.previousClose ?? meta?.chartPreviousClose);
-      // Prefer the freshest tick available: last non-null 1m bar > meta price.
+      // Prefer the newest live tick available. Yahoo's meta regularMarketPrice
+      // is often newer than the last 1m chart bar for Asian indices (Nikkei /
+      // TAIEX), while intraday bars can be newer for some US feeds.
       let price = Number(meta?.regularMarketPrice);
       const closes: Array<number | null> | undefined = result?.indicators?.quote?.[0]?.close;
-      // Only fall back to the last non-null close for intraday intervals.
-      // For daily bars (interval=1d), the last completed close is yesterday's
-      // print, not today's price — overriding here skews the % change.
+      const timestamps: number[] | undefined = result?.timestamp;
+      const metaTime = Number(meta?.regularMarketTime);
+      // Only fall back to the last non-null close when it is clearly newer than
+      // meta, or when meta has no usable price. For daily bars (interval=1d),
+      // the last completed close is yesterday's print, not today's price.
       const isIntraday = interval.endsWith("m") || interval.endsWith("h");
       if (Array.isArray(closes) && (isIntraday || !Number.isFinite(price))) {
         for (let i = closes.length - 1; i >= 0; i--) {
           const v = closes[i];
           if (v != null && Number.isFinite(v)) {
-            if (!Number.isFinite(price) || v !== price) price = Number(v);
+            const barTime = Array.isArray(timestamps) ? Number(timestamps[i]) : NaN;
+            if (!Number.isFinite(price) || (isIntraday && Number.isFinite(barTime) && Number.isFinite(metaTime) && barTime > metaTime)) {
+              price = Number(v);
+            }
             break;
           }
         }
@@ -454,7 +461,12 @@ export async function fetchGlobalSemiIndexSnapshot(): Promise<GlobalSemiIndexRes
   try {
     const components: GlobalSemiComponent[] = await Promise.all(
       GLOBAL_SEMI_INDICES.map(async (idx) => {
-        const { price, prev } = await fetchYahooSnap(idx.symbol);
+        // The top tape must match live quote-site percentages. Daily Yahoo
+        // chart ranges can expose the first 5-day bar as chartPreviousClose,
+        // which makes markets like Nikkei/TAIEX/SOX compare against the wrong
+        // session. Use the 1-minute live range so previousClose is today's
+        // official prior close/reference and price is the current tick.
+        const { price, prev } = await fetchYahooSnap(idx.symbol, { interval: "1m", range: "1d" });
         const changePct = price != null && prev != null && prev > 0 ? ((price - prev) / prev) * 100 : null;
         return { symbol: idx.symbol, name: idx.name, price, changePct };
       }),
