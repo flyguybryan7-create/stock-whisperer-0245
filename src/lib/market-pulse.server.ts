@@ -454,7 +454,12 @@ export async function fetchGlobalSemiIndexSnapshot(): Promise<GlobalSemiIndexRes
   try {
     const components: GlobalSemiComponent[] = await Promise.all(
       GLOBAL_SEMI_INDICES.map(async (idx) => {
-        const { price, prev } = await fetchYahooSnap(idx.symbol);
+        // The top tape must match live quote-site percentages. Daily Yahoo
+        // chart ranges can expose the first 5-day bar as chartPreviousClose,
+        // which makes markets like Nikkei/TAIEX/SOX compare against the wrong
+        // session. Use the 1-minute live range so previousClose is today's
+        // official prior close/reference and price is the current tick.
+        const { price, prev } = await fetchYahooSnap(idx.symbol, { interval: "1m", range: "1d" });
         const changePct = price != null && prev != null && prev > 0 ? ((price - prev) / prev) * 100 : null;
         return { symbol: idx.symbol, name: idx.name, price, changePct };
       }),
