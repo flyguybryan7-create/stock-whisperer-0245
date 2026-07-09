@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
   getQuotes, searchSymbols, getLiveQuotes, getNews, analyzeNewsSentiment,
@@ -57,7 +57,6 @@ import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ReferenceLine, Area, ComposedChart, Bar, Cell, Scatter,
 } from "recharts";
-import { useQueryClient } from "@tanstack/react-query";
 
 // ============= Candlestick shape =============
 // Recharts' stacked-bar candle trick forces the YAxis to include 0, which
