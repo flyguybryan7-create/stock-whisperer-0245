@@ -106,8 +106,8 @@ const GLOBAL_SEMI_INDICES: { symbol: string; name: string }[] = [
   { symbol: "^KS11", name: "KOSPI" },
   { symbol: "000688.SS", name: "STAR 50" },
   { symbol: "^SOX", name: "PHLX Semi" },
-  { symbol: "^TWII", name: "TAIEX" },
-  { symbol: "^N225", name: "Nikkei 225" },
+  { symbol: "STW=F", name: "TAIEX (SGX Fut)" },
+  { symbol: "NKD=F", name: "Nikkei 225 (Fut)" },
   { symbol: "^HSTECH", name: "Hang Seng Tech" },
 ];
 
