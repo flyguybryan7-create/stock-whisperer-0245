@@ -2456,7 +2456,9 @@ export default function TradingPlatform() {
                         >
                           P/C {pcr.toFixed(2)}
                         </span>
-                      ) : null}
+                      ) : (
+                        <span style={{ fontSize: 8, color: "#484f58", border: "1px solid #30363d", borderRadius: 2, padding: "0 3px", flexShrink: 0, lineHeight: 1.2 }}>P/C —</span>
+                      )}
                     </div>
                   </div>
 
