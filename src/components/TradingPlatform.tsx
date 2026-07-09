@@ -1352,7 +1352,8 @@ export default function TradingPlatform() {
     enabled: watchlist.length > 0,
   });
 
-  // Unusual options activity — every watchlist name, refresh every 10s.
+  // Unusual options activity — every watchlist name, paced to avoid public
+  // options-feed rate limits that otherwise blank out P/C ratios.
   // Calls/puts volume from Nasdaq's option chain. Used to colour each ticker
   // (green = bullish call flow, red = bearish put flow). Chunked in batches
   // of 20 on the server to keep latency low.
@@ -1369,18 +1370,18 @@ export default function TradingPlatform() {
       for (const r of results) Object.assign(items, r?.items ?? {});
       return { items, asOf: Date.now() };
     },
-    refetchInterval: 2_000,
+    refetchInterval: 60_000,
     refetchIntervalInBackground: true,
-    staleTime: 8_000,
+    staleTime: 45_000,
     enabled: watchlist.length > 0,
   });
   const optionsActivity = (optionsActivityData?.items ?? {}) as Record<string, OptionsActivity>;
   const { data: selectedOptionsActivity } = useQuery({
     queryKey: ["selectedOptionsActivity", selectedStock],
     queryFn: () => fetchOptionsActivityFn({ data: { symbols: [selectedStock] } }),
-    refetchInterval: 2_000,
+    refetchInterval: 60_000,
     refetchIntervalInBackground: true,
-    staleTime: 0,
+    staleTime: 45_000,
     enabled: !!selectedStock,
   });
   const watchlistMacdSignals = useMemo(() => {
