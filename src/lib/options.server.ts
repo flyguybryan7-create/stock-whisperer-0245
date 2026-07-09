@@ -327,7 +327,13 @@ export async function fetchOptionsActivitySnapshot(
 ): Promise<OptionsActivityResponse> {
   try {
     const list = symbols.slice(0, 20);
-    const results = await Promise.all(list.map((s) => fetchChain(s)));
+    const results: Array<OptionsActivity | null> = [];
+    for (const symbol of list) {
+      results.push(await fetchChain(symbol));
+      // Public options feeds rate-limit bursts. Keep requests paced so a full
+      // watchlist gets usable P/C ratios instead of a wall of 429/empty data.
+      if (list.length > 1) await new Promise((resolve) => setTimeout(resolve, 150));
+    }
     const items: Record<string, OptionsActivity> = {};
     results.forEach((r, i) => {
       if (r) items[list[i]] = r;
