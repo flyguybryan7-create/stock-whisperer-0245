@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
   getQuotes, searchSymbols, getLiveQuotes, getNews, analyzeNewsSentiment,
@@ -57,7 +57,6 @@ import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ReferenceLine, Area, ComposedChart, Bar, Cell, Scatter,
 } from "recharts";
-import { useQueryClient } from "@tanstack/react-query";
 
 // ============= Candlestick shape =============
 // Recharts' stacked-bar candle trick forces the YAxis to include 0, which
@@ -1352,35 +1351,40 @@ export default function TradingPlatform() {
     enabled: watchlist.length > 0,
   });
 
-  // Unusual options activity — every watchlist name, refresh every 10s.
+  // Unusual options activity — every watchlist name, paced to avoid public
+  // options-feed rate limits that otherwise blank out P/C ratios.
   // Calls/puts volume from Nasdaq's option chain. Used to colour each ticker
-  // (green = bullish call flow, red = bearish put flow). Chunked in batches
-  // of 20 on the server to keep latency low.
-  const { data: optionsActivityData } = useQuery({
-    queryKey: ["optionsActivity", [...watchlist].sort().join(",")],
-    queryFn: async () => {
-      const all = [...watchlist];
-      const chunks: string[][] = [];
-      for (let i = 0; i < all.length; i += 20) chunks.push(all.slice(i, i + 20));
-      const results = await Promise.all(
-        chunks.map((c) => fetchOptionsActivityFn({ data: { symbols: c } })),
-      );
-      const items: Record<string, OptionsActivity> = {};
-      for (const r of results) Object.assign(items, r?.items ?? {});
-      return { items, asOf: Date.now() };
-    },
-    refetchInterval: 2_000,
-    refetchIntervalInBackground: true,
-    staleTime: 8_000,
-    enabled: watchlist.length > 0,
+  // (green = bullish call flow, red = bearish put flow). Kept in small
+  // staggered batches so each tile can fill as soon as its batch returns.
+  const watchlistOptionChunks = useMemo(() => {
+    const chunks: string[][] = [];
+    for (let i = 0; i < watchlist.length; i += 3) chunks.push(watchlist.slice(i, i + 3));
+    return chunks;
+  }, [watchlist]);
+  const optionsActivityQueries = useQueries({
+    queries: watchlistOptionChunks.map((chunk, index) => ({
+      queryKey: ["optionsActivity", index, chunk.join(",")],
+      queryFn: async () => {
+        if (index > 0) await new Promise((resolve) => setTimeout(resolve, index * 2_500));
+        return fetchOptionsActivityFn({ data: { symbols: chunk } });
+      },
+      refetchInterval: 60_000,
+      refetchIntervalInBackground: true,
+      staleTime: 45_000,
+      enabled: chunk.length > 0,
+    })),
   });
-  const optionsActivity = (optionsActivityData?.items ?? {}) as Record<string, OptionsActivity>;
+  const optionsActivity = useMemo(() => {
+    const items: Record<string, OptionsActivity> = {};
+    for (const query of optionsActivityQueries) Object.assign(items, query.data?.items ?? {});
+    return items;
+  }, [optionsActivityQueries]);
   const { data: selectedOptionsActivity } = useQuery({
     queryKey: ["selectedOptionsActivity", selectedStock],
     queryFn: () => fetchOptionsActivityFn({ data: { symbols: [selectedStock] } }),
-    refetchInterval: 2_000,
+    refetchInterval: 60_000,
     refetchIntervalInBackground: true,
-    staleTime: 0,
+    staleTime: 45_000,
     enabled: !!selectedStock,
   });
   const watchlistMacdSignals = useMemo(() => {
