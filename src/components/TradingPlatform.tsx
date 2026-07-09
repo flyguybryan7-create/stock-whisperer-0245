@@ -1363,11 +1363,11 @@ export default function TradingPlatform() {
       const all = [...watchlist];
       const chunks: string[][] = [];
       for (let i = 0; i < all.length; i += 20) chunks.push(all.slice(i, i + 20));
-      const results = await Promise.all(
-        chunks.map((c) => fetchOptionsActivityFn({ data: { symbols: c } })),
-      );
       const items: Record<string, OptionsActivity> = {};
-      for (const r of results) Object.assign(items, r?.items ?? {});
+      for (const chunk of chunks) {
+        const r = await fetchOptionsActivityFn({ data: { symbols: chunk } });
+        Object.assign(items, r?.items ?? {});
+      }
       return { items, asOf: Date.now() };
     },
     refetchInterval: 60_000,
