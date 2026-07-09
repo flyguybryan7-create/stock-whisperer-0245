@@ -332,7 +332,7 @@ export async function fetchOptionsActivitySnapshot(
       results.push(await fetchChain(symbol));
       // Public options feeds rate-limit bursts. Keep requests paced so a full
       // watchlist gets usable P/C ratios instead of a wall of 429/empty data.
-      if (list.length > 1) await new Promise((resolve) => setTimeout(resolve, 150));
+      if (list.length > 1) await new Promise((resolve) => setTimeout(resolve, 450));
     }
     const items: Record<string, OptionsActivity> = {};
     results.forEach((r, i) => {
