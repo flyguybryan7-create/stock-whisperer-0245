@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
   getQuotes, searchSymbols, getLiveQuotes, getNews, analyzeNewsSentiment,
@@ -1357,25 +1357,29 @@ export default function TradingPlatform() {
   // Calls/puts volume from Nasdaq's option chain. Used to colour each ticker
   // (green = bullish call flow, red = bearish put flow). Chunked in batches
   // of 20 on the server to keep latency low.
-  const { data: optionsActivityData } = useQuery({
-    queryKey: ["optionsActivity", [...watchlist].sort().join(",")],
-    queryFn: async () => {
-      const all = [...watchlist];
-      const chunks: string[][] = [];
-      for (let i = 0; i < all.length; i += 20) chunks.push(all.slice(i, i + 20));
-      const items: Record<string, OptionsActivity> = {};
-      for (const chunk of chunks) {
-        const r = await fetchOptionsActivityFn({ data: { symbols: chunk } });
-        Object.assign(items, r?.items ?? {});
-      }
-      return { items, asOf: Date.now() };
-    },
-    refetchInterval: 60_000,
-    refetchIntervalInBackground: true,
-    staleTime: 45_000,
-    enabled: watchlist.length > 0,
+  const watchlistOptionChunks = useMemo(() => {
+    const chunks: string[][] = [];
+    for (let i = 0; i < watchlist.length; i += 10) chunks.push(watchlist.slice(i, i + 10));
+    return chunks;
+  }, [watchlist]);
+  const optionsActivityQueries = useQueries({
+    queries: watchlistOptionChunks.map((chunk, index) => ({
+      queryKey: ["optionsActivity", index, chunk.join(",")],
+      queryFn: async () => {
+        if (index > 0) await new Promise((resolve) => setTimeout(resolve, index * 7_000));
+        return fetchOptionsActivityFn({ data: { symbols: chunk } });
+      },
+      refetchInterval: 60_000,
+      refetchIntervalInBackground: true,
+      staleTime: 45_000,
+      enabled: chunk.length > 0,
+    })),
   });
-  const optionsActivity = (optionsActivityData?.items ?? {}) as Record<string, OptionsActivity>;
+  const optionsActivity = useMemo(() => {
+    const items: Record<string, OptionsActivity> = {};
+    for (const query of optionsActivityQueries) Object.assign(items, query.data?.items ?? {});
+    return items;
+  }, [optionsActivityQueries]);
   const { data: selectedOptionsActivity } = useQuery({
     queryKey: ["selectedOptionsActivity", selectedStock],
     queryFn: () => fetchOptionsActivityFn({ data: { symbols: [selectedStock] } }),
