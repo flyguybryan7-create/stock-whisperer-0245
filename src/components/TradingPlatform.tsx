@@ -2415,7 +2415,7 @@ export default function TradingPlatform() {
                   style={{
                     position: "relative",
                     minWidth: 0,
-                    minHeight: 90,
+                    minHeight: 160,
                     padding: "10px 8px",
                     borderRadius: 6,
                     overflow: "hidden",
@@ -2449,18 +2449,6 @@ export default function TradingPlatform() {
                       {reorderModeSym && reorderModeSym !== sym ? (
                         <span aria-hidden="true" style={{ color: "#58a6ff", fontSize: 14, fontWeight: 700 }}>⊕</span>
                       ) : null}
-                      <button
-                        type="button"
-                        aria-label={reorderModeSym === sym ? "Cancel reorder" : "Reorder stock"}
-                        title={reorderModeSym === sym ? "Cancel reorder" : "Tap, then tap destination tile"}
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={(e) => { e.stopPropagation(); toggleReorderMode(sym); }}
-                        style={{
-                          background: "#161b22", border: "1px solid #30363d", color: "#8b949e",
-                          cursor: "pointer", padding: "2px 5px", fontSize: 11, lineHeight: 1,
-                          borderRadius: 3, touchAction: "manipulation",
-                        }}
-                      >{reorderModeSym === sym ? "✕" : "⋮⋮"}</button>
                       {pcr != null && pcrColor ? (
                         <span
                           title={`Put/Call ratio: ${pcr.toFixed(3)}\n<0.70 bullish · 0.70-1.00 neutral · ≥1.00 bearish`}
@@ -2471,6 +2459,21 @@ export default function TradingPlatform() {
                       ) : null}
                     </div>
                   </div>
+
+                  {/* Reorder button — bottom-right corner */}
+                  <button
+                    type="button"
+                    aria-label={reorderModeSym === sym ? "Cancel reorder" : "Reorder stock"}
+                    title={reorderModeSym === sym ? "Cancel reorder" : "Tap, then tap destination tile"}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={(e) => { e.stopPropagation(); toggleReorderMode(sym); }}
+                    style={{
+                      position: "absolute", bottom: 6, right: 6, zIndex: 2,
+                      background: "#161b22", border: "1px solid #30363d", color: "#8b949e",
+                      cursor: "pointer", padding: "2px 5px", fontSize: 11, lineHeight: 1,
+                      borderRadius: 3, touchAction: "manipulation",
+                    }}
+                  >{reorderModeSym === sym ? "✕" : "⋮⋮"}</button>
 
                   {/* Row 2 — company name */}
                   <div style={{ fontSize: "clamp(9px, 2.2vw, 11px)", color: "#8b949e", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.1 }}>
