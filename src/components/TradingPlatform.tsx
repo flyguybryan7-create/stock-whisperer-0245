@@ -2214,10 +2214,10 @@ export default function TradingPlatform() {
             const ABBREV: Record<string, string> = {
               "^KS11": "KOSPI",
               "^SOX": "SOX",
-              "STW=F": "TWN-F",
+              "EWT": "TWN",
               "NKD=F": "NK-F",
             };
-            const order = ["^KS11", "^SOX", "STW=F", "NKD=F"];
+            const order = ["^KS11", "^SOX", "EWT", "NKD=F"];
             const comps = order
               .map((s) => globalSemis.components.find((c) => c.symbol === s))
               .filter(Boolean) as typeof globalSemis.components;
