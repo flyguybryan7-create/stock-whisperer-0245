@@ -1354,18 +1354,18 @@ export default function TradingPlatform() {
   // Unusual options activity — every watchlist name, paced to avoid public
   // options-feed rate limits that otherwise blank out P/C ratios.
   // Calls/puts volume from Nasdaq's option chain. Used to colour each ticker
-  // (green = bullish call flow, red = bearish put flow). Chunked in batches
-  // of 20 on the server to keep latency low.
+  // (green = bullish call flow, red = bearish put flow). Kept in small
+  // staggered batches so each tile can fill as soon as its batch returns.
   const watchlistOptionChunks = useMemo(() => {
     const chunks: string[][] = [];
-    for (let i = 0; i < watchlist.length; i += 10) chunks.push(watchlist.slice(i, i + 10));
+    for (let i = 0; i < watchlist.length; i += 3) chunks.push(watchlist.slice(i, i + 3));
     return chunks;
   }, [watchlist]);
   const optionsActivityQueries = useQueries({
     queries: watchlistOptionChunks.map((chunk, index) => ({
       queryKey: ["optionsActivity", index, chunk.join(",")],
       queryFn: async () => {
-        if (index > 0) await new Promise((resolve) => setTimeout(resolve, index * 7_000));
+        if (index > 0) await new Promise((resolve) => setTimeout(resolve, index * 2_500));
         return fetchOptionsActivityFn({ data: { symbols: chunk } });
       },
       refetchInterval: 60_000,
