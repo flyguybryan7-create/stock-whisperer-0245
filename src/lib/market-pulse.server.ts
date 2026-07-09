@@ -165,7 +165,11 @@ async function fetchYahooSnap(
       // Prefer the freshest tick available: last non-null 1m bar > meta price.
       let price = Number(meta?.regularMarketPrice);
       const closes: Array<number | null> | undefined = result?.indicators?.quote?.[0]?.close;
-      if (Array.isArray(closes)) {
+      // Only fall back to the last non-null close for intraday intervals.
+      // For daily bars (interval=1d), the last completed close is yesterday's
+      // print, not today's price — overriding here skews the % change.
+      const isIntraday = interval.endsWith("m") || interval.endsWith("h");
+      if (Array.isArray(closes) && (isIntraday || !Number.isFinite(price))) {
         for (let i = closes.length - 1; i >= 0; i--) {
           const v = closes[i];
           if (v != null && Number.isFinite(v)) {
