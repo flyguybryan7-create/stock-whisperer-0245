@@ -2445,20 +2445,18 @@ export default function TradingPlatform() {
                         return <span className={cls} style={{ fontWeight: 700, fontSize: "clamp(13px, 3.5vw, 16px)" }} title={tip}>{sym}</span>;
                       })()}
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
                       {reorderModeSym && reorderModeSym !== sym ? (
                         <span aria-hidden="true" style={{ color: "#58a6ff", fontSize: 14, fontWeight: 700 }}>⊕</span>
                       ) : null}
                       {pcr != null && pcrColor ? (
                         <span
                           title={`Put/Call ratio: ${pcr.toFixed(3)}\n<0.70 bullish · 0.70-1.00 neutral · ≥1.00 bearish`}
-                          style={{ fontSize: 9, fontWeight: 800, color: pcrColor, background: `${pcrColor}22`, border: `1px solid ${pcrColor}`, borderRadius: 3, padding: "1px 4px", flexShrink: 0, lineHeight: 1.25 }}
+                          style={{ fontSize: 8, fontWeight: 800, color: pcrColor, border: `1px solid ${pcrColor}`, borderRadius: 2, padding: "0 3px", flexShrink: 0, lineHeight: 1.2 }}
                         >
                           P/C {pcr.toFixed(2)}
                         </span>
-                      ) : (
-                        <span style={{ fontSize: 8, color: "#484f58", border: "1px solid #30363d", borderRadius: 3, padding: "1px 3px", flexShrink: 0, lineHeight: 1.25 }}>P/C —</span>
-                      )}
+                      ) : null}
                     </div>
                   </div>
 
