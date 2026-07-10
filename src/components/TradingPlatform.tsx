@@ -571,6 +571,11 @@ export default function TradingPlatform() {
   const [editingPos, setEditingPos] = useState<string | null>(null);
   const [posDraft, setPosDraft] = useState<{ shares: string; entry: string }>({ shares: "", entry: "" });
   const [selectedStock, setSelectedStock] = useState("MRVL");
+  // Options Flow Magnet expiry picker — 0 = nearest week, 1 = next, etc.
+  // Reset to 0 whenever the user switches ticker so we always start on the
+  // current-week expiry for the new symbol.
+  const [ladderExpiryIndex, setLadderExpiryIndex] = useState(0);
+  useEffect(() => { setLadderExpiryIndex(0); }, [selectedStock]);
   const [showDetail, setShowDetail] = useState(false);
   const [search, setSearch] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
