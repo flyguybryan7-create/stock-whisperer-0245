@@ -369,6 +369,11 @@ export type SchwabOptionsLadder = {
   // dropdown to switch between "this week", "next week", etc. Index 0
   // is the currently rendered expiry.
   alternateExpiries: { expiry: string; dte: number | null; label: string }[];
+  // "volume" = magnet computed from same-day option volume (best signal).
+  // "oi"     = fallback magnet computed from open interest (used when
+  //             intraday volume is 0 across all providers, e.g. illiquid
+  //             tickers or pre-market). OI is stable so it won't flip.
+  source?: "volume" | "oi";
 };
 
 function buildLadderFromChain(sym: string, json: any, expiryIndex = 0): SchwabOptionsLadder | null {
