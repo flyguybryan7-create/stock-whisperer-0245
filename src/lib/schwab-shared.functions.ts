@@ -305,7 +305,7 @@ export const getSharedSchwabPriceHistory = createServerFn({ method: "POST" })
 
 // ============ Shared options ladder (public) ============
 export const getSharedSchwabOptionsLadder = createServerFn({ method: "POST" })
-  .inputValidator((d: { symbol: string }) => d)
+  .inputValidator((d: { symbol: string; expiryIndex?: number }) => d)
   .handler(async ({ data }): Promise<SchwabOptionsLadder | null> => {
     const sym = (data.symbol || "").toUpperCase();
     if (!sym) return null;
@@ -317,14 +317,14 @@ export const getSharedSchwabOptionsLadder = createServerFn({ method: "POST" })
     );
     if (!res.ok) return null;
     const json: any = await res.json().catch(() => ({}));
-    return _buildLadderFromChain(sym, json);
+    return _buildLadderFromChain(sym, json, data.expiryIndex ?? 0);
   });
 
 // ============ Polygon-backed options ladder (public, no OAuth) ============
 // Free of Schwab OAuth so the Options Flow Magnet works even when nobody has
 // completed the Schwab handshake. Uses POLYGON_API_KEY server-side.
 export const getPolygonOptionsLadder = createServerFn({ method: "POST" })
-  .inputValidator((d: { symbol: string }) => d)
+  .inputValidator((d: { symbol: string; expiryIndex?: number }) => d)
   .handler(async ({ data }): Promise<SchwabOptionsLadder | null> => {
     const sym = (data.symbol || "").toUpperCase();
     if (!sym) return null;
@@ -371,12 +371,22 @@ export const getPolygonOptionsLadder = createServerFn({ method: "POST" })
           .filter((e): e is string => typeof e === "string" && /^\d{4}-\d{2}-\d{2}$/.test(e)),
       ),
     ).sort();
-    const nearest = expiries.find((e) => {
-      const d = new Date(e + "T00:00:00Z");
-      return d.getTime() >= today.getTime();
-    });
-    if (!nearest) return null;
+    const futureExpiries = expiries
+      .filter((e) => new Date(e + "T00:00:00Z").getTime() >= today.getTime())
+      .sort();
+    if (!futureExpiries.length) return null;
+    const pIdx = Math.min(Math.max(0, data.expiryIndex ?? 0), futureExpiries.length - 1);
+    const nearest = futureExpiries[pIdx];
     const dte = Math.round((new Date(nearest + "T00:00:00Z").getTime() - today.getTime()) / 86400000);
+    const alternateExpiries = futureExpiries.slice(0, 8).map((e) => {
+      const dObj = new Date(e + "T00:00:00Z");
+      const d = Math.round((dObj.getTime() - today.getTime()) / 86400000);
+      return {
+        expiry: e,
+        dte: Number.isFinite(d) ? d : null,
+        label: Number.isNaN(dObj.getTime()) ? e : `${dObj.toLocaleString("en-US", { month: "short", timeZone: "UTC" })} ${dObj.getUTCDate()}`,
+      };
+    });
 
     // Aggregate ladder for that expiry. Polygon sometimes returns open
     // interest before day-volume fields are populated; keep OI around as a
@@ -455,6 +465,7 @@ export const getPolygonOptionsLadder = createServerFn({ method: "POST" })
       magnetCall: magC ? { strike: magC.strike, volume: magC.volume, pct: callTot > 0 ? magC.volume / callTot : 0 } : null,
       magnetPut: magP ? { strike: magP.strike, volume: magP.volume, pct: putTot > 0 ? magP.volume / putTot : 0 } : null,
       ladder: trimmed,
+      alternateExpiries,
     };
   });
 
@@ -463,7 +474,7 @@ export const getPolygonOptionsLadder = createServerFn({ method: "POST" })
 // listed chain plus volume/open interest, so the chart can render even when the
 // shared Schwab token is absent and Polygon has no snapshot entitlement.
 export const getCboeOptionsLadder = createServerFn({ method: "POST" })
-  .inputValidator((d: { symbol: string }) => d)
+  .inputValidator((d: { symbol: string; expiryIndex?: number }) => d)
   .handler(async ({ data }): Promise<SchwabOptionsLadder | null> => {
     const sym = (data.symbol || "").toUpperCase();
     if (!sym) return null;
@@ -510,9 +521,19 @@ export const getCboeOptionsLadder = createServerFn({ method: "POST" })
     }
     if (!parsed.length) return null;
     const expiries = Array.from(new Set(parsed.map((p) => p.expiry))).sort();
-    const nearest = expiries.find((expiry) => parsed.some((p) => p.expiry === expiry && p.dte <= 10)) ?? expiries[0];
+    const cIdx = Math.min(Math.max(0, data.expiryIndex ?? 0), expiries.length - 1);
+    const nearest = expiries[cIdx];
     const chosenRows = parsed.filter((p) => p.expiry === nearest);
     const dte = chosenRows[0]?.dte ?? null;
+    const alternateExpiries = expiries.slice(0, 8).map((e) => {
+      const dObj = new Date(e + "T00:00:00");
+      const dRow = parsed.find((p) => p.expiry === e);
+      return {
+        expiry: e,
+        dte: dRow?.dte ?? null,
+        label: Number.isNaN(dObj.getTime()) ? e : `${dObj.toLocaleString("en-US", { month: "short" })} ${dObj.getDate()}`,
+      };
+    });
     type Rung = { strike: number; callVol: number; putVol: number; callOi: number; putOi: number };
     const byStrike = new Map<number, Rung>();
     let callTot = 0, putTot = 0, callOiTot = 0, putOiTot = 0;
@@ -581,6 +602,7 @@ export const getCboeOptionsLadder = createServerFn({ method: "POST" })
       magnetCall: magC ? { strike: magC.strike, volume: magC.volume, pct: callTot > 0 ? magC.volume / callTot : 0 } : null,
       magnetPut: magP ? { strike: magP.strike, volume: magP.volume, pct: putTot > 0 ? magP.volume / putTot : 0 } : null,
       ladder: trimmed,
+      alternateExpiries,
     };
   });
 
@@ -589,7 +611,7 @@ export const getCboeOptionsLadder = createServerFn({ method: "POST" })
 // exposes open interest even when same-day volume is blank/pre-market; use OI as
 // a readable proxy so the chart still shows where strikes are concentrated.
 export const getNasdaqOptionsLadder = createServerFn({ method: "POST" })
-  .inputValidator((d: { symbol: string; spot?: number | null }) => d)
+  .inputValidator((d: { symbol: string; spot?: number | null; expiryIndex?: number }) => d)
   .handler(async ({ data }): Promise<SchwabOptionsLadder | null> => {
     const sym = (data.symbol || "").toUpperCase();
     if (!sym) return null;
@@ -669,11 +691,15 @@ export const getNasdaqOptionsLadder = createServerFn({ method: "POST" })
       existing.activity += activity;
       buckets.set(meta.expiry, existing);
     }
-    const chosen = Array.from(buckets.values())
-      .filter((b) => b.meta.dte <= 10 || buckets.size === 1)
-      .sort((a, b) => a.meta.dte - b.meta.dte || b.activity - a.activity)[0]
-      ?? Array.from(buckets.values()).sort((a, b) => a.meta.dte - b.meta.dte || b.activity - a.activity)[0];
-    if (!chosen) return null;
+    const sortedBuckets = Array.from(buckets.values()).sort((a, b) => a.meta.dte - b.meta.dte);
+    if (!sortedBuckets.length) return null;
+    const nIdx = Math.min(Math.max(0, data.expiryIndex ?? 0), sortedBuckets.length - 1);
+    const chosen = sortedBuckets[nIdx];
+    const alternateExpiries = sortedBuckets.slice(0, 8).map((b) => ({
+      expiry: b.meta.expiry,
+      dte: b.meta.dte,
+      label: b.meta.label,
+    }));
 
     type Rung = { strike: number; callVol: number; putVol: number; callOi: number; putOi: number };
     const byStrike = new Map<number, Rung>();
@@ -736,5 +762,6 @@ export const getNasdaqOptionsLadder = createServerFn({ method: "POST" })
       magnetCall: magC ? { strike: magC.strike, volume: magC.volume, pct: callTot > 0 ? magC.volume / callTot : 0 } : null,
       magnetPut: magP ? { strike: magP.strike, volume: magP.volume, pct: putTot > 0 ? magP.volume / putTot : 0 } : null,
       ladder: trimmed,
+      alternateExpiries,
     };
   });
