@@ -103,7 +103,7 @@ export type SemiRiskSentimentResponse = {
 };
 
 const GLOBAL_SEMI_INDICES: { symbol: string; name: string }[] = [
-  { symbol: "^KS11", name: "KOSPI" },
+  { symbol: "EWY", name: "KOSPI (EWY)" },
   { symbol: "000688.SS", name: "STAR 50" },
   { symbol: "^SOX", name: "PHLX Semi" },
   { symbol: "EWT", name: "Taiwan ETF (EWT)" },
