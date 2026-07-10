@@ -1362,12 +1362,11 @@ export default function TradingPlatform() {
     return chunks;
   }, [watchlist]);
   const optionsActivityQueries = useQueries({
-    queries: watchlistOptionChunks.map((chunk, index) => ({
-      queryKey: ["optionsActivity", index, chunk.join(",")],
-      queryFn: async () => {
-        if (index > 0) await new Promise((resolve) => setTimeout(resolve, index * 2_500));
-        return fetchOptionsActivityFn({ data: { symbols: chunk } });
-      },
+    queries: watchlistOptionChunks.map((chunk) => ({
+      // Key by the chunk's symbols (order-independent) so reordering or
+      // adding/removing tiles doesn't invalidate unrelated chunks.
+      queryKey: ["optionsActivity", [...chunk].sort().join(",")],
+      queryFn: () => fetchOptionsActivityFn({ data: { symbols: chunk } }),
       refetchInterval: 60_000,
       refetchIntervalInBackground: true,
       staleTime: 45_000,
