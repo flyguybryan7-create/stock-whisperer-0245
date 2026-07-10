@@ -103,7 +103,7 @@ export type SemiRiskSentimentResponse = {
 };
 
 const GLOBAL_SEMI_INDICES: { symbol: string; name: string }[] = [
-  { symbol: "EWY", name: "KOSPI (EWY)" },
+  { symbol: "NAVER:KOSPI", name: "KOSPI" },
   { symbol: "000688.SS", name: "STAR 50" },
   { symbol: "^SOX", name: "PHLX Semi" },
   { symbol: "TAIFEX:TXF", name: "TAIEX Futures" },
@@ -201,31 +201,64 @@ async function snapFast(symbol: string, name: string): Promise<QuoteSnap> {
 }
 
 async function fetchTaifexTaiwanFuturesSnap(name: string): Promise<QuoteSnap> {
-  const local = new Date(Date.now() + 8 * 60 * 60 * 1000);
-  const minutes = local.getUTCHours() * 60 + local.getUTCMinutes();
-  const marketType = minutes >= 8 * 60 + 45 && minutes < 15 * 60 ? "0" : "1";
-  const response = await fetch("https://mis.taifex.com.tw/futures/api/getQuoteList", {
-    method: "POST",
-    headers: {
-      "User-Agent": UA,
-      Accept: "application/json, text/plain, */*",
-      "Content-Type": "application/json;charset=UTF-8",
-      Origin: "https://mis.taifex.com.tw",
-      Referer: "https://mis.taifex.com.tw/futures/RegularSession/EquityIndices/FuturesDomestic/",
-    },
-    body: JSON.stringify({ MarketType: marketType, SymbolType: "F", KindID: "1", CID: "TXF" }),
-  });
-  if (!response.ok) throw new Error(`TAIFEX quote failed: ${response.status}`);
-  const json: any = await response.json();
-  const rows: any[] = json?.RtData?.QuoteList ?? [];
-  const front = rows
+  // TAIFEX runs a day session (08:45–13:45 Taipei) and a night session
+  // (15:00–05:00 next day Taipei). Between sessions there is no live tick, so
+  // fetch both books in parallel and pick whichever front-month contract has
+  // the freshest CDate/CTime — that way we always show the newest print rather
+  // than pinning to a stale night close during pre-open.
+  const fetchSide = async (marketType: "0" | "1") => {
+    const r = await fetch("https://mis.taifex.com.tw/futures/api/getQuoteList", {
+      method: "POST",
+      headers: {
+        "User-Agent": UA,
+        Accept: "application/json, text/plain, */*",
+        "Content-Type": "application/json;charset=UTF-8",
+        Origin: "https://mis.taifex.com.tw",
+        Referer: "https://mis.taifex.com.tw/futures/RegularSession/EquityIndices/FuturesDomestic/",
+      },
+      body: JSON.stringify({ MarketType: marketType, SymbolType: "F", KindID: "1", CID: "TXF" }),
+    });
+    if (!r.ok) return [] as any[];
+    const j: any = await r.json();
+    return (j?.RtData?.QuoteList ?? []) as any[];
+  };
+  const [day, night] = await Promise.all([fetchSide("0"), fetchSide("1")]);
+  const rows = [...day, ...night]
     .filter((row) => row?.SymbolID?.startsWith("TXF") && row?.SymbolID !== "TXF-S" && row?.SymbolID !== "TXF-P")
-    .filter((row) => Number.isFinite(Number(row.CLastPrice)) && Number.isFinite(Number(row.CRefPrice)) && Number(row.CRefPrice) > 0)
+    .filter((row) => Number.isFinite(Number(row.CLastPrice)) && Number.isFinite(Number(row.CRefPrice)) && Number(row.CRefPrice) > 0);
+  if (!rows.length) return { symbol: "TAIFEX:TXF", name, price: null, changePct: null };
+  const tsKey = (row: any) => {
+    const d = String(row.CDate ?? "").padStart(8, "0");
+    const t = String(row.CTime ?? "").padStart(6, "0");
+    return Number(d + t);
+  };
+  const maxTs = Math.max(...rows.map(tsKey));
+  // Among rows tied at the freshest timestamp, pick the highest-volume contract
+  // (the true front month).
+  const front = rows
+    .filter((row) => tsKey(row) === maxTs)
     .sort((a, b) => Number(b.CTotalVolume || 0) - Number(a.CTotalVolume || 0))[0];
-  if (!front) return { symbol: "TAIFEX:TXF", name, price: null, changePct: null };
   const price = Number(front.CLastPrice);
   const prev = Number(front.CRefPrice);
   return { symbol: "TAIFEX:TXF", name, price, changePct: ((price - prev) / prev) * 100 };
+}
+
+async function fetchNaverKospiSnap(name: string): Promise<QuoteSnap> {
+  // Naver Finance's mobile index endpoint is the KRX real-time feed used by
+  // Naver Stock — zero delay during 09:00–15:30 KST, and returns the day's
+  // closing print outside session hours. Yahoo's ^KS11 has a ~20-minute delay
+  // and EWY only trades during US hours, so both go stale for Korean users
+  // and overnight watchers.
+  const r = await fetch("https://m.stock.naver.com/api/index/KOSPI/basic", {
+    headers: { "User-Agent": UA, Accept: "application/json" },
+  });
+  if (!r.ok) return { symbol: "NAVER:KOSPI", name, price: null, changePct: null };
+  const j: any = await r.json();
+  const price = Number(String(j?.closePrice ?? "").replace(/,/g, ""));
+  const changePct = Number(j?.fluctuationsRatio);
+  const dir = j?.compareToPreviousPrice?.code; // "2" rising, "5" falling, "3" flat
+  const signed = Number.isFinite(changePct) ? (dir === "5" ? -Math.abs(changePct) : changePct) : null;
+  return { symbol: "NAVER:KOSPI", name, price: Number.isFinite(price) ? price : null, changePct: signed };
 }
 
 async function fetchAsiaSemiChange(symbol: string): Promise<number | null> {
@@ -490,6 +523,7 @@ export async function fetchGlobalSemiIndexSnapshot(): Promise<GlobalSemiIndexRes
     const components: GlobalSemiComponent[] = await Promise.all(
       GLOBAL_SEMI_INDICES.map(async (idx) => {
         if (idx.symbol === "TAIFEX:TXF") return fetchTaifexTaiwanFuturesSnap(idx.name);
+        if (idx.symbol === "NAVER:KOSPI") return fetchNaverKospiSnap(idx.name);
         // The top tape must match live quote-site percentages. Daily Yahoo
         // chart ranges can expose the first 5-day bar as chartPreviousClose,
         // which makes markets like Nikkei/TAIEX/SOX compare against the wrong
