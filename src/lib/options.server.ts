@@ -327,13 +327,10 @@ export async function fetchOptionsActivitySnapshot(
 ): Promise<OptionsActivityResponse> {
   try {
     const list = symbols.slice(0, 20);
-    const results: Array<OptionsActivity | null> = [];
-    for (const symbol of list) {
-      results.push(await fetchChain(symbol));
-      // Public options feeds rate-limit bursts. Keep requests paced so a full
-      // watchlist gets usable P/C ratios instead of a wall of 429/empty data.
-      if (list.length > 1) await new Promise((resolve) => setTimeout(resolve, 450));
-    }
+    // Fetch the chunk's symbols in parallel — chunks are already small (~3)
+    // on the client, so this stays well under upstream rate limits while
+    // letting every tile fill within a single round-trip.
+    const results = await Promise.all(list.map((s) => fetchChain(s)));
     const items: Record<string, OptionsActivity> = {};
     results.forEach((r, i) => {
       if (r) items[list[i]] = r;
