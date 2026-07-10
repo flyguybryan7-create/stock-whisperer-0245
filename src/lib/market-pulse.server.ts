@@ -103,7 +103,7 @@ export type SemiRiskSentimentResponse = {
 };
 
 const GLOBAL_SEMI_INDICES: { symbol: string; name: string }[] = [
-  { symbol: "NAVER:KOSPI", name: "KOSPI" },
+  { symbol: "^KS11", name: "KOSPI" },
   { symbol: "000688.SS", name: "STAR 50" },
   { symbol: "^SOX", name: "PHLX Semi" },
   { symbol: "TAIFEX:TXF", name: "TAIEX Futures" },
@@ -523,7 +523,6 @@ export async function fetchGlobalSemiIndexSnapshot(): Promise<GlobalSemiIndexRes
     const components: GlobalSemiComponent[] = await Promise.all(
       GLOBAL_SEMI_INDICES.map(async (idx) => {
         if (idx.symbol === "TAIFEX:TXF") return fetchTaifexTaiwanFuturesSnap(idx.name);
-        if (idx.symbol === "NAVER:KOSPI") return fetchNaverKospiSnap(idx.name);
         // The top tape must match live quote-site percentages. Daily Yahoo
         // chart ranges can expose the first 5-day bar as chartPreviousClose,
         // which makes markets like Nikkei/TAIEX/SOX compare against the wrong

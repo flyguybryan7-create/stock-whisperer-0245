@@ -2211,12 +2211,12 @@ export default function TradingPlatform() {
           {globalSemis && (() => {
             // Abbrev display of the Asian / PHLX semi tape — % only.
             const ABBREV: Record<string, string> = {
-              "NAVER:KOSPI": "KOR",
+              "^KS11": "KOR",
               "^SOX": "SOX",
               "TAIFEX:TXF": "TWN-F",
               "NKD=F": "NK-F",
             };
-            const order = ["NAVER:KOSPI", "^SOX", "TAIFEX:TXF", "NKD=F"];
+            const order = ["^KS11", "^SOX", "TAIFEX:TXF", "NKD=F"];
             const comps = order
               .map((s) => globalSemis.components.find((c) => c.symbol === s))
               .filter(Boolean) as typeof globalSemis.components;
