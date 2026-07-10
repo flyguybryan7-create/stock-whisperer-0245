@@ -44,9 +44,7 @@ import {
   getSharedSchwabTopStrikes,
   getSharedSchwabPriceHistory,
   getSharedSchwabOptionsLadder,
-  getPolygonOptionsLadder,
-  getCboeOptionsLadder,
-  getNasdaqOptionsLadder,
+  getFastOptionsLadder,
 } from "@/lib/schwab-shared.functions";
 import { detectTrap, type TrapResult } from "@/lib/trap-indicator";
 import { OptionsFlowChart } from "./OptionsFlowChart";
@@ -1064,36 +1062,16 @@ export default function TradingPlatform() {
     staleTime: 5_000,
   });
 
-  // Final fallback: Polygon options snapshot (no OAuth) — powers the Options
-  // Flow Magnet when no Schwab token is available (per-user or shared).
-  const fetchPolygonLadder = useServerFn(getPolygonOptionsLadder);
-  const { data: polygonLadderData } = useQuery({
-    queryKey: ["polygonLadder", selectedStock, sharedStrikesTodayKey, ladderExpiryIndex],
-    queryFn: () => fetchPolygonLadder({ data: { symbol: selectedStock, expiryIndex: ladderExpiryIndex } }),
+  // Cached public fallback: CBOE first, Nasdaq fallback. One request replaces
+  // the old Polygon+CBOE+Nasdaq fan-out so the magnet loads without rate-limit stalls.
+  const fetchFastLadder = useServerFn(getFastOptionsLadder);
+  const { data: fastLadderData } = useQuery({
+    queryKey: ["fastOptionsLadder", selectedStock, sharedStrikesTodayKey, ladderExpiryIndex],
+    queryFn: () => fetchFastLadder({ data: { symbol: selectedStock, expiryIndex: ladderExpiryIndex } }),
     enabled: !!selectedStock,
-    refetchInterval: 20_000,
+    refetchInterval: 10_000,
     refetchIntervalInBackground: true,
-    staleTime: 10_000,
-  });
-
-  const fetchCboeLadder = useServerFn(getCboeOptionsLadder);
-  const { data: cboeLadderData } = useQuery({
-    queryKey: ["cboeLadder", selectedStock, sharedStrikesTodayKey, ladderExpiryIndex],
-    queryFn: () => fetchCboeLadder({ data: { symbol: selectedStock, expiryIndex: ladderExpiryIndex } }),
-    enabled: !!selectedStock,
-    refetchInterval: 20_000,
-    refetchIntervalInBackground: true,
-    staleTime: 10_000,
-  });
-
-  const fetchNasdaqLadder = useServerFn(getNasdaqOptionsLadder);
-  const { data: nasdaqLadderData } = useQuery({
-    queryKey: ["nasdaqLadder", selectedStock, sharedStrikesTodayKey, ladderExpiryIndex],
-    queryFn: () => fetchNasdaqLadder({ data: { symbol: selectedStock, expiryIndex: ladderExpiryIndex } }),
-    enabled: !!selectedStock,
-    refetchInterval: 20_000,
-    refetchIntervalInBackground: true,
-    staleTime: 10_000,
+    staleTime: 5_000,
   });
 
   // Merge per-user (preferred) with shared (fallback) so signed-out viewers
@@ -1112,15 +1090,13 @@ export default function TradingPlatform() {
     const candidates = [
       schwabLadderData as SchwabOptionsLadder | null,
       sharedLadderData as SchwabOptionsLadder | null,
-      polygonLadderData as SchwabOptionsLadder | null,
-      cboeLadderData as SchwabOptionsLadder | null,
-      nasdaqLadderData as SchwabOptionsLadder | null,
+      fastLadderData as SchwabOptionsLadder | null,
     ];
     // Prefer any provider with real intraday volume; only fall back to an
     // OI-source ladder (illiquid tickers, pre-market) if none has traded.
     const usable = candidates.filter((l) => isUsableOptionsLadder(l, selectedStock));
     return usable.find((l) => (l?.source ?? "volume") === "volume") ?? usable[0] ?? null;
-  }, [schwabLadderData, sharedLadderData, polygonLadderData, cboeLadderData, nasdaqLadderData, selectedStock]);
+  }, [schwabLadderData, sharedLadderData, fastLadderData, selectedStock]);
 
   // Public aliases the rest of the component already uses. Now backed by the
   // merged feed so shared/published-link viewers see the same live data.

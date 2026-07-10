@@ -223,14 +223,28 @@ async function fetchTaifexTaiwanFuturesSnap(name: string): Promise<QuoteSnap> {
     return (j?.RtData?.QuoteList ?? []) as any[];
   };
   const [day, night] = await Promise.all([fetchSide("0"), fetchSide("1")]);
-  const rows = [...day, ...night]
+  const rows = [
+    ...day.map((row) => ({ ...row, __marketType: "0" })),
+    ...night.map((row) => ({ ...row, __marketType: "1" })),
+  ]
     .filter((row) => row?.SymbolID?.startsWith("TXF") && row?.SymbolID !== "TXF-S" && row?.SymbolID !== "TXF-P")
     .filter((row) => Number.isFinite(Number(row.CLastPrice)) && Number.isFinite(Number(row.CRefPrice)) && Number(row.CRefPrice) > 0);
   if (!rows.length) return { symbol: "TAIFEX:TXF", name, price: null, changePct: null };
   const tsKey = (row: any) => {
     const d = String(row.CDate ?? "").padStart(8, "0");
     const t = String(row.CTime ?? "").padStart(6, "0");
-    return Number(d + t);
+    const yyyy = Number(d.slice(0, 4));
+    const mm = Number(d.slice(4, 6));
+    const dd = Number(d.slice(6, 8));
+    const hh = Number(t.slice(0, 2));
+    const mi = Number(t.slice(2, 4));
+    const ss = Number(t.slice(4, 6));
+    if (![yyyy, mm, dd, hh, mi, ss].every(Number.isFinite)) return 0;
+    const stamp = Date.UTC(yyyy, mm - 1, dd, hh, mi, ss);
+    // TAIFEX night-session rows after midnight keep the trading date, so a
+    // 04:59 night close can look older than the prior 13:45 day close. Roll
+    // those early-morning night prints forward for freshness comparisons.
+    return row.__marketType === "1" && hh < 6 ? stamp + 86400000 : stamp;
   };
   const maxTs = Math.max(...rows.map(tsKey));
   // Among rows tied at the freshest timestamp, pick the highest-volume contract
