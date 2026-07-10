@@ -29,9 +29,11 @@ type Props = {
   symbol: string;
   spot: number | null;
   ladder: SchwabOptionsLadder | null;
+  expiryIndex?: number;
+  onExpiryChange?: (index: number) => void;
 };
 
-export function OptionsFlowChart({ symbol, spot, ladder }: Props) {
+export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpiryChange }: Props) {
   // Live clock for the time-to-close readout — ticks every 30s.
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -91,11 +93,27 @@ export function OptionsFlowChart({ symbol, spot, ladder }: Props) {
           ⚡ OPTIONS FLOW MAGNET · {symbol}
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center", fontFamily: mono, fontSize: 10 }}>
-          {ladder?.label && (
+          {ladder?.alternateExpiries && ladder.alternateExpiries.length > 1 && onExpiryChange ? (
+            <select
+              value={Math.min(expiryIndex, ladder.alternateExpiries.length - 1)}
+              onChange={(e) => onExpiryChange(Number(e.target.value))}
+              style={{
+                padding: "2px 6px", background: "#161b22", border: "1px solid #30363d", borderRadius: 4,
+                color: "#d2a8ff", fontFamily: mono, fontSize: 10, fontWeight: 700, cursor: "pointer", outline: "none",
+              }}
+              aria-label="Select expiry"
+            >
+              {ladder.alternateExpiries.map((e, i) => (
+                <option key={e.expiry} value={i}>
+                  EXP {e.label}{e.dte != null ? ` · ${e.dte}D` : ""}
+                </option>
+              ))}
+            </select>
+          ) : ladder?.label ? (
             <span style={{ padding: "2px 6px", background: "#161b22", border: "1px solid #21262d", borderRadius: 4, color: "#8b949e" }}>
               EXP {ladder.label}{ladder.dte != null && ` · ${ladder.dte}D`}
             </span>
-          )}
+          ) : null}
           <span style={{ padding: "2px 6px", background: "#161b22", border: "1px solid #21262d", borderRadius: 4, color: "#e3b341" }}>
             CLOSE IN {timeToClose(now)}
           </span>
