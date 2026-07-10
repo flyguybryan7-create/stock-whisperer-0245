@@ -418,13 +418,18 @@ export const getPolygonOptionsLadder = createServerFn({ method: "POST" })
         if (oi > (oiMagP?.volume ?? 0)) oiMagP = { strike, volume: oi };
       }
     }
-    // Never substitute open interest for volume — OI is a legacy position
-    // count, not today's flow, and using it produces fake "magnet" strikes
-    // that flip wildly (e.g. a PUT $145 OI cluster overriding actual call
-    // buying on the day). If there's no real volume yet, return null so the
-    // merge falls through to a provider that has real intraday prints.
-    if (callTot === 0 && putTot === 0) return null;
-    void callOiTot; void putOiTot; void oiMagC; void oiMagP;
+    // Prefer intraday volume, but fall back to OI so illiquid tickers and
+    // pre-market still render. The ladder is tagged source="oi" so the
+    // client merge prefers any volume-based provider first.
+    let source: "volume" | "oi" = "volume";
+    let effCallTot = callTot, effPutTot = putTot;
+    let effMagC = magC, effMagP = magP;
+    if (callTot === 0 && putTot === 0) {
+      source = "oi";
+      effCallTot = callOiTot; effPutTot = putOiTot;
+      effMagC = oiMagC; effMagP = oiMagP;
+      if (effCallTot === 0 && effPutTot === 0) return null;
+    }
     const all = Array.from(byStrike.values()).sort((a, b) => a.strike - b.strike);
     let trimmed = all;
     if (spot && spot > 0) {
@@ -441,8 +446,8 @@ export const getPolygonOptionsLadder = createServerFn({ method: "POST" })
     // fall outside the ±25% window around spot.
     {
       const need = new Set<number>();
-      if (magC) need.add(magC.strike);
-      if (magP) need.add(magP.strike);
+      if (effMagC) need.add(effMagC.strike);
+      if (effMagP) need.add(effMagP.strike);
       const have = new Set(trimmed.map((r) => r.strike));
       const extras = all.filter((r) => need.has(r.strike) && !have.has(r.strike));
       if (extras.length) trimmed = [...trimmed, ...extras].sort((a, b) => a.strike - b.strike);
@@ -457,12 +462,13 @@ export const getPolygonOptionsLadder = createServerFn({ method: "POST" })
       label,
       hasWeeklies: Number.isFinite(dte) && dte <= 10,
       spot,
-      callVolume: callTot,
-      putVolume: putTot,
-      magnetCall: magC ? { strike: magC.strike, volume: magC.volume, pct: callTot > 0 ? magC.volume / callTot : 0 } : null,
-      magnetPut: magP ? { strike: magP.strike, volume: magP.volume, pct: putTot > 0 ? magP.volume / putTot : 0 } : null,
+      callVolume: effCallTot,
+      putVolume: effPutTot,
+      magnetCall: effMagC ? { strike: effMagC.strike, volume: effMagC.volume, pct: effCallTot > 0 ? effMagC.volume / effCallTot : 0 } : null,
+      magnetPut: effMagP ? { strike: effMagP.strike, volume: effMagP.volume, pct: effPutTot > 0 ? effMagP.volume / effPutTot : 0 } : null,
       ladder: trimmed,
       alternateExpiries,
+      source,
     };
   });
 
