@@ -277,11 +277,10 @@ async function fetchCboeChain(symbol: string): Promise<OptionsActivity | null> {
 }
 
 async function fetchChain(symbol: string): Promise<OptionsActivity | null> {
-  const cboe = await fetchCboeChain(symbol);
-  if (cboe?.pcRatio != null) return cboe;
-
   // Nasdaq's public option-chain endpoint — no auth, no crumb (Yahoo's
   // /v7/finance/options now requires a crumb cookie and returns Unauthorized).
+  // Keep watchlist P/C off CBOE so 80+ background tiles don't rate-limit the
+  // Options Flow Magnet's fastest chain source.
   const url =
     `https://api.nasdaq.com/api/quote/${encodeURIComponent(symbol)}/option-chain` +
     `?assetclass=stocks&limit=2000&fromdate=all&todate=undefined` +

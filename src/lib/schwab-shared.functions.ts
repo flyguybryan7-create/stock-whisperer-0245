@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { SchwabQuote, SchwabFundamental, SchwabTopStrikes, SchwabBar, SchwabOptionsLadder } from "./schwab.functions";
 import { _buildLadderFromChain } from "./schwab.functions";
+import { fetchFastPublicOptionsLadder } from "./options-ladder.server";
 
 /**
  * Shared Schwab feed.
@@ -318,6 +319,15 @@ export const getSharedSchwabOptionsLadder = createServerFn({ method: "POST" })
     if (!res.ok) return null;
     const json: any = await res.json().catch(() => ({}));
     return _buildLadderFromChain(sym, json, data.expiryIndex ?? 0);
+  });
+
+// Fast public ladder for the Options Flow Magnet. It uses a short server-side
+// cache and races through public providers without requiring Schwab OAuth, so
+// opening/reloading the terminal does not leave the magnet blank or hammer CBOE.
+export const getFastOptionsLadder = createServerFn({ method: "POST" })
+  .inputValidator((d: { symbol: string; expiryIndex?: number }) => d)
+  .handler(async ({ data }): Promise<SchwabOptionsLadder | null> => {
+    return fetchFastPublicOptionsLadder(data.symbol || "", data.expiryIndex ?? 0);
   });
 
 // ============ Polygon-backed options ladder (public, no OAuth) ============
