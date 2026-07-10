@@ -106,7 +106,7 @@ const GLOBAL_SEMI_INDICES: { symbol: string; name: string }[] = [
   { symbol: "EWY", name: "KOSPI (EWY)" },
   { symbol: "000688.SS", name: "STAR 50" },
   { symbol: "^SOX", name: "PHLX Semi" },
-  { symbol: "EWT", name: "Taiwan ETF (EWT)" },
+  { symbol: "TAIFEX:TXF", name: "TAIEX Futures" },
   { symbol: "NKD=F", name: "Nikkei 225 (Fut)" },
   { symbol: "^HSTECH", name: "Hang Seng Tech" },
 ];
@@ -198,6 +198,34 @@ async function snapFast(symbol: string, name: string): Promise<QuoteSnap> {
   const { price, prev } = await fetchYahooSnap(symbol, { interval: "1m", range: "1d" });
   const changePct = price != null && prev != null && prev > 0 ? ((price - prev) / prev) * 100 : null;
   return { symbol, name, price, changePct };
+}
+
+async function fetchTaifexTaiwanFuturesSnap(name: string): Promise<QuoteSnap> {
+  const local = new Date(Date.now() + 8 * 60 * 60 * 1000);
+  const minutes = local.getUTCHours() * 60 + local.getUTCMinutes();
+  const marketType = minutes >= 8 * 60 + 45 && minutes < 15 * 60 ? "0" : "1";
+  const response = await fetch("https://mis.taifex.com.tw/futures/api/getQuoteList", {
+    method: "POST",
+    headers: {
+      "User-Agent": UA,
+      Accept: "application/json, text/plain, */*",
+      "Content-Type": "application/json;charset=UTF-8",
+      Origin: "https://mis.taifex.com.tw",
+      Referer: "https://mis.taifex.com.tw/futures/RegularSession/EquityIndices/FuturesDomestic/",
+    },
+    body: JSON.stringify({ MarketType: marketType, SymbolType: "F", KindID: "1", CID: "TXF" }),
+  });
+  if (!response.ok) throw new Error(`TAIFEX quote failed: ${response.status}`);
+  const json: any = await response.json();
+  const rows: any[] = json?.RtData?.QuoteList ?? [];
+  const front = rows
+    .filter((row) => row?.SymbolID?.startsWith("TXF") && row?.SymbolID !== "TXF-S" && row?.SymbolID !== "TXF-P")
+    .filter((row) => Number.isFinite(Number(row.CLastPrice)) && Number.isFinite(Number(row.CRefPrice)) && Number(row.CRefPrice) > 0)
+    .sort((a, b) => Number(b.CTotalVolume || 0) - Number(a.CTotalVolume || 0))[0];
+  if (!front) return { symbol: "TAIFEX:TXF", name, price: null, changePct: null };
+  const price = Number(front.CLastPrice);
+  const prev = Number(front.CRefPrice);
+  return { symbol: "TAIFEX:TXF", name, price, changePct: ((price - prev) / prev) * 100 };
 }
 
 async function fetchAsiaSemiChange(symbol: string): Promise<number | null> {
@@ -461,6 +489,7 @@ export async function fetchGlobalSemiIndexSnapshot(): Promise<GlobalSemiIndexRes
   try {
     const components: GlobalSemiComponent[] = await Promise.all(
       GLOBAL_SEMI_INDICES.map(async (idx) => {
+        if (idx.symbol === "TAIFEX:TXF") return fetchTaifexTaiwanFuturesSnap(idx.name);
         // The top tape must match live quote-site percentages. Daily Yahoo
         // chart ranges can expose the first 5-day bar as chartPreviousClose,
         // which makes markets like Nikkei/TAIEX/SOX compare against the wrong
