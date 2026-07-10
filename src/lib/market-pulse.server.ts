@@ -103,7 +103,7 @@ export type SemiRiskSentimentResponse = {
 };
 
 const GLOBAL_SEMI_INDICES: { symbol: string; name: string }[] = [
-  { symbol: "EWY", name: "KOSPI (EWY)" },
+  { symbol: "NAVER:KOSPI", name: "KOSPI" },
   { symbol: "000688.SS", name: "STAR 50" },
   { symbol: "^SOX", name: "PHLX Semi" },
   { symbol: "TAIFEX:TXF", name: "TAIEX Futures" },
