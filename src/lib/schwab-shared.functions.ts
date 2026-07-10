@@ -418,16 +418,13 @@ export const getPolygonOptionsLadder = createServerFn({ method: "POST" })
         if (oi > (oiMagP?.volume ?? 0)) oiMagP = { strike, volume: oi };
       }
     }
-    if (callTot === 0 && putTot === 0 && (callOiTot > 0 || putOiTot > 0)) {
-      for (const rung of byStrike.values()) {
-        rung.callVol = rung.callOi;
-        rung.putVol = rung.putOi;
-      }
-      callTot = callOiTot;
-      putTot = putOiTot;
-      magC = oiMagC;
-      magP = oiMagP;
-    }
+    // Never substitute open interest for volume — OI is a legacy position
+    // count, not today's flow, and using it produces fake "magnet" strikes
+    // that flip wildly (e.g. a PUT $145 OI cluster overriding actual call
+    // buying on the day). If there's no real volume yet, return null so the
+    // merge falls through to a provider that has real intraday prints.
+    if (callTot === 0 && putTot === 0) return null;
+    void callOiTot; void putOiTot; void oiMagC; void oiMagP;
     const all = Array.from(byStrike.values()).sort((a, b) => a.strike - b.strike);
     let trimmed = all;
     if (spot && spot > 0) {
@@ -554,16 +551,11 @@ export const getCboeOptionsLadder = createServerFn({ method: "POST" })
         if (opt.oi > (oiMagP?.volume ?? 0)) oiMagP = { strike: opt.strike, volume: opt.oi };
       }
     }
-    if (callTot === 0 && putTot === 0 && (callOiTot > 0 || putOiTot > 0)) {
-      for (const rung of byStrike.values()) {
-        rung.callVol = rung.callOi;
-        rung.putVol = rung.putOi;
-      }
-      callTot = callOiTot;
-      putTot = putOiTot;
-      magC = oiMagC;
-      magP = oiMagP;
-    }
+    // Same policy as Polygon path — OI is not flow, so do not fabricate a
+    // magnet from it. If there's no volume today, return null and let the
+    // merge fall through.
+    if (callTot === 0 && putTot === 0) return null;
+    void callOiTot; void putOiTot; void oiMagC; void oiMagP;
     const all = Array.from(byStrike.values()).sort((a, b) => a.strike - b.strike);
     if (!all.length || (callTot === 0 && putTot === 0)) return null;
     let trimmed = all;
@@ -709,12 +701,13 @@ export const getNasdaqOptionsLadder = createServerFn({ method: "POST" })
     for (const row of chosen.rows) {
       const strike = num(row?.strike);
       if (strike <= 0) continue;
-      const callRawVol = num(row?.c_Volume);
-      const putRawVol = num(row?.p_Volume);
+      // Real intraday volume only. Do NOT fall back to open interest per
+      // side — mixing real call volume with put OI (or vice versa) produces
+      // magnet strikes that reverse every refresh as new prints arrive.
+      const callVol = num(row?.c_Volume);
+      const putVol = num(row?.p_Volume);
       const callOi = num(row?.c_Openinterest);
       const putOi = num(row?.p_Openinterest);
-      const callVol = callRawVol > 0 ? callRawVol : callOi;
-      const putVol = putRawVol > 0 ? putRawVol : putOi;
       let rung = byStrike.get(strike);
       if (!rung) { rung = { strike, callVol: 0, putVol: 0, callOi: 0, putOi: 0 }; byStrike.set(strike, rung); }
       rung.callVol += callVol; rung.putVol += putVol; rung.callOi += callOi; rung.putOi += putOi;
