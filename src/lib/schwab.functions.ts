@@ -437,6 +437,23 @@ function buildLadderFromChain(sym: string, json: any, expiryIndex = 0): SchwabOp
       label: Number.isNaN(dd.getTime()) ? exp : `${dd.toLocaleString("en-US", { month: "short" })} ${dd.getDate()}`,
     };
   });
+  // OI fallback when no intraday volume has printed yet (pre-market, illiquid names).
+  // OI is stable session-to-session so the magnet strikes won't flip.
+  let source: "volume" | "oi" = "volume";
+  let effCallTot = callTot;
+  let effPutTot = putTot;
+  let effMagC = magC;
+  let effMagP = magP;
+  if (callTot === 0 && putTot === 0) {
+    source = "oi";
+    for (const r of rungs) {
+      effCallTot += r.callOi;
+      effPutTot += r.putOi;
+      if (r.callOi > (effMagC?.volume ?? 0)) effMagC = { strike: r.strike, volume: r.callOi };
+      if (r.putOi > (effMagP?.volume ?? 0)) effMagP = { strike: r.strike, volume: r.putOi };
+    }
+    if (effCallTot === 0 && effPutTot === 0) return null;
+  }
   return {
     symbol: sym,
     expiry,
@@ -444,12 +461,13 @@ function buildLadderFromChain(sym: string, json: any, expiryIndex = 0): SchwabOp
     label,
     hasWeeklies: Number.isFinite(dte) && dte <= 10,
     spot,
-    callVolume: callTot,
-    putVolume: putTot,
-    magnetCall: magC ? { strike: magC.strike, volume: magC.volume, pct: callTot > 0 ? magC.volume / callTot : 0 } : null,
-    magnetPut: magP ? { strike: magP.strike, volume: magP.volume, pct: putTot > 0 ? magP.volume / putTot : 0 } : null,
+    callVolume: effCallTot,
+    putVolume: effPutTot,
+    magnetCall: effMagC ? { strike: effMagC.strike, volume: effMagC.volume, pct: effCallTot > 0 ? effMagC.volume / effCallTot : 0 } : null,
+    magnetPut: effMagP ? { strike: effMagP.strike, volume: effMagP.volume, pct: effPutTot > 0 ? effMagP.volume / effPutTot : 0 } : null,
     ladder: trimmed,
     alternateExpiries,
+    source,
   };
 }
 
