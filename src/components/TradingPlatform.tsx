@@ -571,6 +571,11 @@ export default function TradingPlatform() {
   const [editingPos, setEditingPos] = useState<string | null>(null);
   const [posDraft, setPosDraft] = useState<{ shares: string; entry: string }>({ shares: "", entry: "" });
   const [selectedStock, setSelectedStock] = useState("MRVL");
+  // Options Flow Magnet expiry picker — 0 = nearest week, 1 = next, etc.
+  // Reset to 0 whenever the user switches ticker so we always start on the
+  // current-week expiry for the new symbol.
+  const [ladderExpiryIndex, setLadderExpiryIndex] = useState(0);
+  useEffect(() => { setLadderExpiryIndex(0); }, [selectedStock]);
   const [showDetail, setShowDetail] = useState(false);
   const [search, setSearch] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
@@ -979,18 +984,18 @@ export default function TradingPlatform() {
   // ---- Schwab options ladder (per-user) — full strike-by-strike volume ----
   const fetchSchwabLadder = useServerFn(getSchwabOptionsLadder);
   const { data: schwabLadderData } = useQuery({
-    queryKey: ["schwabLadder", selectedStock, todayKey],
+    queryKey: ["schwabLadder", selectedStock, todayKey, ladderExpiryIndex],
     queryFn: async () => {
       if (!schwabTokens?.access_token) return null;
       try {
-        return await fetchSchwabLadder({ data: { accessToken: schwabTokens.access_token, symbol: selectedStock } });
+        return await fetchSchwabLadder({ data: { accessToken: schwabTokens.access_token, symbol: selectedStock, expiryIndex: ladderExpiryIndex } });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         if (msg.includes("schwab_unauthorized") && schwabTokens.refresh_token) {
           try {
             const fresh = await refreshSchwab({ data: { refreshToken: schwabTokens.refresh_token } });
             persistTokens(fresh);
-            return await fetchSchwabLadder({ data: { accessToken: fresh.access_token, symbol: selectedStock } });
+            return await fetchSchwabLadder({ data: { accessToken: fresh.access_token, symbol: selectedStock, expiryIndex: ladderExpiryIndex } });
           } catch { return null; }
         }
         return null;
@@ -1051,8 +1056,8 @@ export default function TradingPlatform() {
   // Shared ladder for signed-out viewers.
   const fetchSharedLadder = useServerFn(getSharedSchwabOptionsLadder);
   const { data: sharedLadderData } = useQuery({
-    queryKey: ["sharedSchwabLadder", selectedStock, sharedStrikesTodayKey],
-    queryFn: () => fetchSharedLadder({ data: { symbol: selectedStock } }),
+    queryKey: ["sharedSchwabLadder", selectedStock, sharedStrikesTodayKey, ladderExpiryIndex],
+    queryFn: () => fetchSharedLadder({ data: { symbol: selectedStock, expiryIndex: ladderExpiryIndex } }),
     enabled: !!selectedStock,
     refetchInterval: 10_000,
     refetchIntervalInBackground: true,
@@ -1063,8 +1068,8 @@ export default function TradingPlatform() {
   // Flow Magnet when no Schwab token is available (per-user or shared).
   const fetchPolygonLadder = useServerFn(getPolygonOptionsLadder);
   const { data: polygonLadderData } = useQuery({
-    queryKey: ["polygonLadder", selectedStock, sharedStrikesTodayKey],
-    queryFn: () => fetchPolygonLadder({ data: { symbol: selectedStock } }),
+    queryKey: ["polygonLadder", selectedStock, sharedStrikesTodayKey, ladderExpiryIndex],
+    queryFn: () => fetchPolygonLadder({ data: { symbol: selectedStock, expiryIndex: ladderExpiryIndex } }),
     enabled: !!selectedStock,
     refetchInterval: 20_000,
     refetchIntervalInBackground: true,
@@ -1073,8 +1078,8 @@ export default function TradingPlatform() {
 
   const fetchCboeLadder = useServerFn(getCboeOptionsLadder);
   const { data: cboeLadderData } = useQuery({
-    queryKey: ["cboeLadder", selectedStock, sharedStrikesTodayKey],
-    queryFn: () => fetchCboeLadder({ data: { symbol: selectedStock } }),
+    queryKey: ["cboeLadder", selectedStock, sharedStrikesTodayKey, ladderExpiryIndex],
+    queryFn: () => fetchCboeLadder({ data: { symbol: selectedStock, expiryIndex: ladderExpiryIndex } }),
     enabled: !!selectedStock,
     refetchInterval: 20_000,
     refetchIntervalInBackground: true,
@@ -1083,8 +1088,8 @@ export default function TradingPlatform() {
 
   const fetchNasdaqLadder = useServerFn(getNasdaqOptionsLadder);
   const { data: nasdaqLadderData } = useQuery({
-    queryKey: ["nasdaqLadder", selectedStock, sharedStrikesTodayKey],
-    queryFn: () => fetchNasdaqLadder({ data: { symbol: selectedStock } }),
+    queryKey: ["nasdaqLadder", selectedStock, sharedStrikesTodayKey, ladderExpiryIndex],
+    queryFn: () => fetchNasdaqLadder({ data: { symbol: selectedStock, expiryIndex: ladderExpiryIndex } }),
     enabled: !!selectedStock,
     refetchInterval: 20_000,
     refetchIntervalInBackground: true,
@@ -3000,6 +3005,8 @@ export default function TradingPlatform() {
             symbol={selectedStock}
             spot={selectedMark ?? null}
             ladder={schwabLadder && schwabLadder.symbol === selectedStock ? schwabLadder : null}
+            expiryIndex={ladderExpiryIndex}
+            onExpiryChange={setLadderExpiryIndex}
           />
 
           {/* Economic releases feed — matches yellow "E" chart markers */}

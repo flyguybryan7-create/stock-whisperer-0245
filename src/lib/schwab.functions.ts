@@ -365,20 +365,24 @@ export type SchwabOptionsLadder = {
   magnetCall: { strike: number; pct: number; volume: number } | null;
   magnetPut: { strike: number; pct: number; volume: number } | null;
   ladder: SchwabLadderRung[]; // sorted ascending by strike, trimmed near spot
+  // Upcoming expiries (ascending DTE, first 8) so the UI can offer a
+  // dropdown to switch between "this week", "next week", etc. Index 0
+  // is the currently rendered expiry.
+  alternateExpiries: { expiry: string; dte: number | null; label: string }[];
 };
 
-function buildLadderFromChain(sym: string, json: any): SchwabOptionsLadder | null {
+function buildLadderFromChain(sym: string, json: any, expiryIndex = 0): SchwabOptionsLadder | null {
   const callMap = json?.callExpDateMap ?? {};
   const putMap = json?.putExpDateMap ?? {};
   const spot = Number.isFinite(json?.underlyingPrice) ? Number(json.underlyingPrice) : null;
   const allKeys = Array.from(new Set([...Object.keys(callMap), ...Object.keys(putMap)])).sort();
-  let chosen: string | null = null;
-  for (const k of allKeys) {
-    const dte = Number(k.split(":")[1]);
-    if (!Number.isFinite(dte) || dte < 0) continue;
-    chosen = k; break;
-  }
-  if (!chosen) return null;
+  const futureKeys = allKeys
+    .map((k) => ({ key: k, dte: Number(k.split(":")[1]) }))
+    .filter((x) => Number.isFinite(x.dte) && x.dte >= 0)
+    .sort((a, b) => a.dte - b.dte);
+  if (!futureKeys.length) return null;
+  const idx = Math.min(Math.max(0, expiryIndex), futureKeys.length - 1);
+  const chosen = futureKeys[idx].key;
   const [expiry, dteStr] = chosen.split(":");
   const dte = Number(dteStr);
   const cExp = callMap?.[chosen] ?? {};
@@ -419,6 +423,15 @@ function buildLadderFromChain(sym: string, json: any): SchwabOptionsLadder | nul
   const d = new Date(expiry + "T00:00:00");
   const label = Number.isNaN(d.getTime()) ? expiry
     : `${d.toLocaleString("en-US", { month: "short" })} ${d.getDate()}`;
+  const alternateExpiries = futureKeys.slice(0, 8).map(({ key, dte: kd }) => {
+    const exp = key.split(":")[0];
+    const dd = new Date(exp + "T00:00:00");
+    return {
+      expiry: exp,
+      dte: Number.isFinite(kd) ? kd : null,
+      label: Number.isNaN(dd.getTime()) ? exp : `${dd.toLocaleString("en-US", { month: "short" })} ${dd.getDate()}`,
+    };
+  });
   return {
     symbol: sym,
     expiry,
@@ -431,11 +444,12 @@ function buildLadderFromChain(sym: string, json: any): SchwabOptionsLadder | nul
     magnetCall: magC ? { strike: magC.strike, volume: magC.volume, pct: callTot > 0 ? magC.volume / callTot : 0 } : null,
     magnetPut: magP ? { strike: magP.strike, volume: magP.volume, pct: putTot > 0 ? magP.volume / putTot : 0 } : null,
     ladder: trimmed,
+    alternateExpiries,
   };
 }
 
 export const getSchwabOptionsLadder = createServerFn({ method: "POST" })
-  .inputValidator((d: { accessToken: string; symbol: string }) => d)
+  .inputValidator((d: { accessToken: string; symbol: string; expiryIndex?: number }) => d)
   .handler(async ({ data }): Promise<SchwabOptionsLadder | null> => {
     const sym = (data.symbol || "").toUpperCase();
     if (!sym) return null;
@@ -451,7 +465,7 @@ export const getSchwabOptionsLadder = createServerFn({ method: "POST" })
       return null;
     }
     const json: any = await res.json().catch(() => ({}));
-    return buildLadderFromChain(sym, json);
+    return buildLadderFromChain(sym, json, data.expiryIndex ?? 0);
   });
 
 export { buildLadderFromChain as _buildLadderFromChain };
