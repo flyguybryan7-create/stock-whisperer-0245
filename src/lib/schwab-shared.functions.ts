@@ -418,13 +418,18 @@ export const getPolygonOptionsLadder = createServerFn({ method: "POST" })
         if (oi > (oiMagP?.volume ?? 0)) oiMagP = { strike, volume: oi };
       }
     }
-    // Never substitute open interest for volume — OI is a legacy position
-    // count, not today's flow, and using it produces fake "magnet" strikes
-    // that flip wildly (e.g. a PUT $145 OI cluster overriding actual call
-    // buying on the day). If there's no real volume yet, return null so the
-    // merge falls through to a provider that has real intraday prints.
-    if (callTot === 0 && putTot === 0) return null;
-    void callOiTot; void putOiTot; void oiMagC; void oiMagP;
+    // Prefer intraday volume, but fall back to OI so illiquid tickers and
+    // pre-market still render. The ladder is tagged source="oi" so the
+    // client merge prefers any volume-based provider first.
+    let source: "volume" | "oi" = "volume";
+    let effCallTot = callTot, effPutTot = putTot;
+    let effMagC = magC, effMagP = magP;
+    if (callTot === 0 && putTot === 0) {
+      source = "oi";
+      effCallTot = callOiTot; effPutTot = putOiTot;
+      effMagC = oiMagC; effMagP = oiMagP;
+      if (effCallTot === 0 && effPutTot === 0) return null;
+    }
     const all = Array.from(byStrike.values()).sort((a, b) => a.strike - b.strike);
     let trimmed = all;
     if (spot && spot > 0) {
@@ -441,8 +446,8 @@ export const getPolygonOptionsLadder = createServerFn({ method: "POST" })
     // fall outside the ±25% window around spot.
     {
       const need = new Set<number>();
-      if (magC) need.add(magC.strike);
-      if (magP) need.add(magP.strike);
+      if (effMagC) need.add(effMagC.strike);
+      if (effMagP) need.add(effMagP.strike);
       const have = new Set(trimmed.map((r) => r.strike));
       const extras = all.filter((r) => need.has(r.strike) && !have.has(r.strike));
       if (extras.length) trimmed = [...trimmed, ...extras].sort((a, b) => a.strike - b.strike);
@@ -457,12 +462,13 @@ export const getPolygonOptionsLadder = createServerFn({ method: "POST" })
       label,
       hasWeeklies: Number.isFinite(dte) && dte <= 10,
       spot,
-      callVolume: callTot,
-      putVolume: putTot,
-      magnetCall: magC ? { strike: magC.strike, volume: magC.volume, pct: callTot > 0 ? magC.volume / callTot : 0 } : null,
-      magnetPut: magP ? { strike: magP.strike, volume: magP.volume, pct: putTot > 0 ? magP.volume / putTot : 0 } : null,
+      callVolume: effCallTot,
+      putVolume: effPutTot,
+      magnetCall: effMagC ? { strike: effMagC.strike, volume: effMagC.volume, pct: effCallTot > 0 ? effMagC.volume / effCallTot : 0 } : null,
+      magnetPut: effMagP ? { strike: effMagP.strike, volume: effMagP.volume, pct: effPutTot > 0 ? effMagP.volume / effPutTot : 0 } : null,
       ladder: trimmed,
       alternateExpiries,
+      source,
     };
   });
 
@@ -551,13 +557,18 @@ export const getCboeOptionsLadder = createServerFn({ method: "POST" })
         if (opt.oi > (oiMagP?.volume ?? 0)) oiMagP = { strike: opt.strike, volume: opt.oi };
       }
     }
-    // Same policy as Polygon path — OI is not flow, so do not fabricate a
-    // magnet from it. If there's no volume today, return null and let the
-    // merge fall through.
-    if (callTot === 0 && putTot === 0) return null;
-    void callOiTot; void putOiTot; void oiMagC; void oiMagP;
+    // Prefer intraday volume; fall back to OI so illiquid tickers still render.
+    let source: "volume" | "oi" = "volume";
+    let effCallTot = callTot, effPutTot = putTot;
+    let effMagC = magC, effMagP = magP;
+    if (callTot === 0 && putTot === 0) {
+      source = "oi";
+      effCallTot = callOiTot; effPutTot = putOiTot;
+      effMagC = oiMagC; effMagP = oiMagP;
+      if (effCallTot === 0 && effPutTot === 0) return null;
+    }
     const all = Array.from(byStrike.values()).sort((a, b) => a.strike - b.strike);
-    if (!all.length || (callTot === 0 && putTot === 0)) return null;
+    if (!all.length) return null;
     let trimmed = all;
     if (spot && spot > 0) {
       const lo = spot * 0.75, hi = spot * 1.25;
@@ -573,8 +584,8 @@ export const getCboeOptionsLadder = createServerFn({ method: "POST" })
     // fall outside the ±25% window around spot.
     {
       const need = new Set<number>();
-      if (magC) need.add(magC.strike);
-      if (magP) need.add(magP.strike);
+      if (effMagC) need.add(effMagC.strike);
+      if (effMagP) need.add(effMagP.strike);
       const have = new Set(trimmed.map((r) => r.strike));
       const extras = all.filter((r) => need.has(r.strike) && !have.has(r.strike));
       if (extras.length) trimmed = [...trimmed, ...extras].sort((a, b) => a.strike - b.strike);
@@ -589,12 +600,13 @@ export const getCboeOptionsLadder = createServerFn({ method: "POST" })
       label,
       hasWeeklies: typeof dte === "number" && dte <= 10,
       spot,
-      callVolume: callTot,
-      putVolume: putTot,
-      magnetCall: magC ? { strike: magC.strike, volume: magC.volume, pct: callTot > 0 ? magC.volume / callTot : 0 } : null,
-      magnetPut: magP ? { strike: magP.strike, volume: magP.volume, pct: putTot > 0 ? magP.volume / putTot : 0 } : null,
+      callVolume: effCallTot,
+      putVolume: effPutTot,
+      magnetCall: effMagC ? { strike: effMagC.strike, volume: effMagC.volume, pct: effCallTot > 0 ? effMagC.volume / effCallTot : 0 } : null,
+      magnetPut: effMagP ? { strike: effMagP.strike, volume: effMagP.volume, pct: effPutTot > 0 ? effMagP.volume / effPutTot : 0 } : null,
       ladder: trimmed,
       alternateExpiries,
+      source,
     };
   });
 
@@ -698,6 +710,9 @@ export const getNasdaqOptionsLadder = createServerFn({ method: "POST" })
     let callTot = 0, putTot = 0;
     let magC: { strike: number; volume: number } | null = null;
     let magP: { strike: number; volume: number } | null = null;
+    let callOiTot = 0, putOiTot = 0;
+    let oiMagC: { strike: number; volume: number } | null = null;
+    let oiMagP: { strike: number; volume: number } | null = null;
     for (const row of chosen.rows) {
       const strike = num(row?.strike);
       if (strike <= 0) continue;
@@ -712,14 +727,26 @@ export const getNasdaqOptionsLadder = createServerFn({ method: "POST" })
       if (!rung) { rung = { strike, callVol: 0, putVol: 0, callOi: 0, putOi: 0 }; byStrike.set(strike, rung); }
       rung.callVol += callVol; rung.putVol += putVol; rung.callOi += callOi; rung.putOi += putOi;
       callTot += callVol; putTot += putVol;
+      callOiTot += callOi; putOiTot += putOi;
       if (callVol > (magC?.volume ?? 0)) magC = { strike, volume: callVol };
       if (putVol > (magP?.volume ?? 0)) magP = { strike, volume: putVol };
+      if (callOi > (oiMagC?.volume ?? 0)) oiMagC = { strike, volume: callOi };
+      if (putOi > (oiMagP?.volume ?? 0)) oiMagP = { strike, volume: putOi };
+    }
+    // Prefer intraday volume; fall back to OI when nothing has traded yet.
+    let source: "volume" | "oi" = "volume";
+    let effCallTot = callTot, effPutTot = putTot;
+    let effMagC = magC, effMagP = magP;
+    if (callTot === 0 && putTot === 0) {
+      source = "oi";
+      effCallTot = callOiTot; effPutTot = putOiTot;
+      effMagC = oiMagC; effMagP = oiMagP;
     }
     const all = Array.from(byStrike.values()).sort((a, b) => a.strike - b.strike);
-    if (!all.length || (callTot === 0 && putTot === 0)) return null;
+    if (!all.length || (effCallTot === 0 && effPutTot === 0)) return null;
     let spot = typeof data.spot === "number" && Number.isFinite(data.spot) && data.spot > 0 ? data.spot : null;
     if (!spot) {
-      const active = magC && magP ? (magC.volume >= magP.volume ? magC.strike : magP.strike) : (magC?.strike ?? magP?.strike ?? all[Math.floor(all.length / 2)].strike);
+      const active = effMagC && effMagP ? (effMagC.volume >= effMagP.volume ? effMagC.strike : effMagP.strike) : (effMagC?.strike ?? effMagP?.strike ?? all[Math.floor(all.length / 2)].strike);
       spot = active;
     }
     let trimmed = all;
@@ -737,8 +764,8 @@ export const getNasdaqOptionsLadder = createServerFn({ method: "POST" })
     // fall outside the ±25% window around spot.
     {
       const need = new Set<number>();
-      if (magC) need.add(magC.strike);
-      if (magP) need.add(magP.strike);
+      if (effMagC) need.add(effMagC.strike);
+      if (effMagP) need.add(effMagP.strike);
       const have = new Set(trimmed.map((r) => r.strike));
       const extras = all.filter((r) => need.has(r.strike) && !have.has(r.strike));
       if (extras.length) trimmed = [...trimmed, ...extras].sort((a, b) => a.strike - b.strike);
@@ -750,11 +777,12 @@ export const getNasdaqOptionsLadder = createServerFn({ method: "POST" })
       label: chosen.meta.label,
       hasWeeklies: chosen.meta.dte <= 10,
       spot,
-      callVolume: callTot,
-      putVolume: putTot,
-      magnetCall: magC ? { strike: magC.strike, volume: magC.volume, pct: callTot > 0 ? magC.volume / callTot : 0 } : null,
-      magnetPut: magP ? { strike: magP.strike, volume: magP.volume, pct: putTot > 0 ? magP.volume / putTot : 0 } : null,
+      callVolume: effCallTot,
+      putVolume: effPutTot,
+      magnetCall: effMagC ? { strike: effMagC.strike, volume: effMagC.volume, pct: effCallTot > 0 ? effMagC.volume / effCallTot : 0 } : null,
+      magnetPut: effMagP ? { strike: effMagP.strike, volume: effMagP.volume, pct: effPutTot > 0 ? effMagP.volume / effPutTot : 0 } : null,
       ladder: trimmed,
       alternateExpiries,
+      source,
     };
   });

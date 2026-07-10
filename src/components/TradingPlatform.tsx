@@ -1116,7 +1116,10 @@ export default function TradingPlatform() {
       cboeLadderData as SchwabOptionsLadder | null,
       nasdaqLadderData as SchwabOptionsLadder | null,
     ];
-    return candidates.find((ladder) => isUsableOptionsLadder(ladder, selectedStock)) ?? null;
+    // Prefer any provider with real intraday volume; only fall back to an
+    // OI-source ladder (illiquid tickers, pre-market) if none has traded.
+    const usable = candidates.filter((l) => isUsableOptionsLadder(l, selectedStock));
+    return usable.find((l) => (l?.source ?? "volume") === "volume") ?? usable[0] ?? null;
   }, [schwabLadderData, sharedLadderData, polygonLadderData, cboeLadderData, nasdaqLadderData, selectedStock]);
 
   // Public aliases the rest of the component already uses. Now backed by the
