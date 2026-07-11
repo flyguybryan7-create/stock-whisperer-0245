@@ -92,6 +92,9 @@ export type GlobalSemiIndexResponse = {
   error?: string;
 };
 
+const TAIFEX_TWN_F_SYMBOL = "TAIFEX:TXF";
+let lastTaiwanFuturesSnap: QuoteSnap | null = null;
+
 export type SemiRiskSentimentResponse = {
   level: "LOW" | "ELEVATED" | "HIGH" | "EXTREME";
   score: number; // 0-100, 50 neutral
@@ -200,6 +203,66 @@ async function snapFast(symbol: string, name: string): Promise<QuoteSnap> {
   return { symbol, name, price, changePct };
 }
 
+function parseMarketNumber(value: unknown): number | null {
+  const normalized = String(value ?? "")
+    .replace(/,/g, "")
+    .replace(/%/g, "")
+    .trim();
+  if (!normalized || normalized === "-" || normalized === "--") return null;
+  const match = normalized.match(/-?\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const n = Number(match[0]);
+  return Number.isFinite(n) ? n : null;
+}
+
+function parseTaifexPercent(value: unknown): number | null {
+  const text = String(value ?? "").trim();
+  const n = parseMarketNumber(text);
+  if (n == null) return null;
+  const isDown = text.includes("▼") || text.includes("▽") || text.startsWith("-");
+  return isDown ? -Math.abs(n) : Math.abs(n);
+}
+
+function taipeiDateString(daysAgo: number) {
+  const taipeiNow = new Date(Date.now() + 8 * 60 * 60 * 1000);
+  const d = new Date(Date.UTC(taipeiNow.getUTCFullYear(), taipeiNow.getUTCMonth(), taipeiNow.getUTCDate() - daysAgo));
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  return `${yyyy}/${mm}/${dd}`;
+}
+
+async function fetchTaifexDailyTaiwanFuturesSnap(name: string): Promise<QuoteSnap | null> {
+  // Official daily report fallback for closed/holiday windows or when the live
+  // quote book temporarily returns empty rows. This lets TWN-F keep showing the
+  // last known exchange value instead of going blank between sessions.
+  for (let daysAgo = 0; daysAgo < 14; daysAgo++) {
+    const queryDate = taipeiDateString(daysAgo);
+    for (const marketCode of ["0", "1"] as const) {
+      try {
+        const r = await fetch(
+          `https://www.taifex.com.tw/cht/3/futDailyMarketReport?queryType=2&marketCode=${marketCode}&commodity_id=TX&queryDate=${encodeURIComponent(queryDate)}`,
+          { headers: { "User-Agent": UA, Accept: "text/html,*/*" } },
+        );
+        if (!r.ok) continue;
+        const html = await r.text();
+        const rowMatch = html.match(/<tr[^>]*>\s*<td[^>]*>\s*TX\s*<\/td>[\s\S]*?<\/tr>/i);
+        if (!rowMatch) continue;
+        const cells = [...rowMatch[0].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)].map((m) =>
+          m[1].replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").trim(),
+        );
+        // Daily regular table: TX, month, open, high, low, last, diff, pct...
+        const price = parseMarketNumber(cells[5]);
+        const changePct = parseTaifexPercent(cells[7]);
+        if (price != null && changePct != null) return { symbol: TAIFEX_TWN_F_SYMBOL, name, price, changePct };
+      } catch (error) {
+        console.error("[market-pulse] TAIFEX daily fallback failed", queryDate, marketCode, error);
+      }
+    }
+  }
+  return null;
+}
+
 async function fetchTaifexTaiwanFuturesSnap(name: string): Promise<QuoteSnap> {
   // TAIFEX runs a day session (08:45–13:45 Taipei) and a night session
   // (15:00–05:00 next day Taipei). Between sessions there is no live tick, so
@@ -222,14 +285,25 @@ async function fetchTaifexTaiwanFuturesSnap(name: string): Promise<QuoteSnap> {
     const j: any = await r.json();
     return (j?.RtData?.QuoteList ?? []) as any[];
   };
-  const [day, night] = await Promise.all([fetchSide("0"), fetchSide("1")]);
+  const [day, night] = await Promise.all([fetchSide("0"), fetchSide("1")]).catch((error) => {
+    console.error("[market-pulse] TAIFEX live quote failed", error);
+    return [[], []] as any[][];
+  });
   const rows = [
     ...day.map((row) => ({ ...row, __marketType: "0" })),
     ...night.map((row) => ({ ...row, __marketType: "1" })),
   ]
     .filter((row) => row?.SymbolID?.startsWith("TXF") && row?.SymbolID !== "TXF-S" && row?.SymbolID !== "TXF-P")
     .filter((row) => Number.isFinite(Number(row.CLastPrice)) && Number.isFinite(Number(row.CRefPrice)) && Number(row.CRefPrice) > 0);
-  if (!rows.length) return { symbol: "TAIFEX:TXF", name, price: null, changePct: null };
+  if (!rows.length) {
+    const fallback = await fetchTaifexDailyTaiwanFuturesSnap(name);
+    if (fallback) {
+      lastTaiwanFuturesSnap = fallback;
+      return fallback;
+    }
+    if (lastTaiwanFuturesSnap) return { ...lastTaiwanFuturesSnap, name };
+    return { symbol: TAIFEX_TWN_F_SYMBOL, name, price: null, changePct: null };
+  }
   const tsKey = (row: any) => {
     const d = String(row.CDate ?? "").padStart(8, "0");
     const t = String(row.CTime ?? "").padStart(6, "0");
@@ -254,7 +328,9 @@ async function fetchTaifexTaiwanFuturesSnap(name: string): Promise<QuoteSnap> {
     .sort((a, b) => Number(b.CTotalVolume || 0) - Number(a.CTotalVolume || 0))[0];
   const price = Number(front.CLastPrice);
   const prev = Number(front.CRefPrice);
-  return { symbol: "TAIFEX:TXF", name, price, changePct: ((price - prev) / prev) * 100 };
+  const snap = { symbol: TAIFEX_TWN_F_SYMBOL, name, price, changePct: ((price - prev) / prev) * 100 };
+  lastTaiwanFuturesSnap = snap;
+  return snap;
 }
 
 async function fetchNaverKospiSnap(name: string): Promise<QuoteSnap> {
