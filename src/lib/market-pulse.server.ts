@@ -246,15 +246,23 @@ async function fetchTaifexDailyTaiwanFuturesSnap(name: string): Promise<QuoteSna
         );
         if (!r.ok) continue;
         const html = await r.text();
-        const rowMatch = html.match(/<tr[^>]*>\s*<td[^>]*>\s*TX\s*<\/td>[\s\S]*?<\/tr>/i);
-        if (!rowMatch) continue;
-        const cells = [...rowMatch[0].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)].map((m) =>
-          m[1].replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").trim(),
-        );
-        // Daily regular table: TX, month, open, high, low, last, diff, pct...
-        const price = parseMarketNumber(cells[5]);
-        const changePct = parseTaifexPercent(cells[7]);
-        if (price != null && changePct != null) return { symbol: TAIFEX_TWN_F_SYMBOL, name, price, changePct };
+        const rows = [...html.matchAll(/<tr[^>]*>[\s\S]*?<\/tr>/gi)];
+        for (const row of rows) {
+          const cells = [...row[0].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)].map((m) =>
+            m[1]
+              .replace(/<[^>]+>/g, " ")
+              .replace(/&nbsp;/g, " ")
+              .replace(/\s+/g, " ")
+              .trim(),
+          );
+          // Daily regular table: TX, month, open, high, low, last, diff, pct...
+          if (cells[0] !== "TX" || !/^\d{6}/.test(cells[1] ?? "")) continue;
+          const price = parseMarketNumber(cells[5]);
+          const changePct = parseTaifexPercent(cells[7]);
+          if (price != null && price > 0 && changePct != null) {
+            return { symbol: TAIFEX_TWN_F_SYMBOL, name, price, changePct };
+          }
+        }
       } catch (error) {
         console.error("[market-pulse] TAIFEX daily fallback failed", queryDate, marketCode, error);
       }
@@ -285,22 +293,39 @@ async function fetchTaifexTaiwanFuturesSnap(name: string): Promise<QuoteSnap> {
     const j: any = await r.json();
     return (j?.RtData?.QuoteList ?? []) as any[];
   };
-  const [day, night] = await Promise.all([fetchSide("0"), fetchSide("1")]).catch((error) => {
-    console.error("[market-pulse] TAIFEX live quote failed", error);
-    return [[], []] as any[][];
-  });
+  const [day, night] = await Promise.all([
+    fetchSide("0").catch((error) => {
+      console.error("[market-pulse] TAIFEX day quote failed", error);
+      return [] as any[];
+    }),
+    fetchSide("1").catch((error) => {
+      console.error("[market-pulse] TAIFEX night quote failed", error);
+      return [] as any[];
+    }),
+  ]);
   const rows = [
     ...day.map((row) => ({ ...row, __marketType: "0" })),
     ...night.map((row) => ({ ...row, __marketType: "1" })),
   ]
     .filter((row) => row?.SymbolID?.startsWith("TXF") && row?.SymbolID !== "TXF-S" && row?.SymbolID !== "TXF-P")
-    .filter(
-      (row) =>
-        Number.isFinite(Number(row.CLastPrice)) &&
-        Number(row.CLastPrice) > 0 &&
-        Number.isFinite(Number(row.CRefPrice)) &&
-        Number(row.CRefPrice) > 0,
-    );
+    .map((row) => {
+      const last = parseMarketNumber(row.CLastPrice);
+      const settlement = parseMarketNumber(row.SettlementPrice);
+      const ref = parseMarketNumber(row.CRefPrice);
+      const bid = parseMarketNumber(row.CBestBidPrice ?? row.CBidPrice1);
+      const ask = parseMarketNumber(row.CBestAskPrice ?? row.CAskPrice1);
+      const price = last && last > 0
+        ? last
+        : settlement && settlement > 0
+          ? settlement
+          : bid && ask && bid > 0 && ask > 0
+            ? (bid + ask) / 2
+            : ref && ref > 0
+              ? ref
+              : null;
+      return { ...row, __price: price, __ref: ref && ref > 0 ? ref : null };
+    })
+    .filter((row) => row.__price != null && row.__price > 0);
   if (!rows.length) {
     const fallback = await fetchTaifexDailyTaiwanFuturesSnap(name);
     if (fallback) {
@@ -332,9 +357,11 @@ async function fetchTaifexTaiwanFuturesSnap(name: string): Promise<QuoteSnap> {
   const front = rows
     .filter((row) => tsKey(row) === maxTs)
     .sort((a, b) => Number(b.CTotalVolume || 0) - Number(a.CTotalVolume || 0))[0];
-  const price = Number(front.CLastPrice);
-  const prev = Number(front.CRefPrice);
-  const snap = { symbol: TAIFEX_TWN_F_SYMBOL, name, price, changePct: ((price - prev) / prev) * 100 };
+  const price = Number(front.__price);
+  const prev = Number(front.__ref);
+  const quotedPct = parseTaifexPercent(front.CDiffRate);
+  const changePct = quotedPct ?? (Number.isFinite(prev) && prev > 0 ? ((price - prev) / prev) * 100 : null);
+  const snap = { symbol: TAIFEX_TWN_F_SYMBOL, name, price, changePct };
   lastTaiwanFuturesSnap = snap;
   return snap;
 }
