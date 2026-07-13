@@ -294,7 +294,13 @@ async function fetchTaifexTaiwanFuturesSnap(name: string): Promise<QuoteSnap> {
     ...night.map((row) => ({ ...row, __marketType: "1" })),
   ]
     .filter((row) => row?.SymbolID?.startsWith("TXF") && row?.SymbolID !== "TXF-S" && row?.SymbolID !== "TXF-P")
-    .filter((row) => Number.isFinite(Number(row.CLastPrice)) && Number.isFinite(Number(row.CRefPrice)) && Number(row.CRefPrice) > 0);
+    .filter(
+      (row) =>
+        Number.isFinite(Number(row.CLastPrice)) &&
+        Number(row.CLastPrice) > 0 &&
+        Number.isFinite(Number(row.CRefPrice)) &&
+        Number(row.CRefPrice) > 0,
+    );
   if (!rows.length) {
     const fallback = await fetchTaifexDailyTaiwanFuturesSnap(name);
     if (fallback) {
