@@ -734,6 +734,20 @@ export default function TradingPlatform() {
     try { localStorage.setItem(SCHWAB_TOKEN_KEY, JSON.stringify(t)); } catch {}
     try { sessionStorage.setItem(SCHWAB_TOKEN_KEY, JSON.stringify(t)); } catch {}
   }, []);
+
+  // Server-side "is a shared Schwab owner token stored?" check. This lets the
+  // UI show a connected state even when this tab's localStorage was wiped —
+  // e.g. Schwab OAuth redirected the user through the published origin so
+  // preview's localStorage never got the token, but the shared server row did.
+  const fetchHasShared = useServerFn(hasSharedSchwabToken);
+  const { data: sharedStatus } = useQuery({
+    queryKey: ["hasSharedSchwabToken"],
+    queryFn: () => fetchHasShared(),
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+  const sharedSchwabConnected = !!sharedStatus?.present;
+  const schwabConnected = !!schwabTokens || sharedSchwabConnected;
   const connectSchwab = useCallback(async () => {
     try {
       const redirectUri = `${window.location.origin}/auth/schwab/callback`;
