@@ -23,6 +23,7 @@ import { fetchOptionsActivity } from "@/lib/options.functions";
 import type { OptionsActivity } from "@/lib/options.server";
 import {
   getSchwabAuthUrl,
+  exchangeSchwabCode,
   getSchwabQuotes,
   refreshSchwabToken,
   getSchwabPriceHistory,
@@ -36,7 +37,7 @@ import {
   type SchwabTopStrikes,
   type SchwabOptionsLadder,
 } from "@/lib/schwab.functions";
-import { SCHWAB_CONNECT_STARTED_KEY, SCHWAB_TOKEN_KEY } from "@/routes/auth.schwab.callback";
+import { SCHWAB_CONNECTED_FLAG, SCHWAB_CONNECT_STARTED_KEY, SCHWAB_TOKEN_KEY } from "@/routes/auth.schwab.callback";
 import { fetchEconCalendar } from "@/lib/econ-calendar.functions";
 import {
   getSharedSchwabQuotes,
@@ -46,6 +47,7 @@ import {
   getSharedSchwabOptionsLadder,
   hasSharedSchwabToken,
   getFastOptionsLadder,
+  setSharedSchwabTokensPublic,
 } from "@/lib/schwab-shared.functions";
 import { detectTrap, type TrapResult } from "@/lib/trap-indicator";
 import { OptionsFlowChart } from "./OptionsFlowChart";
@@ -717,6 +719,8 @@ export default function TradingPlatform() {
 
   // ============ Schwab real-time quotes ============
   const fetchSchwabAuthUrl = useServerFn(getSchwabAuthUrl);
+  const exchangeSchwab = useServerFn(exchangeSchwabCode);
+  const persistSharedPublic = useServerFn(setSharedSchwabTokensPublic);
   const fetchSchwabQuotes = useServerFn(getSchwabQuotes);
   const refreshSchwab = useServerFn(refreshSchwabToken);
   const [schwabTokens, setSchwabTokens] = useState<SchwabTokens | null>(null);
@@ -742,6 +746,68 @@ export default function TradingPlatform() {
     try { sessionStorage.setItem(SCHWAB_TOKEN_KEY, JSON.stringify(t)); } catch {}
   }, []);
 
+  // Some Schwab apps are registered to the site root rather than
+  // /auth/schwab/callback. If Schwab returns to `/?code=...&state=...`, finish
+  // the OAuth exchange here, store the shared token, then clean the URL.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    const state = params.get("state");
+    const oauthError = params.get("error");
+    if (oauthError) {
+      setSchwabErr(`Schwab error: ${oauthError}`);
+      setSchwabConnecting(false);
+      try { localStorage.removeItem(SCHWAB_CONNECT_STARTED_KEY); } catch {}
+      return;
+    }
+    if (!code || !state) return;
+
+    let cancelled = false;
+    setSchwabErr(null);
+    setSchwabConnecting(true);
+    exchangeSchwab({ data: { code, state } })
+      .then(async (tokens) => {
+        if (cancelled) return;
+        persistTokens(tokens);
+        try { localStorage.setItem(SCHWAB_CONNECTED_FLAG, "1"); } catch {}
+        await persistSharedPublic({
+          data: {
+            accessToken: tokens.access_token,
+            refreshToken: tokens.refresh_token,
+            expiresIn: tokens.expires_in,
+            scope: tokens.scope,
+            tokenType: tokens.token_type,
+          },
+        });
+        if (cancelled) return;
+        try { localStorage.removeItem(SCHWAB_CONNECT_STARTED_KEY); } catch {}
+        setSchwabConnecting(false);
+        setSchwabErr(null);
+        queryClient.invalidateQueries({ queryKey: ["hasSharedSchwabToken"] });
+
+        const returnOrigin = tokens.return_origin && tokens.return_origin !== window.location.origin
+          ? tokens.return_origin
+          : null;
+        if (returnOrigin) {
+          window.location.assign(`${returnOrigin}/?schwab=connected`);
+          return;
+        }
+        const clean = new URL(window.location.href);
+        clean.searchParams.delete("code");
+        clean.searchParams.delete("state");
+        clean.searchParams.delete("error");
+        clean.searchParams.set("schwab", "connected");
+        window.history.replaceState(null, "", `${clean.pathname}${clean.search}${clean.hash}`);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setSchwabConnecting(false);
+        setSchwabErr(e instanceof Error ? e.message : String(e));
+      });
+
+    return () => { cancelled = true; };
+  }, [exchangeSchwab, persistSharedPublic, persistTokens, queryClient]);
+
   // Server-side "is a shared Schwab owner token stored?" check. This lets the
   // UI show a connected state even when this tab's localStorage was wiped —
   // e.g. Schwab OAuth redirected the user through the published origin so
@@ -766,7 +832,7 @@ export default function TradingPlatform() {
       setSchwabConnecting(true);
       try { localStorage.setItem(SCHWAB_CONNECT_STARTED_KEY, JSON.stringify({ ts: Date.now(), origin: window.location.origin })); } catch {}
       const { url } = await fetchSchwabAuthUrl({ data: { returnOrigin: window.location.origin } });
-      window.location.href = url;
+      window.location.assign(url);
     } catch (e) {
       setSchwabConnecting(false);
       setSchwabErr(e instanceof Error ? e.message : String(e));
@@ -2282,10 +2348,10 @@ export default function TradingPlatform() {
             <button
               type="button"
               onClick={connectSchwab}
-              title="Connect Schwab for real-time NBBO quotes"
+              title={schwabErr ? `Schwab error: ${schwabErr}` : "Connect Schwab for real-time NBBO quotes"}
               style={{ background: "rgba(57,211,83,0.12)", border: "1px solid #39d353", color: "#39d353", fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 4, cursor: "pointer", letterSpacing: 0.5, flexShrink: 0 }}
             >
-              {schwabConnecting ? "CHECKING SCHWAB…" : "CONNECT SCHWAB"}
+              {schwabConnecting ? "CHECKING SCHWAB…" : schwabErr ? "SCHWAB ERROR" : "CONNECT SCHWAB"}
             </button>
           )}
           {marketPulse?.vix?.price != null && (() => {
