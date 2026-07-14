@@ -25,6 +25,24 @@ function fmtVol(v: number): string {
   return `${v}`;
 }
 
+function fmtAsOf(iso: string): string {
+  const d = new Date(iso.length <= 19 ? iso + "Z" : iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString("en-US", {
+    timeZone: "America/New_York",
+    month: "short", day: "numeric",
+    hour: "numeric", minute: "2-digit",
+  }) + " ET";
+}
+
+function isPriorSessionET(iso: string): boolean {
+  const d = new Date(iso.length <= 19 ? iso + "Z" : iso);
+  if (Number.isNaN(d.getTime())) return false;
+  const feedDay = d.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  return feedDay < today;
+}
+
 type Props = {
   symbol: string;
   spot: number | null;
@@ -123,6 +141,17 @@ export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpi
       {noWeeklies && (
         <div style={{ padding: 8, marginBottom: 8, background: "#161b22", border: "1px solid #30363d", borderRadius: 4, fontSize: 10, color: "#e3b341" }}>
           ⚠ {symbol} has no weekly options — showing nearest monthly expiry ({ladder?.dte}D).
+        </div>
+      )}
+
+      {ladder?.asOf && isPriorSessionET(ladder.asOf) && (
+        <div style={{ padding: 8, marginBottom: 8, background: "#161b22", border: "1px solid #e3b341", borderRadius: 4, fontSize: 10, color: "#e3b341" }}>
+          ⚠ Public options feed hasn't rolled to today's session yet (last trade {fmtAsOf(ladder.asOf)}). Showing open-interest magnet until today's volume prints.
+        </div>
+      )}
+      {ladder?.asOf && !isPriorSessionET(ladder.asOf) && (
+        <div style={{ fontSize: 9, color: "#6e7681", fontFamily: mono, padding: "0 2px 6px" }}>
+          Feed as of {fmtAsOf(ladder.asOf)} · public options data is 15-min delayed
         </div>
       )}
 

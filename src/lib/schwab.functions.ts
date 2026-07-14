@@ -374,6 +374,10 @@ export type SchwabOptionsLadder = {
   //             intraday volume is 0 across all providers, e.g. illiquid
   //             tickers or pre-market). OI is stable so it won't flip.
   source?: "volume" | "oi";
+  // ISO timestamp of the newest trade in the underlying feed (best-effort,
+  // used to expose staleness in the UI — public feeds are 15-min delayed
+  // and don't always roll to the new session immediately after open).
+  asOf?: string | null;
 };
 
 function buildLadderFromChain(sym: string, json: any, expiryIndex = 0): SchwabOptionsLadder | null {
