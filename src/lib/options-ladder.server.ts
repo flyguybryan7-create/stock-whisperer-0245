@@ -37,6 +37,19 @@ function labelForExpiry(expiry: string) {
   return Number.isNaN(d.getTime()) ? expiry : `${d.toLocaleString("en-US", { month: "short", timeZone: "UTC" })} ${d.getUTCDate()}`;
 }
 
+// Today's date in America/New_York, formatted YYYY-MM-DD. Used to detect
+// public feeds that haven't rolled to the current session yet.
+function todayET(): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date());
+  const y = parts.find((p) => p.type === "year")!.value;
+  const m = parts.find((p) => p.type === "month")!.value;
+  const d = parts.find((p) => p.type === "day")!.value;
+  return `${y}-${m}-${d}`;
+}
+
 function finishLadder(args: {
   symbol: string;
   expiry: string;
@@ -44,6 +57,7 @@ function finishLadder(args: {
   spot: number | null;
   rungs: SchwabLadderRung[];
   alternateExpiries: { expiry: string; dte: number | null; label: string }[];
+  asOf?: string | null;
 }): SchwabOptionsLadder | null {
   const all = args.rungs.sort((a, b) => a.strike - b.strike);
   if (!all.length) return null;
@@ -126,6 +140,7 @@ function finishLadder(args: {
     ladder: trimmed,
     alternateExpiries: args.alternateExpiries,
     source,
+    asOf: args.asOf ?? null,
   };
 }
 
@@ -139,11 +154,17 @@ async function fetchCboe(symbol: string, expiryIndex: number): Promise<SchwabOpt
 
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
+  // Newest trade timestamp across the whole chain — used to detect
+  // prior-session snapshots (CBOE's public CDN often serves yesterday's
+  // data for a while after the new open).
+  let newestTradeIso: string | null = null;
   const byExpiry = new Map<string, { dte: number; rungs: Map<number, SchwabLadderRung> }>();
   for (const row of rows) {
     const raw = typeof row?.option === "string" ? row.option : "";
     const m = raw.match(/^(.+?)(\d{6})([CP])(\d{8})$/);
     if (!m) continue;
+    const ts = typeof row?.last_trade_time === "string" ? row.last_trade_time : "";
+    if (ts && (!newestTradeIso || ts > newestTradeIso)) newestTradeIso = ts;
     const yy = Number(m[2].slice(0, 2));
     const mm = Number(m[2].slice(2, 4));
     const dd = Number(m[2].slice(4, 6));
@@ -166,6 +187,19 @@ async function fetchCboe(symbol: string, expiryIndex: number): Promise<SchwabOpt
     byExpiry.set(expiry, bucket);
   }
 
+  // If the newest trade in the feed is from a prior ET session, the
+  // "volume" column is yesterday's cumulative — do not present it as
+  // live intraday flow. Zero the volumes so finishLadder falls back to
+  // OI-based magnet (stable, meaningful) and surface asOf so the UI can
+  // label the timestamp.
+  const today_et = todayET();
+  const staleSession = !!(newestTradeIso && newestTradeIso.slice(0, 10) < today_et);
+  if (staleSession) {
+    for (const bucket of byExpiry.values()) {
+      for (const r of bucket.rungs.values()) { r.callVol = 0; r.putVol = 0; }
+    }
+  }
+
   const expiries = Array.from(byExpiry.entries()).sort((a, b) => a[1].dte - b[1].dte);
   if (!expiries.length) return null;
   const idx = Math.min(Math.max(0, expiryIndex), expiries.length - 1);
@@ -177,6 +211,7 @@ async function fetchCboe(symbol: string, expiryIndex: number): Promise<SchwabOpt
     spot: Number.isFinite(json?.data?.current_price) ? Number(json.data.current_price) : null,
     rungs: Array.from(bucket.rungs.values()),
     alternateExpiries: expiries.slice(0, 8).map(([e, b]) => ({ expiry: e, dte: b.dte, label: labelForExpiry(e) })),
+    asOf: newestTradeIso,
   });
 }
 
@@ -243,6 +278,7 @@ async function fetchNasdaq(symbol: string, expiryIndex: number): Promise<SchwabO
     spot: null,
     rungs: Array.from(bucket.rungs.values()),
     alternateExpiries: expiries.slice(0, 8).map(([e, b]) => ({ expiry: e, dte: b.dte, label: labelForExpiry(e) })),
+    asOf: null,
   });
 }
 
