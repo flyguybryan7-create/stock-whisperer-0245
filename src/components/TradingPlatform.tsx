@@ -36,7 +36,7 @@ import {
   type SchwabTopStrikes,
   type SchwabOptionsLadder,
 } from "@/lib/schwab.functions";
-import { SCHWAB_TOKEN_KEY } from "@/routes/auth.schwab.callback";
+import { SCHWAB_CONNECT_STARTED_KEY, SCHWAB_TOKEN_KEY } from "@/routes/auth.schwab.callback";
 import { fetchEconCalendar } from "@/lib/econ-calendar.functions";
 import {
   getSharedSchwabQuotes,
@@ -721,12 +721,19 @@ export default function TradingPlatform() {
   const refreshSchwab = useServerFn(refreshSchwabToken);
   const [schwabTokens, setSchwabTokens] = useState<SchwabTokens | null>(null);
   const [schwabErr, setSchwabErr] = useState<string | null>(null);
+  const [schwabConnecting, setSchwabConnecting] = useState(false);
   useEffect(() => {
     try {
       // Prefer localStorage (survives closing the OAuth tab); fall back to
       // sessionStorage for legacy sessions.
       const raw = localStorage.getItem(SCHWAB_TOKEN_KEY) || sessionStorage.getItem(SCHWAB_TOKEN_KEY);
       if (raw) setSchwabTokens(JSON.parse(raw) as SchwabTokens);
+      const startedRaw = localStorage.getItem(SCHWAB_CONNECT_STARTED_KEY);
+      if (startedRaw) {
+        const started = JSON.parse(startedRaw) as { ts?: number };
+        if (started.ts && Date.now() - started.ts < 15 * 60 * 1000) setSchwabConnecting(true);
+        else localStorage.removeItem(SCHWAB_CONNECT_STARTED_KEY);
+      }
     } catch {}
   }, []);
   const persistTokens = useCallback((t: SchwabTokens) => {
@@ -742,18 +749,26 @@ export default function TradingPlatform() {
   const fetchHasShared = useServerFn(hasSharedSchwabToken);
   const { data: sharedStatus } = useQuery({
     queryKey: ["hasSharedSchwabToken"],
-    queryFn: () => fetchHasShared(),
-    refetchInterval: 30_000,
+    queryFn: async () => (await fetchHasShared()) ?? { present: false as const },
+    refetchInterval: schwabConnecting ? 3_000 : 30_000,
     staleTime: 15_000,
   });
   const sharedSchwabConnected = !!sharedStatus?.present;
   const schwabConnected = !!schwabTokens || sharedSchwabConnected;
+  useEffect(() => {
+    if (!sharedSchwabConnected && !schwabTokens) return;
+    setSchwabConnecting(false);
+    try { localStorage.removeItem(SCHWAB_CONNECT_STARTED_KEY); } catch {}
+  }, [sharedSchwabConnected, schwabTokens]);
   const connectSchwab = useCallback(async () => {
     try {
-      const redirectUri = `${window.location.origin}/auth/schwab/callback`;
-      const { url } = await fetchSchwabAuthUrl({ data: { redirectUri } });
+      setSchwabErr(null);
+      setSchwabConnecting(true);
+      try { localStorage.setItem(SCHWAB_CONNECT_STARTED_KEY, JSON.stringify({ ts: Date.now(), origin: window.location.origin })); } catch {}
+      const { url } = await fetchSchwabAuthUrl({ data: { returnOrigin: window.location.origin } });
       window.location.href = url;
     } catch (e) {
+      setSchwabConnecting(false);
       setSchwabErr(e instanceof Error ? e.message : String(e));
     }
   }, [fetchSchwabAuthUrl]);
@@ -1031,7 +1046,7 @@ export default function TradingPlatform() {
   const fetchSharedQuotes = useServerFn(getSharedSchwabQuotes);
   const { data: sharedQuoteData } = useQuery({
     queryKey: ["sharedSchwabQuotes", [...watchlist].sort().join(",")],
-    queryFn: () => fetchSharedQuotes({ data: { symbols: watchlist.length ? watchlist : [selectedStock] } }),
+    queryFn: async () => (await fetchSharedQuotes({ data: { symbols: watchlist.length ? watchlist : [selectedStock] } })) ?? null,
     enabled: watchlist.length > 0,
     refetchInterval: 500,
     refetchIntervalInBackground: true,
@@ -1040,7 +1055,7 @@ export default function TradingPlatform() {
   const fetchSharedFund = useServerFn(getSharedSchwabFundamentals);
   const { data: sharedFundData } = useQuery({
     queryKey: ["sharedSchwabFundamentals", [...watchlist].sort().join(",")],
-    queryFn: () => fetchSharedFund({ data: { symbols: watchlist } }),
+    queryFn: async () => (await fetchSharedFund({ data: { symbols: watchlist } })) ?? null,
     enabled: watchlist.length > 0,
     refetchInterval: 10 * 60_000,
     staleTime: 10 * 60_000,
@@ -1049,7 +1064,7 @@ export default function TradingPlatform() {
   const sharedStrikesTodayKey = new Date().toISOString().slice(0, 10);
   const { data: sharedStrikesData } = useQuery({
     queryKey: ["sharedSchwabStrikes", selectedStock, sharedStrikesTodayKey],
-    queryFn: () => fetchSharedStrikes({ data: { symbol: selectedStock } }),
+    queryFn: async () => (await fetchSharedStrikes({ data: { symbol: selectedStock } })) ?? null,
     enabled: !!selectedStock,
     refetchInterval: 10_000,
     refetchIntervalInBackground: true,
@@ -1060,7 +1075,7 @@ export default function TradingPlatform() {
     queryKey: ["sharedSchwabHistory", selectedStock, intradayInterval],
     queryFn: () => {
       const freq = intradayInterval === "1m" ? 1 : intradayInterval === "2m" ? 1 : intradayInterval === "5m" ? 5 : 15;
-      return fetchSharedHistory({ data: { symbol: selectedStock, minutes: freq as 1 | 5 | 10 | 15 | 30, days: 2 } });
+      return fetchSharedHistory({ data: { symbol: selectedStock, minutes: freq as 1 | 5 | 10 | 15 | 30, days: 2 } }).then((r) => r ?? null);
     },
     enabled: intradayRange === "24H" && !schwabTokens?.access_token,
     refetchInterval: 15_000,
@@ -1071,7 +1086,7 @@ export default function TradingPlatform() {
   const fetchSharedLadder = useServerFn(getSharedSchwabOptionsLadder);
   const { data: sharedLadderData } = useQuery({
     queryKey: ["sharedSchwabLadder", selectedStock, sharedStrikesTodayKey, ladderExpiryIndex],
-    queryFn: () => fetchSharedLadder({ data: { symbol: selectedStock, expiryIndex: ladderExpiryIndex } }),
+    queryFn: async () => (await fetchSharedLadder({ data: { symbol: selectedStock, expiryIndex: ladderExpiryIndex } })) ?? null,
     enabled: !!selectedStock,
     refetchInterval: 3_000,
     refetchIntervalInBackground: true,
@@ -2270,7 +2285,7 @@ export default function TradingPlatform() {
               title="Connect Schwab for real-time NBBO quotes"
               style={{ background: "rgba(57,211,83,0.12)", border: "1px solid #39d353", color: "#39d353", fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 4, cursor: "pointer", letterSpacing: 0.5, flexShrink: 0 }}
             >
-              CONNECT SCHWAB
+              {schwabConnecting ? "CHECKING SCHWAB…" : "CONNECT SCHWAB"}
             </button>
           )}
           {marketPulse?.vix?.price != null && (() => {
