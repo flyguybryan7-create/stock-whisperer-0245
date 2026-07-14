@@ -44,6 +44,7 @@ import {
   getSharedSchwabTopStrikes,
   getSharedSchwabPriceHistory,
   getSharedSchwabOptionsLadder,
+  hasSharedSchwabToken,
   getFastOptionsLadder,
 } from "@/lib/schwab-shared.functions";
 import { detectTrap, type TrapResult } from "@/lib/trap-indicator";
