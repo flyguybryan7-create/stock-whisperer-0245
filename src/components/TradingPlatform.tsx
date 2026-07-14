@@ -2244,12 +2244,18 @@ export default function TradingPlatform() {
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#39d353", animation: "pulse 2s infinite" }} />
             LIVE
           </div>
-          {schwabTokens ? (
+          {schwabConnected ? (
             <span
-              title={schwabErr ? `Schwab error: ${schwabErr}` : `Schwab real-time quote for ${selectedStock}`}
+              title={
+                schwabErr
+                  ? `Schwab error: ${schwabErr}`
+                  : schwabTokens
+                    ? `Schwab real-time quote for ${selectedStock}`
+                    : `Schwab connected via shared owner feed (this tab has no local token — that's OK, data is live)`
+              }
               style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, color: "#39d353", border: "1px solid #39d353", borderRadius: 4, padding: "2px 6px", flexShrink: 0 }}
             >
-              <span style={{ color: "#8b949e", fontWeight: 800 }}>SCHWAB</span>
+              <span style={{ color: "#8b949e", fontWeight: 800 }}>{schwabTokens ? "SCHWAB" : "SCHWAB·SHARED"}</span>
               {schwabQuote?.last != null ? `$${schwabQuote.last.toFixed(2)}` : "—"}
               {schwabQuote?.bid != null && schwabQuote?.ask != null && (
                 <span style={{ color: "#8b949e", fontWeight: 700 }}>
