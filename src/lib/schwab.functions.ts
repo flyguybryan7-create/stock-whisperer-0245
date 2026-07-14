@@ -1,46 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { getSchwabRedirectUri, SCHWAB_AUTHORIZE_URL, SCHWAB_TOKEN_URL, signSchwabState, verifySchwabState } from "./schwab-oauth.server";
 
 /**
  * Schwab OAuth helpers.
  * Requires SCHWAB_CLIENT_ID and SCHWAB_CLIENT_SECRET as runtime secrets.
  * Callback URL registered with Schwab must match the one passed in here exactly.
  */
-
-const AUTHORIZE_URL = "https://api.schwabapi.com/v1/oauth/authorize";
-const TOKEN_URL = "https://api.schwabapi.com/v1/oauth/token";
-// Max age for a signed OAuth state (10 min).
-const STATE_MAX_AGE_MS = 10 * 60 * 1000;
-
-function stateSecret(): string {
-  // Reuse the Schwab client secret as HMAC key so we don't need a new env var.
-  // The state is not a bearer credential — it only prevents CSRF replay.
-  const s = process.env.SCHWAB_CLIENT_SECRET;
-  if (!s) throw new Error("SCHWAB_CLIENT_SECRET is not configured");
-  return s;
-}
-
-function signState(nonce: string, ts: number): string {
-  const payload = `${nonce}.${ts}`;
-  const sig = createHmac("sha256", stateSecret()).update(payload).digest("base64url");
-  return `${payload}.${sig}`;
-}
-
-function verifyState(state: string): boolean {
-  const parts = state.split(".");
-  if (parts.length !== 3) return false;
-  const [nonce, tsStr, sig] = parts;
-  const ts = Number(tsStr);
-  if (!Number.isFinite(ts)) return false;
-  if (Date.now() - ts > STATE_MAX_AGE_MS) return false;
-  const expected = createHmac("sha256", stateSecret()).update(`${nonce}.${ts}`).digest("base64url");
-  try {
-    const a = Buffer.from(sig);
-    const b = Buffer.from(expected);
-    if (a.length !== b.length) return false;
-    return timingSafeEqual(a, b);
-  } catch { return false; }
-}
 
 export type SchwabTokens = {
   access_token: string;
@@ -49,30 +14,32 @@ export type SchwabTokens = {
   token_type: string;
   scope?: string;
   obtained_at: number;
+  return_origin?: string | null;
 };
 
 export const getSchwabAuthUrl = createServerFn({ method: "POST" })
-  .inputValidator((d: { redirectUri: string }) => d)
+  .inputValidator((d: { returnOrigin?: string } | undefined) => d ?? {})
   .handler(async ({ data }) => {
     const clientId = process.env.SCHWAB_CLIENT_ID;
     if (!clientId) throw new Error("SCHWAB_CLIENT_ID is not configured");
-    // Stateless HMAC-signed state so validation works even when Schwab
-    // redirects to a different origin than the one that started the flow
-    // (e.g. preview → published callback registered with Schwab).
-    const nonce = crypto.randomUUID();
-    const state = signState(nonce, Date.now());
-    const url = new URL(AUTHORIZE_URL);
+    // Always send Schwab the canonical callback that should be registered in
+    // the Schwab developer app. The starting origin is signed into state only
+    // so the callback can return the user to the tab/app they started from.
+    const redirectUri = getSchwabRedirectUri();
+    const state = signSchwabState(data.returnOrigin);
+    const url = new URL(SCHWAB_AUTHORIZE_URL);
     url.searchParams.set("client_id", clientId);
-    url.searchParams.set("redirect_uri", data.redirectUri);
+    url.searchParams.set("redirect_uri", redirectUri);
     url.searchParams.set("response_type", "code");
     url.searchParams.set("state", state);
-    return { url: url.toString() };
+    return { url: url.toString(), redirectUri };
   });
 
 export const exchangeSchwabCode = createServerFn({ method: "POST" })
-  .inputValidator((d: { code: string; redirectUri: string; state: string }) => d)
+  .inputValidator((d: { code: string; state: string }) => d)
   .handler(async ({ data }): Promise<SchwabTokens> => {
-    if (!data.state || !verifyState(data.state)) {
+    const stateResult = data.state ? verifySchwabState(data.state) : { ok: false as const };
+    if (!stateResult.ok) {
       throw new Error("Invalid OAuth state — possible CSRF. Please retry sign-in.");
     }
     const clientId = process.env.SCHWAB_CLIENT_ID;
@@ -83,9 +50,9 @@ export const exchangeSchwabCode = createServerFn({ method: "POST" })
     const body = new URLSearchParams({
       grant_type: "authorization_code",
       code: data.code,
-      redirect_uri: data.redirectUri,
+      redirect_uri: getSchwabRedirectUri(),
     });
-    const res = await fetch(TOKEN_URL, {
+    const res = await fetch(SCHWAB_TOKEN_URL, {
       method: "POST",
       headers: {
         Authorization: `Basic ${basic}`,
@@ -96,7 +63,7 @@ export const exchangeSchwabCode = createServerFn({ method: "POST" })
     const text = await res.text();
     if (!res.ok) throw new Error(`Schwab token exchange failed (${res.status}): ${text.slice(0, 300)}`);
     const json = JSON.parse(text);
-    return { ...json, obtained_at: Date.now() };
+    return { ...json, obtained_at: Date.now(), return_origin: stateResult.returnOrigin };
   });
 
 export type SchwabQuote = {
@@ -178,7 +145,7 @@ export const refreshSchwabToken = createServerFn({ method: "POST" })
       grant_type: "refresh_token",
       refresh_token: data.refreshToken,
     });
-    const res = await fetch(TOKEN_URL, {
+    const res = await fetch(SCHWAB_TOKEN_URL, {
       method: "POST",
       headers: {
         Authorization: `Basic ${basic}`,

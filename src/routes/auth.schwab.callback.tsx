@@ -6,6 +6,7 @@ import { setOwnerSchwabTokens, setSharedSchwabTokensPublic } from "@/lib/schwab-
 
 export const SCHWAB_TOKEN_KEY = "bryantrade.schwab.tokens.v1";
 export const SCHWAB_CONNECTED_FLAG = "bryantrade.schwab.connected.v1";
+export const SCHWAB_CONNECT_STARTED_KEY = "bryantrade.schwab.connect.started.v1";
 
 export const Route = createFileRoute("/auth/schwab/callback")({
   component: SchwabCallback,
@@ -19,6 +20,7 @@ function SchwabCallback() {
   const [status, setStatus] = useState("Completing Schwab sign-in…");
   const [done, setDone] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [returnHref, setReturnHref] = useState("/");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -28,9 +30,8 @@ function SchwabCallback() {
     if (err) { setStatus(`Schwab error: ${err}`); setFailed(true); return; }
     if (!code) { setStatus("Missing authorization code."); setFailed(true); return; }
     if (!state) { setStatus("Missing OAuth state."); setFailed(true); return; }
-    const redirectUri = `${window.location.origin}/auth/schwab/callback`;
-    exchange({ data: { code, redirectUri, state } })
-      .then((tokens) => {
+    exchange({ data: { code, state } })
+      .then(async (tokens) => {
         // Persist tokens to localStorage so closing the Schwab tab and coming
         // back to BryanTrade keeps the connection alive (sessionStorage was
         // dropping the token when the user X-ed the OAuth tab).
@@ -50,16 +51,28 @@ function SchwabCallback() {
         // Always persist to the public shared-owner row so the OptionsFlow /
         // shared Schwab feed keeps working across sessions and devices even
         // when nobody is signed into BryanTrade.
-        persistSharedPublic({ data: payload })
+        await persistSharedPublic({ data: payload })
           .then(() => console.info("[schwab] public shared owner token persisted"))
-          .catch((e) => console.warn("[schwab] could not persist public shared token", e));
+          .catch((e) => {
+            console.warn("[schwab] could not persist public shared token", e);
+            throw e;
+          });
         // Additionally persist per-user if the caller is signed into BryanTrade.
-        persistOwner({ data: payload })
+        void persistOwner({ data: payload })
           .then(() => console.info("[schwab] per-user owner token persisted"))
           .catch((e) => console.warn("[schwab] could not persist per-user owner token", e));
-        setStatus("✅ Schwab connected — redirecting…");
+        try { localStorage.removeItem(SCHWAB_CONNECT_STARTED_KEY); } catch {}
+        const returnOrigin = tokens.return_origin && tokens.return_origin !== window.location.origin
+          ? tokens.return_origin
+          : null;
+        const destination = returnOrigin ? `${returnOrigin}/?schwab=connected` : "/?schwab=connected";
+        setReturnHref(destination);
+        setStatus("✅ Schwab connected — returning to BryanTrade…");
         setDone(true);
-        setTimeout(() => navigate({ to: "/" }), 800);
+        setTimeout(() => {
+          if (returnOrigin) window.location.href = destination;
+          else navigate({ to: "/" });
+        }, 900);
       })
       .catch((e) => {
         setStatus(`Failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -74,7 +87,7 @@ function SchwabCallback() {
         <div style={{ fontSize: 16, marginBottom: 16 }}>{status}</div>
         {(done || failed) && (
           <a
-            href="/"
+            href={returnHref}
             style={{
               display: "inline-block",
               padding: "10px 16px",
