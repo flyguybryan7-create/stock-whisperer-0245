@@ -973,9 +973,9 @@ export default function TradingPlatform() {
       }
     },
     enabled: !!schwabTokens?.access_token && !!selectedStock,
-    refetchInterval: 10_000,
+    refetchInterval: 3_000,
     refetchIntervalInBackground: true,
-    staleTime: 5_000,
+    staleTime: 1_500,
   });
   const schwabTopStrikesPerUser = (schwabStrikesData as SchwabTopStrikes | null) ?? null;
 
@@ -1057,9 +1057,9 @@ export default function TradingPlatform() {
     queryKey: ["sharedSchwabLadder", selectedStock, sharedStrikesTodayKey, ladderExpiryIndex],
     queryFn: () => fetchSharedLadder({ data: { symbol: selectedStock, expiryIndex: ladderExpiryIndex } }),
     enabled: !!selectedStock,
-    refetchInterval: 10_000,
+    refetchInterval: 3_000,
     refetchIntervalInBackground: true,
-    staleTime: 5_000,
+    staleTime: 1_500,
   });
 
   // Cached public fallback: CBOE first, Nasdaq fallback. One request replaces

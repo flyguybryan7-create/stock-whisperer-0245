@@ -5,7 +5,9 @@ const UA =
 
 type CacheEntry = { value: SchwabOptionsLadder | null; at: number };
 
-const FRESH_MS = 10_000;
+// Public feeds (CBOE / Nasdaq) are 15-min delayed, so a short cache is fine —
+// this only throttles our outbound requests, not data freshness.
+const FRESH_MS = 5_000;
 const STALE_MS = 60_000;
 const cache = new Map<string, CacheEntry>();
 const inflight = new Map<string, Promise<SchwabOptionsLadder | null>>();
