@@ -2672,8 +2672,11 @@ export default function TradingPlatform() {
                       SHORT/FLOAT <span style={{ color: siColor, fontWeight: 800 }}>{pct != null ? `${pct.toFixed(1)}%` : "—"}</span>
                       {effectiveRisk && effectiveRisk !== "UNKNOWN" && <span style={{ color: siColor, fontSize: 8, marginLeft: 3 }}>{effectiveRisk}</span>}
                     </span>
-                    {si?.sharesOutstanding != null && (
-                      <span title="Total shares outstanding">SHARES OUT <span style={{ color: "#e6edf3", fontWeight: 700 }}>{fmtM(si.sharesOutstanding)}</span></span>
+                    <span title="Total shares outstanding (all issued shares)">
+                      SHARES OUT <span style={{ color: "#e6edf3", fontWeight: 700 }}>{si?.sharesOutstanding != null ? fmtM(si.sharesOutstanding) : "—"}</span>
+                    </span>
+                    {si?.floatShares != null && (
+                      <span title="Public float (shares available to trade)">FLOAT <span style={{ color: "#e6edf3", fontWeight: 700 }}>{fmtM(si.floatShares)}</span></span>
                     )}
                     {last.volume != null && last.volume > 0 && (
                       <span title="Latest daily volume (shares traded)">VOL <span style={{ color: "#e6edf3", fontWeight: 700 }}>{fmtM(last.volume)}</span></span>
