@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { setCookie, getCookie, deleteCookie } from "@tanstack/react-start/server";
+import { createHmac, timingSafeEqual } from "node:crypto";
 
 /**
  * Schwab OAuth helpers.
@@ -9,7 +9,38 @@ import { setCookie, getCookie, deleteCookie } from "@tanstack/react-start/server
 
 const AUTHORIZE_URL = "https://api.schwabapi.com/v1/oauth/authorize";
 const TOKEN_URL = "https://api.schwabapi.com/v1/oauth/token";
-const STATE_COOKIE = "schwab_oauth_state";
+// Max age for a signed OAuth state (10 min).
+const STATE_MAX_AGE_MS = 10 * 60 * 1000;
+
+function stateSecret(): string {
+  // Reuse the Schwab client secret as HMAC key so we don't need a new env var.
+  // The state is not a bearer credential — it only prevents CSRF replay.
+  const s = process.env.SCHWAB_CLIENT_SECRET;
+  if (!s) throw new Error("SCHWAB_CLIENT_SECRET is not configured");
+  return s;
+}
+
+function signState(nonce: string, ts: number): string {
+  const payload = `${nonce}.${ts}`;
+  const sig = createHmac("sha256", stateSecret()).update(payload).digest("base64url");
+  return `${payload}.${sig}`;
+}
+
+function verifyState(state: string): boolean {
+  const parts = state.split(".");
+  if (parts.length !== 3) return false;
+  const [nonce, tsStr, sig] = parts;
+  const ts = Number(tsStr);
+  if (!Number.isFinite(ts)) return false;
+  if (Date.now() - ts > STATE_MAX_AGE_MS) return false;
+  const expected = createHmac("sha256", stateSecret()).update(`${nonce}.${ts}`).digest("base64url");
+  try {
+    const a = Buffer.from(sig);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length) return false;
+    return timingSafeEqual(a, b);
+  } catch { return false; }
+}
 
 export type SchwabTokens = {
   access_token: string;
@@ -25,14 +56,11 @@ export const getSchwabAuthUrl = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const clientId = process.env.SCHWAB_CLIENT_ID;
     if (!clientId) throw new Error("SCHWAB_CLIENT_ID is not configured");
-    const state = crypto.randomUUID();
-    setCookie(STATE_COOKIE, state, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 10,
-    });
+    // Stateless HMAC-signed state so validation works even when Schwab
+    // redirects to a different origin than the one that started the flow
+    // (e.g. preview → published callback registered with Schwab).
+    const nonce = crypto.randomUUID();
+    const state = signState(nonce, Date.now());
     const url = new URL(AUTHORIZE_URL);
     url.searchParams.set("client_id", clientId);
     url.searchParams.set("redirect_uri", data.redirectUri);
@@ -44,11 +72,9 @@ export const getSchwabAuthUrl = createServerFn({ method: "POST" })
 export const exchangeSchwabCode = createServerFn({ method: "POST" })
   .inputValidator((d: { code: string; redirectUri: string; state: string }) => d)
   .handler(async ({ data }): Promise<SchwabTokens> => {
-    const expected = getCookie(STATE_COOKIE);
-    if (!expected || !data.state || expected !== data.state) {
+    if (!data.state || !verifyState(data.state)) {
       throw new Error("Invalid OAuth state — possible CSRF. Please retry sign-in.");
     }
-    deleteCookie(STATE_COOKIE, { path: "/" });
     const clientId = process.env.SCHWAB_CLIENT_ID;
     const clientSecret = process.env.SCHWAB_CLIENT_SECRET;
     if (!clientId || !clientSecret) throw new Error("Schwab credentials not configured");
