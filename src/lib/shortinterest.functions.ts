@@ -61,18 +61,31 @@ async function fetchNasdaqShort(symbol: string): Promise<{ sharesShort: number |
 // Float + shares outstanding via stockanalysis.com public API
 async function fetchFloat(symbol: string): Promise<{ float: number | null; sharesOut: number | null }> {
   try {
-    const url = `https://stockanalysis.com/api/symbol/s/${encodeURIComponent(symbol.toLowerCase())}/statistics`;
-    const res = await fetch(url, { headers: { "User-Agent": UA, Accept: "application/json" } });
+    const url = `https://stockanalysis.com/stocks/${encodeURIComponent(symbol.toLowerCase())}/statistics/`;
+    const res = await fetch(url, { headers: { "User-Agent": UA, Accept: "text/html" } });
     if (!res.ok) return { float: null, sharesOut: null };
-    const json = (await res.json()) as {
-      data?: { shares?: { data?: Array<{ id?: string; value?: string; hover?: string }> } };
+    const html = await res.text();
+    const findByHover = (id: string): number | null => {
+      const re = new RegExp(`id:"${id}"[^}]*?hover:"([^"]+)"`, "i");
+      const m = html.match(re);
+      if (m) return parseNum(m[1]);
+      const re2 = new RegExp(`id:"${id}"[^}]*?value:"([^"]+)"`, "i");
+      const m2 = html.match(re2);
+      return m2 ? parseNum(m2[1]) : null;
     };
-    const rows = json.data?.shares?.data ?? [];
-    const findVal = (id: string) => {
-      const r = rows.find((x) => x.id === id);
-      return r ? parseNum(r.hover ?? r.value ?? null) : null;
-    };
-    return { float: findVal("float"), sharesOut: findVal("sharesout") };
+    let float = findByHover("float");
+    let sharesOut = findByHover("sharesout");
+    // ETFs / secondary listings
+    if (sharesOut == null) {
+      const url2 = `https://stockanalysis.com/etf/${encodeURIComponent(symbol.toLowerCase())}/statistics/`;
+      const res2 = await fetch(url2, { headers: { "User-Agent": UA, Accept: "text/html" } });
+      if (res2.ok) {
+        const html2 = await res2.text();
+        const m = html2.match(/id:"sharesout"[^}]*?hover:"([^"]+)"/i);
+        if (m) sharesOut = parseNum(m[1]);
+      }
+    }
+    return { float, sharesOut };
   } catch {
     return { float: null, sharesOut: null };
   }
