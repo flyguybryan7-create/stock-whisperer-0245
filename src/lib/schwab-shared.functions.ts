@@ -149,6 +149,28 @@ export const setSharedSchwabTokensPublic = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// ============ Shared token presence check (public) ============
+// Any origin (preview or published) can call this to know whether a shared
+// Schwab owner token is stored server-side. Used by the UI to show a
+// "Schwab connected" state even when the current tab's localStorage is empty
+// — e.g. after OAuth redirected the user through a different origin.
+export const hasSharedSchwabToken = createServerFn({ method: "GET" }).handler(async () => {
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data, error } = await supabaseAdmin
+      .from("schwab_owner_tokens")
+      .select("user_id, expires_at")
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return { present: false as const };
+    return { present: true as const, expiresAt: (data as { expires_at: string }).expires_at };
+  } catch (e) {
+    console.error("[schwab-shared] hasSharedSchwabToken", e);
+    return { present: false as const };
+  }
+});
+
 // ============ Shared quotes (public) ============
 export const getSharedSchwabQuotes = createServerFn({ method: "POST" })
   .inputValidator((d: { symbols: string[] }) => d)

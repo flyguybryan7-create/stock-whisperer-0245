@@ -44,6 +44,7 @@ import {
   getSharedSchwabTopStrikes,
   getSharedSchwabPriceHistory,
   getSharedSchwabOptionsLadder,
+  hasSharedSchwabToken,
   getFastOptionsLadder,
 } from "@/lib/schwab-shared.functions";
 import { detectTrap, type TrapResult } from "@/lib/trap-indicator";
@@ -733,6 +734,20 @@ export default function TradingPlatform() {
     try { localStorage.setItem(SCHWAB_TOKEN_KEY, JSON.stringify(t)); } catch {}
     try { sessionStorage.setItem(SCHWAB_TOKEN_KEY, JSON.stringify(t)); } catch {}
   }, []);
+
+  // Server-side "is a shared Schwab owner token stored?" check. This lets the
+  // UI show a connected state even when this tab's localStorage was wiped —
+  // e.g. Schwab OAuth redirected the user through the published origin so
+  // preview's localStorage never got the token, but the shared server row did.
+  const fetchHasShared = useServerFn(hasSharedSchwabToken);
+  const { data: sharedStatus } = useQuery({
+    queryKey: ["hasSharedSchwabToken"],
+    queryFn: () => fetchHasShared(),
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+  const sharedSchwabConnected = !!sharedStatus?.present;
+  const schwabConnected = !!schwabTokens || sharedSchwabConnected;
   const connectSchwab = useCallback(async () => {
     try {
       const redirectUri = `${window.location.origin}/auth/schwab/callback`;
@@ -2229,12 +2244,18 @@ export default function TradingPlatform() {
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#39d353", animation: "pulse 2s infinite" }} />
             LIVE
           </div>
-          {schwabTokens ? (
+          {schwabConnected ? (
             <span
-              title={schwabErr ? `Schwab error: ${schwabErr}` : `Schwab real-time quote for ${selectedStock}`}
+              title={
+                schwabErr
+                  ? `Schwab error: ${schwabErr}`
+                  : schwabTokens
+                    ? `Schwab real-time quote for ${selectedStock}`
+                    : `Schwab connected via shared owner feed (this tab has no local token — that's OK, data is live)`
+              }
               style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, color: "#39d353", border: "1px solid #39d353", borderRadius: 4, padding: "2px 6px", flexShrink: 0 }}
             >
-              <span style={{ color: "#8b949e", fontWeight: 800 }}>SCHWAB</span>
+              <span style={{ color: "#8b949e", fontWeight: 800 }}>{schwabTokens ? "SCHWAB" : "SCHWAB·SHARED"}</span>
               {schwabQuote?.last != null ? `$${schwabQuote.last.toFixed(2)}` : "—"}
               {schwabQuote?.bid != null && schwabQuote?.ask != null && (
                 <span style={{ color: "#8b949e", fontWeight: 700 }}>
@@ -2996,7 +3017,12 @@ export default function TradingPlatform() {
               polling. Classifies each print via Lee–Ready and tracks the
               running Cumulative Volume Delta so you can see where net flow
               is pushing price. Requires connected Schwab. */}
-          <AggressorTapeCVD symbol={selectedStock} tokens={schwabTokens} onTokens={persistTokens} />
+          <AggressorTapeCVD
+            symbol={selectedStock}
+            tokens={schwabTokens}
+            onTokens={persistTokens}
+            sharedAvailable={sharedSchwabConnected}
+          />
 
           {/* Company-specific news + AI sentiment (shown first) */}
           <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 12, marginBottom: 12 }}>

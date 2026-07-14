@@ -5,6 +5,7 @@ import {
   ResponsiveContainer, Tooltip,
 } from "recharts";
 import { getSchwabQuotes, refreshSchwabToken, type SchwabTokens } from "@/lib/schwab.functions";
+import { getSharedSchwabQuotes } from "@/lib/schwab-shared.functions";
 
 const mono = "SF Mono, Menlo, monospace";
 
@@ -20,6 +21,10 @@ type Props = {
   symbol: string;
   tokens: SchwabTokens | null;
   onTokens: (t: SchwabTokens) => void;
+  // When true, we can pull quotes via the shared server-side owner token
+  // instead of this tab's localStorage. Lets the tape run even when the
+  // OAuth callback landed on a different origin (preview vs published).
+  sharedAvailable?: boolean;
 };
 
 function fmtVol(v: number): string {
@@ -50,9 +55,10 @@ function classify(last: number, bid: number | null, ask: number | null, prevLast
   return "MID";
 }
 
-export function AggressorTapeCVD({ symbol, tokens, onTokens }: Props) {
+export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = false }: Props) {
   const fetchQuotes = useServerFn(getSchwabQuotes);
   const refresh = useServerFn(refreshSchwabToken);
+  const fetchSharedQuotes = useServerFn(getSharedSchwabQuotes);
   const [prints, setPrints] = useState<Print[]>([]);
   const [status, setStatus] = useState<string>("idle");
   const lastVolRef = useRef<number | null>(null);
@@ -73,28 +79,36 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens }: Props) {
   }, [symbol]);
 
   useEffect(() => {
-    if (!tokens?.access_token || !symbol) return;
+    if (!symbol) return;
+    // If this tab has no personal token but the shared server-side owner
+    // token is available, poll the shared endpoint instead.
+    const useShared = !tokens?.access_token;
+    if (useShared && !sharedAvailable) return;
     let cancelled = false;
 
     async function tick() {
       if (cancelled) return;
       try {
-        let token = tokens!.access_token;
-        let quotes;
-        try {
-          quotes = await fetchQuotes({ data: { accessToken: token, symbols: [symbol] } });
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          if (msg.includes("schwab_unauthorized") && tokens!.refresh_token) {
-            const fresh = await refresh({ data: { refreshToken: tokens!.refresh_token } });
-            onTokens(fresh);
-            token = fresh.access_token;
+        let quotes: Record<string, { last: number | null; bid: number | null; ask: number | null; totalVolume: number | null }> | null;
+        if (useShared) {
+          quotes = await fetchSharedQuotes({ data: { symbols: [symbol] } });
+        } else {
+          let token = tokens!.access_token;
+          try {
             quotes = await fetchQuotes({ data: { accessToken: token, symbols: [symbol] } });
-          } else {
-            throw e;
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            if (msg.includes("schwab_unauthorized") && tokens!.refresh_token) {
+              const fresh = await refresh({ data: { refreshToken: tokens!.refresh_token } });
+              onTokens(fresh);
+              token = fresh.access_token;
+              quotes = await fetchQuotes({ data: { accessToken: token, symbols: [symbol] } });
+            } else {
+              throw e;
+            }
           }
         }
-        const q = quotes[symbol];
+        const q = quotes?.[symbol];
         if (!q || q.last == null || q.totalVolume == null) {
           setStatus("waiting for quote…");
           return;
@@ -138,7 +152,7 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens }: Props) {
     tick();
     const id = setInterval(tick, 2000);
     return () => { cancelled = true; clearInterval(id); };
-  }, [tokens, symbol, fetchQuotes, refresh, onTokens]);
+  }, [tokens, symbol, sharedAvailable, fetchQuotes, fetchSharedQuotes, refresh, onTokens]);
 
   const chartData = useMemo(() => prints.map((p) => ({
     t: p.t,
@@ -179,7 +193,7 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens }: Props) {
     return [-span * 1.1, span * 1.1];
   }, [chartData]);
 
-  if (!tokens?.access_token) {
+  if (!tokens?.access_token && !sharedAvailable) {
     return (
       <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 12, marginBottom: 12 }}>
         <div style={{ fontSize: 10, color: "#d2a8ff", letterSpacing: 1.5, fontWeight: 700, marginBottom: 6 }}>
