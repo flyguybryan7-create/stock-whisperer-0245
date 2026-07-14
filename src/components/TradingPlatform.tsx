@@ -48,6 +48,7 @@ import {
 } from "@/lib/schwab-shared.functions";
 import { detectTrap, type TrapResult } from "@/lib/trap-indicator";
 import { OptionsFlowChart } from "./OptionsFlowChart";
+import { AggressorTapeCVD } from "./AggressorTapeCVD";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { useSubscription } from "@/hooks/useSubscription";
 import { supabase } from "@/integrations/supabase/client";
@@ -2991,64 +2992,13 @@ export default function TradingPlatform() {
             onExpiryChange={setLadderExpiryIndex}
           />
 
-          {/* Economic releases feed — matches yellow "E" chart markers */}
-          <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 12, marginBottom: 12 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
-              <div style={{ fontSize: 10, color: "#e3b341", letterSpacing: 1.5, fontWeight: 700 }}>
-                🟡 E · ECONOMIC RELEASES (US HIGH-IMPACT)
-              </div>
-              <span style={{ fontSize: 9, color: "#8b949e" }}>Nasdaq Cal · Fed · BEA</span>
-            </div>
-            <div style={{ display: "grid", gap: 6 }}>
-              {econItems.length === 0 && (
-                <div style={{ fontSize: 10, color: "#8b949e" }}>Loading economic calendar…</div>
-              )}
-              {econItems.slice(0, 15).map((e, i) => (
-                <a key={i} href={e.link} target="_blank" rel="noreferrer"
-                  style={{ display: "flex", gap: 8, padding: "6px 8px", background: "#010409", borderRadius: 4, textDecoration: "none", color: "#e6edf3", fontSize: 11, lineHeight: 1.4, border: "1px solid #161b22" }}>
-                  <span style={{ fontSize: 8, fontWeight: 800, color: "#e3b341", letterSpacing: 1, minWidth: 54, paddingTop: 2 }}>
-                    {e.category}
-                  </span>
-                  <span style={{ flex: 1 }}>
-                    {e.title}
-                    <span style={{ display: "block", fontSize: 9, color: "#8b949e", marginTop: 2 }}>
-                      {e.publisher} · {new Date(e.publishedAt * 1000).toLocaleString()}
-                    </span>
-                  </span>
-                </a>
-              ))}
-            </div>
-          </div>
+          {/* Day-trader Aggressor Tape + CVD — built on top of Schwab NBBO
+              polling. Classifies each print via Lee–Ready and tracks the
+              running Cumulative Volume Delta so you can see where net flow
+              is pushing price. Requires connected Schwab. */}
+          <AggressorTapeCVD symbol={selectedStock} tokens={schwabTokens} onTokens={persistTokens} />
 
-          <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 12, marginBottom: 12 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
-              <div style={{ fontSize: 10, color: "#8b949e", letterSpacing: 1.5 }}>
-                🌐 MACRO NEWS · NASDAQ / S&amp;P 500 / DOW
-              </div>
-              <span style={{ fontSize: 9, color: "#8b949e" }}>CNBC · MarketWatch · WSJ</span>
-            </div>
-            <div style={{ display: "grid", gap: 6 }}>
-              {(!macroNews || macroNews.items.length === 0) && (
-                <div style={{ fontSize: 10, color: "#8b949e" }}>Loading market news…</div>
-              )}
-              {macroNews?.items.slice(0, 10).map((n, i) => (
-                <a key={i} href={n.link} target="_blank" rel="noreferrer"
-                  style={{ display: "flex", gap: 8, padding: "6px 8px", background: "#010409", borderRadius: 4, textDecoration: "none", color: "#e6edf3", fontSize: 11, lineHeight: 1.4, border: "1px solid #161b22" }}>
-                  <span style={{ fontSize: 8, fontWeight: 700, color: "#ffa657", letterSpacing: 1, minWidth: 70, paddingTop: 2 }}>
-                    {n.publisher.toUpperCase()}
-                  </span>
-                  <span style={{ flex: 1 }}>
-                    {n.title}
-                    <span style={{ display: "block", fontSize: 9, color: "#8b949e", marginTop: 2 }}>
-                      {n.publishedAt ? new Date(n.publishedAt * 1000).toLocaleString() : ""}
-                    </span>
-                  </span>
-                </a>
-              ))}
-            </div>
-          </div>
-
-          {/* News + AI Sentiment */}
+          {/* Company-specific news + AI sentiment (shown first) */}
           <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 12, marginBottom: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
               <div style={{ fontSize: 10, color: "#8b949e", letterSpacing: 1.5 }}>
@@ -3096,6 +3046,64 @@ export default function TradingPlatform() {
                   </a>
                 );
               })}
+            </div>
+          </div>
+
+          {/* Macro news (broad market) — shown after company news */}
+          <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 12, marginBottom: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+              <div style={{ fontSize: 10, color: "#8b949e", letterSpacing: 1.5 }}>
+                🌐 MACRO NEWS · NASDAQ / S&amp;P 500 / DOW
+              </div>
+              <span style={{ fontSize: 9, color: "#8b949e" }}>CNBC · MarketWatch · WSJ</span>
+            </div>
+            <div style={{ display: "grid", gap: 6 }}>
+              {(!macroNews || macroNews.items.length === 0) && (
+                <div style={{ fontSize: 10, color: "#8b949e" }}>Loading market news…</div>
+              )}
+              {macroNews?.items.slice(0, 10).map((n, i) => (
+                <a key={i} href={n.link} target="_blank" rel="noreferrer"
+                  style={{ display: "flex", gap: 8, padding: "6px 8px", background: "#010409", borderRadius: 4, textDecoration: "none", color: "#e6edf3", fontSize: 11, lineHeight: 1.4, border: "1px solid #161b22" }}>
+                  <span style={{ fontSize: 8, fontWeight: 700, color: "#ffa657", letterSpacing: 1, minWidth: 70, paddingTop: 2 }}>
+                    {n.publisher.toUpperCase()}
+                  </span>
+                  <span style={{ flex: 1 }}>
+                    {n.title}
+                    <span style={{ display: "block", fontSize: 9, color: "#8b949e", marginTop: 2 }}>
+                      {n.publishedAt ? new Date(n.publishedAt * 1000).toLocaleString() : ""}
+                    </span>
+                  </span>
+                </a>
+              ))}
+            </div>
+          </div>
+
+          {/* Economic releases feed — shown last, matches yellow "E" chart markers */}
+          <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 12, marginBottom: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+              <div style={{ fontSize: 10, color: "#e3b341", letterSpacing: 1.5, fontWeight: 700 }}>
+                🟡 E · ECONOMIC RELEASES (US HIGH-IMPACT)
+              </div>
+              <span style={{ fontSize: 9, color: "#8b949e" }}>Nasdaq Cal · Fed · BEA</span>
+            </div>
+            <div style={{ display: "grid", gap: 6 }}>
+              {econItems.length === 0 && (
+                <div style={{ fontSize: 10, color: "#8b949e" }}>Loading economic calendar…</div>
+              )}
+              {econItems.slice(0, 15).map((e, i) => (
+                <a key={i} href={e.link} target="_blank" rel="noreferrer"
+                  style={{ display: "flex", gap: 8, padding: "6px 8px", background: "#010409", borderRadius: 4, textDecoration: "none", color: "#e6edf3", fontSize: 11, lineHeight: 1.4, border: "1px solid #161b22" }}>
+                  <span style={{ fontSize: 8, fontWeight: 800, color: "#e3b341", letterSpacing: 1, minWidth: 54, paddingTop: 2 }}>
+                    {e.category}
+                  </span>
+                  <span style={{ flex: 1 }}>
+                    {e.title}
+                    <span style={{ display: "block", fontSize: 9, color: "#8b949e", marginTop: 2 }}>
+                      {e.publisher} · {new Date(e.publishedAt * 1000).toLocaleString()}
+                    </span>
+                  </span>
+                </a>
+              ))}
             </div>
           </div>
 
