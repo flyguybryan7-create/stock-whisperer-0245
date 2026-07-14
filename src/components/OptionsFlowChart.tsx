@@ -26,7 +26,18 @@ function fmtVol(v: number): string {
 }
 
 function fmtAsOf(iso: string): string {
-  const d = new Date(iso.length <= 19 ? iso + "Z" : iso);
+  // CBOE's last_trade_time is naive ET ("YYYY-MM-DDTHH:MM:SS" with no tz).
+  // Treat unqualified timestamps as already-ET so we don't shift by the UTC offset.
+  const hasTz = /(Z|[+-]\d{2}:?\d{2})$/.test(iso);
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+  if (!hasTz && m) {
+    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    let h = Number(m[4]);
+    const ampm = h >= 12 ? "PM" : "AM";
+    h = h % 12 || 12;
+    return `${months[Number(m[2]) - 1]} ${Number(m[3])}, ${h}:${m[5]} ${ampm} ET`;
+  }
+  const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleString("en-US", {
     timeZone: "America/New_York",
@@ -36,9 +47,16 @@ function fmtAsOf(iso: string): string {
 }
 
 function isPriorSessionET(iso: string): boolean {
-  const d = new Date(iso.length <= 19 ? iso + "Z" : iso);
-  if (Number.isNaN(d.getTime())) return false;
-  const feedDay = d.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  const hasTz = /(Z|[+-]\d{2}:?\d{2})$/.test(iso);
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  let feedDay: string;
+  if (!hasTz && m) {
+    feedDay = `${m[1]}-${m[2]}-${m[3]}`;
+  } else {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return false;
+    feedDay = d.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  }
   const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
   return feedDay < today;
 }
