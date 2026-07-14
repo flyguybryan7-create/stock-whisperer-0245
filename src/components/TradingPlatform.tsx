@@ -2996,7 +2996,7 @@ export default function TradingPlatform() {
               polling. Classifies each print via Lee–Ready and tracks the
               running Cumulative Volume Delta so you can see where net flow
               is pushing price. Requires connected Schwab. */}
-          <AggressorTapeCVD symbol={selectedStock} tokens={schwabTokens} onTokens={saveSchwabTokens} />
+          <AggressorTapeCVD symbol={selectedStock} tokens={schwabTokens} onTokens={persistTokens} />
 
           {/* Company-specific news + AI sentiment (shown first) */}
           <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 12, marginBottom: 12 }}>
