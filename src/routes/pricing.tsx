@@ -50,13 +50,11 @@ function PricingPage() {
       <div className="mx-auto max-w-5xl px-4 py-10">
         <div className="mb-8 flex items-center justify-between">
           <Link to="/" className="text-sm text-muted-foreground hover:text-foreground">← Terminal</Link>
-          <div className="text-sm text-muted-foreground">
-            {authLoading ? null : user ? (
+          {!authLoading && user && (
+            <div className="text-sm text-muted-foreground">
               <span>{user.email} · <button onClick={async () => { await import("@/integrations/supabase/client").then(m => m.supabase.auth.signOut()); navigate({ to: "/" }); }} className="underline">Sign out</button></span>
-            ) : (
-              <Link to="/auth" className="underline">Sign in</Link>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         <h1 className="text-4xl font-bold text-foreground">Choose your plan</h1>
@@ -90,11 +88,7 @@ function PricingPage() {
                 <ul className="mt-4 flex-1 space-y-2 text-sm text-muted-foreground">
                   {plan.features.map((f) => <li key={f}>✓ {f}</li>)}
                 </ul>
-                {!user ? (
-                  <Link to="/auth" className="mt-6 rounded bg-primary px-4 py-2 text-center font-medium text-primary-foreground hover:bg-primary/90">
-                    Sign in to subscribe
-                  </Link>
-                ) : isCurrent ? (
+                {isCurrent ? (
                   <button disabled className="mt-6 rounded bg-secondary px-4 py-2 font-medium text-secondary-foreground opacity-60">
                     Current plan
                   </button>
@@ -114,7 +108,7 @@ function PricingPage() {
           })}
         </div>
 
-        {openPriceId && user && (
+        {openPriceId && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
             <div className="w-full max-w-2xl rounded-lg bg-background shadow-xl">
               <div className="flex items-center justify-between border-b border-border p-3">
@@ -124,7 +118,7 @@ function PricingPage() {
               <div className="max-h-[80vh] overflow-y-auto p-4">
                 <StripeEmbeddedCheckout
                   priceId={openPriceId}
-                  customerEmail={user.email}
+                  customerEmail={user?.email}
                   returnUrl={`${window.location.origin}/checkout/return?session_id={CHECKOUT_SESSION_ID}`}
                 />
               </div>
