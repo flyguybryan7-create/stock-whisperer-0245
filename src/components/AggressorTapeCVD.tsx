@@ -285,8 +285,9 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
           <ResponsiveContainer width="100%" height={180}>
             <ComposedChart data={chartData} margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-              <XAxis dataKey="t" type="number" domain={["dataMin", "dataMax"]} tickFormatter={fmtTime}
-                stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} />
+              <XAxis dataKey="t" type="number" scale="time"
+                domain={[nowTick - WINDOW_MS, nowTick]} tickFormatter={fmtTime}
+                stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} allowDataOverflow />
               <YAxis yAxisId="p" domain={priceDomain} stroke="#8b949e" fontSize={9} width={54}
                 tick={{ fontFamily: mono }} tickFormatter={(v: number) => `$${v.toFixed(2)}`} />
               <Tooltip
@@ -303,9 +304,15 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
               <Line yAxisId="p" type="monotone" dataKey="price" stroke="#58a6ff" strokeWidth={1.5}
                 dot={false} isAnimationActive={false} />
               <Scatter yAxisId="p" dataKey="price" data={chartData.filter((d) => d.buySize)} fill="#39d353"
-                shape="circle" isAnimationActive={false} />
+                isAnimationActive={false}
+                shape={(props: { cx?: number; cy?: number; fill?: string }) => (
+                  <circle cx={props.cx} cy={props.cy} r={2.5} fill={props.fill} fillOpacity={0.85} />
+                )} />
               <Scatter yAxisId="p" dataKey="price" data={chartData.filter((d) => d.sellSize)} fill="#f85149"
-                shape="circle" isAnimationActive={false} />
+                isAnimationActive={false}
+                shape={(props: { cx?: number; cy?: number; fill?: string }) => (
+                  <circle cx={props.cx} cy={props.cy} r={2.5} fill={props.fill} fillOpacity={0.85} />
+                )} />
             </ComposedChart>
           </ResponsiveContainer>
 
