@@ -1032,9 +1032,9 @@ export default function TradingPlatform() {
       }
     },
     enabled: !!schwabTokens?.access_token && !!selectedStock,
-    refetchInterval: 10_000,
+    refetchInterval: 2_500,
     refetchIntervalInBackground: true,
-    staleTime: 5_000,
+    staleTime: 1_000,
   });
 
   // ============================================================

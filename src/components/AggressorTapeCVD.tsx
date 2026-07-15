@@ -154,23 +154,52 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
     return () => { cancelled = true; clearInterval(id); };
   }, [tokens, symbol, sharedAvailable, fetchQuotes, fetchSharedQuotes, refresh, onTokens]);
 
-  const chartData = useMemo(() => prints.map((p) => ({
+  // Rolling window: only show the last WINDOW_MS of tape so the chart
+  // "flows" with the market as new prints arrive instead of piling up
+  // into a dense cluster. Older prints still contribute to totals/CVD
+  // via the running refs, but the visualization stays readable.
+  const WINDOW_MS = 4 * 60_000; // 4 minutes
+  const [nowTick, setNowTick] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(Date.now()), 2000);
+    return () => clearInterval(id);
+  }, []);
+  const visiblePrints = useMemo(() => {
+    const cutoff = nowTick - WINDOW_MS;
+    return prints.filter((p) => p.t >= cutoff);
+  }, [prints, nowTick]);
+
+  // Volume threshold: hide dust prints so only meaningful aggressor
+  // trades are dotted on the price line. Threshold scales with the
+  // largest recent print so it adapts per-ticker.
+  const dotThreshold = useMemo(() => {
+    if (visiblePrints.length === 0) return 0;
+    let max = 0;
+    for (const p of visiblePrints) if (p.size > max) max = p.size;
+    return Math.max(max * 0.15, 100);
+  }, [visiblePrints]);
+
+  const chartData = useMemo(() => visiblePrints.map((p) => ({
     t: p.t,
     price: p.price,
     cvd: p.cvd,
-    buySize: p.side === "BUY" ? p.size : null,
-    sellSize: p.side === "SELL" ? p.size : null,
-  })), [prints]);
+    buySize: p.side === "BUY" && p.size >= dotThreshold ? p.size : null,
+    sellSize: p.side === "SELL" && p.size >= dotThreshold ? p.size : null,
+  })), [visiblePrints, dotThreshold]);
 
+  // Summary strip reflects the same rolling window as the chart so the
+  // BUY / SELL / NET numbers describe what the trader is looking at.
   const totals = useMemo(() => {
     let buy = 0, sell = 0, mid = 0;
-    for (const p of prints) {
+    let cvd = 0;
+    for (const p of visiblePrints) {
       if (p.side === "BUY") buy += p.size;
       else if (p.side === "SELL") sell += p.size;
       else mid += p.size;
+      cvd += p.side === "BUY" ? p.size : p.side === "SELL" ? -p.size : 0;
     }
-    return { buy, sell, mid, cvd: cvdRef.current, delta: buy - sell };
-  }, [prints]);
+    return { buy, sell, mid, cvd, delta: buy - sell };
+  }, [visiblePrints]);
 
   const imbalancePct = totals.buy + totals.sell > 0
     ? (totals.buy - totals.sell) / (totals.buy + totals.sell)
@@ -256,8 +285,9 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
           <ResponsiveContainer width="100%" height={180}>
             <ComposedChart data={chartData} margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-              <XAxis dataKey="t" type="number" domain={["dataMin", "dataMax"]} tickFormatter={fmtTime}
-                stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} />
+              <XAxis dataKey="t" type="number" scale="time"
+                domain={[nowTick - WINDOW_MS, nowTick]} tickFormatter={fmtTime}
+                stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} allowDataOverflow />
               <YAxis yAxisId="p" domain={priceDomain} stroke="#8b949e" fontSize={9} width={54}
                 tick={{ fontFamily: mono }} tickFormatter={(v: number) => `$${v.toFixed(2)}`} />
               <Tooltip
@@ -274,9 +304,15 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
               <Line yAxisId="p" type="monotone" dataKey="price" stroke="#58a6ff" strokeWidth={1.5}
                 dot={false} isAnimationActive={false} />
               <Scatter yAxisId="p" dataKey="price" data={chartData.filter((d) => d.buySize)} fill="#39d353"
-                shape="circle" isAnimationActive={false} />
+                isAnimationActive={false}
+                shape={(props: { cx?: number; cy?: number; fill?: string }) => (
+                  <circle cx={props.cx} cy={props.cy} r={2.5} fill={props.fill} fillOpacity={0.85} />
+                )} />
               <Scatter yAxisId="p" dataKey="price" data={chartData.filter((d) => d.sellSize)} fill="#f85149"
-                shape="circle" isAnimationActive={false} />
+                isAnimationActive={false}
+                shape={(props: { cx?: number; cy?: number; fill?: string }) => (
+                  <circle cx={props.cx} cy={props.cy} r={2.5} fill={props.fill} fillOpacity={0.85} />
+                )} />
             </ComposedChart>
           </ResponsiveContainer>
 
@@ -285,8 +321,9 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
           <ResponsiveContainer width="100%" height={110}>
             <ComposedChart data={chartData} margin={{ top: 4, right: 12, left: 0, bottom: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-              <XAxis dataKey="t" type="number" domain={["dataMin", "dataMax"]} tickFormatter={fmtTime}
-                stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} />
+              <XAxis dataKey="t" type="number" scale="time"
+                domain={[nowTick - WINDOW_MS, nowTick]} tickFormatter={fmtTime}
+                stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} allowDataOverflow />
               <YAxis domain={cvdDomain} stroke="#8b949e" fontSize={9} width={54}
                 tick={{ fontFamily: mono }} tickFormatter={(v: number) => fmtVol(v)} />
               <ReferenceLine y={0} stroke="#484f58" />
