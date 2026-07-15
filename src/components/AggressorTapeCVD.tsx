@@ -154,23 +154,52 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
     return () => { cancelled = true; clearInterval(id); };
   }, [tokens, symbol, sharedAvailable, fetchQuotes, fetchSharedQuotes, refresh, onTokens]);
 
-  const chartData = useMemo(() => prints.map((p) => ({
+  // Rolling window: only show the last WINDOW_MS of tape so the chart
+  // "flows" with the market as new prints arrive instead of piling up
+  // into a dense cluster. Older prints still contribute to totals/CVD
+  // via the running refs, but the visualization stays readable.
+  const WINDOW_MS = 4 * 60_000; // 4 minutes
+  const [nowTick, setNowTick] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(Date.now()), 2000);
+    return () => clearInterval(id);
+  }, []);
+  const visiblePrints = useMemo(() => {
+    const cutoff = nowTick - WINDOW_MS;
+    return prints.filter((p) => p.t >= cutoff);
+  }, [prints, nowTick]);
+
+  // Volume threshold: hide dust prints so only meaningful aggressor
+  // trades are dotted on the price line. Threshold scales with the
+  // largest recent print so it adapts per-ticker.
+  const dotThreshold = useMemo(() => {
+    if (visiblePrints.length === 0) return 0;
+    let max = 0;
+    for (const p of visiblePrints) if (p.size > max) max = p.size;
+    return Math.max(max * 0.15, 100);
+  }, [visiblePrints]);
+
+  const chartData = useMemo(() => visiblePrints.map((p) => ({
     t: p.t,
     price: p.price,
     cvd: p.cvd,
-    buySize: p.side === "BUY" ? p.size : null,
-    sellSize: p.side === "SELL" ? p.size : null,
-  })), [prints]);
+    buySize: p.side === "BUY" && p.size >= dotThreshold ? p.size : null,
+    sellSize: p.side === "SELL" && p.size >= dotThreshold ? p.size : null,
+  })), [visiblePrints, dotThreshold]);
 
+  // Summary strip reflects the same rolling window as the chart so the
+  // BUY / SELL / NET numbers describe what the trader is looking at.
   const totals = useMemo(() => {
     let buy = 0, sell = 0, mid = 0;
-    for (const p of prints) {
+    let cvd = 0;
+    for (const p of visiblePrints) {
       if (p.side === "BUY") buy += p.size;
       else if (p.side === "SELL") sell += p.size;
       else mid += p.size;
+      cvd += p.side === "BUY" ? p.size : p.side === "SELL" ? -p.size : 0;
     }
-    return { buy, sell, mid, cvd: cvdRef.current, delta: buy - sell };
-  }, [prints]);
+    return { buy, sell, mid, cvd, delta: buy - sell };
+  }, [visiblePrints]);
 
   const imbalancePct = totals.buy + totals.sell > 0
     ? (totals.buy - totals.sell) / (totals.buy + totals.sell)
