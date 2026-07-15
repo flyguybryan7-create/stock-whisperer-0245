@@ -321,8 +321,9 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
           <ResponsiveContainer width="100%" height={110}>
             <ComposedChart data={chartData} margin={{ top: 4, right: 12, left: 0, bottom: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-              <XAxis dataKey="t" type="number" domain={["dataMin", "dataMax"]} tickFormatter={fmtTime}
-                stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} />
+              <XAxis dataKey="t" type="number" scale="time"
+                domain={[nowTick - WINDOW_MS, nowTick]} tickFormatter={fmtTime}
+                stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} allowDataOverflow />
               <YAxis domain={cvdDomain} stroke="#8b949e" fontSize={9} width={54}
                 tick={{ fontFamily: mono }} tickFormatter={(v: number) => fmtVol(v)} />
               <ReferenceLine y={0} stroke="#484f58" />
