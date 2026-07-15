@@ -23,7 +23,6 @@ import { fetchOptionsActivity } from "@/lib/options.functions";
 import type { OptionsActivity } from "@/lib/options.server";
 import {
   getSchwabAuthUrl,
-  exchangeSchwabCode,
   getSchwabQuotes,
   refreshSchwabToken,
   getSchwabPriceHistory,
@@ -37,7 +36,7 @@ import {
   type SchwabTopStrikes,
   type SchwabOptionsLadder,
 } from "@/lib/schwab.functions";
-import { SCHWAB_CONNECTED_FLAG, SCHWAB_CONNECT_STARTED_KEY, SCHWAB_TOKEN_KEY } from "@/routes/auth.schwab.callback";
+import { SCHWAB_CONNECT_STARTED_KEY, SCHWAB_TOKEN_KEY } from "@/routes/auth.schwab.callback";
 import { fetchEconCalendar } from "@/lib/econ-calendar.functions";
 import {
   getSharedSchwabQuotes,
@@ -47,7 +46,6 @@ import {
   getSharedSchwabOptionsLadder,
   hasSharedSchwabToken,
   getFastOptionsLadder,
-  setSharedSchwabTokensPublic,
 } from "@/lib/schwab-shared.functions";
 import { detectTrap, type TrapResult } from "@/lib/trap-indicator";
 import { OptionsFlowChart } from "./OptionsFlowChart";
