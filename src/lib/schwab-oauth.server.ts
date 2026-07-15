@@ -4,11 +4,8 @@ export const SCHWAB_AUTHORIZE_URL = "https://api.schwabapi.com/v1/oauth/authoriz
 export const SCHWAB_TOKEN_URL = "https://api.schwabapi.com/v1/oauth/token";
 
 // Schwab requires the OAuth callback URL to match the developer-app setting
-// exactly. The developer app is normally registered to the published BryanTrade
-// URL itself, not an app-internal route, so make the canonical default the
-// published root. The trading screen now completes the code exchange when
-// Schwab returns with ?code=...&state=... on `/`.
-const DEFAULT_SCHWAB_REDIRECT_URI = "https://stock-whisperer-0246.lovable.app";
+// exactly. The registered callback for this app is the dedicated route below.
+const DEFAULT_SCHWAB_REDIRECT_URI = "https://stock-whisperer-0246.lovable.app/auth/schwab/callback";
 const STATE_MAX_AGE_MS = 10 * 60 * 1000;
 const ALLOWED_RETURN_ORIGINS = new Set([
   "https://stock-whisperer-0246.lovable.app",
