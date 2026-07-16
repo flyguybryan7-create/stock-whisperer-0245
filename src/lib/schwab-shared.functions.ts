@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { SchwabQuote, SchwabFundamental, SchwabTopStrikes, SchwabBar, SchwabOptionsLadder } from "./schwab.functions";
-import { _buildLadderFromChain } from "./schwab.functions";
+import { buildLadderFromChain } from "./schwab-ladder.server";
 import { fetchFastPublicOptionsLadder } from "./options-ladder.server";
 
 /**
@@ -340,7 +340,7 @@ export const getSharedSchwabOptionsLadder = createServerFn({ method: "POST" })
     );
     if (!res.ok) return null;
     const json: any = await res.json().catch(() => ({}));
-    return _buildLadderFromChain(sym, json, data.expiryIndex ?? 0);
+    return buildLadderFromChain(sym, json, data.expiryIndex ?? 0);
   });
 
 // Fast public ladder for the Options Flow Magnet. It uses a short server-side

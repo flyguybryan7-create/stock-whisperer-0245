@@ -373,100 +373,7 @@ export type SchwabOptionsLadder = {
   asOf?: string | null;
 };
 
-function buildLadderFromChain(sym: string, json: any, expiryIndex = 0): SchwabOptionsLadder | null {
-  const callMap = json?.callExpDateMap ?? {};
-  const putMap = json?.putExpDateMap ?? {};
-  const spot = Number.isFinite(json?.underlyingPrice) ? Number(json.underlyingPrice) : null;
-  const allKeys = Array.from(new Set([...Object.keys(callMap), ...Object.keys(putMap)])).sort();
-  const futureKeys = allKeys
-    .map((k) => ({ key: k, dte: Number(k.split(":")[1]) }))
-    .filter((x) => Number.isFinite(x.dte) && x.dte >= 0)
-    .sort((a, b) => a.dte - b.dte);
-  if (!futureKeys.length) return null;
-  const idx = Math.min(Math.max(0, expiryIndex), futureKeys.length - 1);
-  const chosen = futureKeys[idx].key;
-  const [expiry, dteStr] = chosen.split(":");
-  const dte = Number(dteStr);
-  const cExp = callMap?.[chosen] ?? {};
-  const pExp = putMap?.[chosen] ?? {};
-  const strikes = new Set<number>();
-  for (const k of Object.keys(cExp)) strikes.add(Number(k));
-  for (const k of Object.keys(pExp)) strikes.add(Number(k));
-  const rungs: SchwabLadderRung[] = [];
-  let callTot = 0, putTot = 0;
-  let magC: { strike: number; volume: number } | null = null;
-  let magP: { strike: number; volume: number } | null = null;
-  for (const strike of Array.from(strikes).sort((a, b) => a - b)) {
-    const c = cExp[strike];
-    const p = pExp[strike];
-    const cv = Array.isArray(c) && c[0]?.totalVolume ? Number(c[0].totalVolume) : 0;
-    const pv = Array.isArray(p) && p[0]?.totalVolume ? Number(p[0].totalVolume) : 0;
-    const coi = Array.isArray(c) && c[0]?.openInterest ? Number(c[0].openInterest) : 0;
-    const poi = Array.isArray(p) && p[0]?.openInterest ? Number(p[0].openInterest) : 0;
-    callTot += cv; putTot += pv;
-    if (cv > (magC?.volume ?? 0)) magC = { strike, volume: cv };
-    if (pv > (magP?.volume ?? 0)) magP = { strike, volume: pv };
-    rungs.push({ strike, callVol: cv, putVol: pv, callOi: coi, putOi: poi });
-  }
-  // Trim to ±25% around spot (or ±20 strikes) so the chart isn't dominated
-  // by dead LEAP-style tails.
-  let trimmed = rungs;
-  if (spot && spot > 0) {
-    const lo = spot * 0.75, hi = spot * 1.25;
-    trimmed = rungs.filter((r) => r.strike >= lo && r.strike <= hi);
-    if (trimmed.length < 8) {
-      // fallback: 20 strikes closest to spot
-      trimmed = [...rungs]
-        .sort((a, b) => Math.abs(a.strike - spot) - Math.abs(b.strike - spot))
-        .slice(0, 20)
-        .sort((a, b) => a.strike - b.strike);
-    }
-  }
-  const d = new Date(expiry + "T00:00:00");
-  const label = Number.isNaN(d.getTime()) ? expiry
-    : `${d.toLocaleString("en-US", { month: "short" })} ${d.getDate()}`;
-  const alternateExpiries = futureKeys.slice(0, 8).map(({ key, dte: kd }) => {
-    const exp = key.split(":")[0];
-    const dd = new Date(exp + "T00:00:00");
-    return {
-      expiry: exp,
-      dte: Number.isFinite(kd) ? kd : null,
-      label: Number.isNaN(dd.getTime()) ? exp : `${dd.toLocaleString("en-US", { month: "short" })} ${dd.getDate()}`,
-    };
-  });
-  // OI fallback when no intraday volume has printed yet (pre-market, illiquid names).
-  // OI is stable session-to-session so the magnet strikes won't flip.
-  let source: "volume" | "oi" = "volume";
-  let effCallTot = callTot;
-  let effPutTot = putTot;
-  let effMagC = magC;
-  let effMagP = magP;
-  if (callTot === 0 && putTot === 0) {
-    source = "oi";
-    for (const r of rungs) {
-      effCallTot += r.callOi;
-      effPutTot += r.putOi;
-      if (r.callOi > (effMagC?.volume ?? 0)) effMagC = { strike: r.strike, volume: r.callOi };
-      if (r.putOi > (effMagP?.volume ?? 0)) effMagP = { strike: r.strike, volume: r.putOi };
-    }
-    if (effCallTot === 0 && effPutTot === 0) return null;
-  }
-  return {
-    symbol: sym,
-    expiry,
-    dte: Number.isFinite(dte) ? dte : null,
-    label,
-    hasWeeklies: Number.isFinite(dte) && dte <= 10,
-    spot,
-    callVolume: effCallTot,
-    putVolume: effPutTot,
-    magnetCall: effMagC ? { strike: effMagC.strike, volume: effMagC.volume, pct: effCallTot > 0 ? effMagC.volume / effCallTot : 0 } : null,
-    magnetPut: effMagP ? { strike: effMagP.strike, volume: effMagP.volume, pct: effPutTot > 0 ? effMagP.volume / effPutTot : 0 } : null,
-    ladder: trimmed,
-    alternateExpiries,
-    source,
-  };
-}
+import { buildLadderFromChain } from "./schwab-ladder.server";
 
 export const getSchwabOptionsLadder = createServerFn({ method: "POST" })
   .inputValidator((d: { accessToken: string; symbol: string; expiryIndex?: number }) => d)
@@ -488,4 +395,4 @@ export const getSchwabOptionsLadder = createServerFn({ method: "POST" })
     return buildLadderFromChain(sym, json, data.expiryIndex ?? 0);
   });
 
-export { buildLadderFromChain as _buildLadderFromChain };
+export { buildLadderFromChain as _buildLadderFromChain } from "./schwab-ladder.server";
