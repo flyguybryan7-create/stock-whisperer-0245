@@ -340,7 +340,7 @@ export const getSharedSchwabOptionsLadder = createServerFn({ method: "POST" })
     );
     if (!res.ok) return null;
     const json: any = await res.json().catch(() => ({}));
-    return _buildLadderFromChain(sym, json, data.expiryIndex ?? 0);
+    return buildLadderFromChain(sym, json, data.expiryIndex ?? 0);
   });
 
 // Fast public ladder for the Options Flow Magnet. It uses a short server-side
