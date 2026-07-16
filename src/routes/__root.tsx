@@ -41,6 +41,17 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
   }, [error]);
 
+  // Auto-recover: most of these are transient (off-hours empty payloads, a
+  // dropped Schwab poll, a brief network blip). Retry silently after a short
+  // delay so the user isn't stranded on the fallback screen.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      router.invalidate();
+      reset();
+    }, 2500);
+    return () => clearTimeout(t);
+  }, [error, router, reset]);
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
