@@ -1032,9 +1032,11 @@ export default function TradingPlatform() {
       }
     },
     enabled: !!schwabTokens?.access_token && !!selectedStock,
-    refetchInterval: 2_500,
+    refetchInterval: 1_500,
     refetchIntervalInBackground: true,
-    staleTime: 1_000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+    staleTime: 0,
   });
 
   // ============================================================
@@ -1089,9 +1091,11 @@ export default function TradingPlatform() {
     queryKey: ["sharedSchwabLadder", selectedStock, sharedStrikesTodayKey, ladderExpiryIndex],
     queryFn: async () => (await fetchSharedLadder({ data: { symbol: selectedStock, expiryIndex: ladderExpiryIndex } })) ?? null,
     enabled: !!selectedStock,
-    refetchInterval: 3_000,
+    refetchInterval: 2_000,
     refetchIntervalInBackground: true,
-    staleTime: 1_500,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+    staleTime: 0,
   });
 
   // Cached public fallback: CBOE first, Nasdaq fallback. One request replaces
@@ -1101,9 +1105,10 @@ export default function TradingPlatform() {
     queryKey: ["fastOptionsLadder", selectedStock, sharedStrikesTodayKey, ladderExpiryIndex],
     queryFn: () => fetchFastLadder({ data: { symbol: selectedStock, expiryIndex: ladderExpiryIndex } }),
     enabled: !!selectedStock,
-    refetchInterval: 10_000,
+    refetchInterval: 5_000,
     refetchIntervalInBackground: true,
-    staleTime: 5_000,
+    refetchOnWindowFocus: true,
+    staleTime: 2_500,
   });
 
   // Merge per-user (preferred) with shared (fallback) so signed-out viewers
