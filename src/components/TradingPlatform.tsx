@@ -1109,9 +1109,7 @@ export default function TradingPlatform() {
       if (!schwabTokens?.access_token) return null;
       try {
         const raw = await fetchSchwabLadder({ data: { accessToken: schwabTokens.access_token, symbol: selectedStock, expiryIndex: ladderExpiryIndex } });
-        const recent = raw ? buildRecentClientFlowLadder(raw, previousSchwabLadderRef.current) : null;
-        previousSchwabLadderRef.current = raw;
-        return recent ?? raw;
+        return raw;
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         if (msg.includes("schwab_unauthorized") && schwabTokens.refresh_token) {
@@ -1119,9 +1117,7 @@ export default function TradingPlatform() {
             const fresh = await refreshSchwab({ data: { refreshToken: schwabTokens.refresh_token } });
             persistTokens(fresh);
             const raw = await fetchSchwabLadder({ data: { accessToken: fresh.access_token, symbol: selectedStock, expiryIndex: ladderExpiryIndex } });
-            const recent = raw ? buildRecentClientFlowLadder(raw, previousSchwabLadderRef.current) : null;
-            previousSchwabLadderRef.current = raw;
-            return recent ?? raw;
+            return raw;
           } catch { return null; }
         }
         return null;
@@ -1187,9 +1183,7 @@ export default function TradingPlatform() {
     queryKey: ["sharedSchwabLadder", selectedStock, sharedStrikesTodayKey, ladderExpiryIndex],
     queryFn: async () => {
       const raw = (await fetchSharedLadder({ data: { symbol: selectedStock, expiryIndex: ladderExpiryIndex } })) ?? null;
-      const recent = raw ? buildRecentClientFlowLadder(raw, previousSharedLadderRef.current) : null;
-      previousSharedLadderRef.current = raw;
-      return recent ?? raw;
+      return raw;
     },
     enabled: !!selectedStock,
     refetchInterval: 10_000,
