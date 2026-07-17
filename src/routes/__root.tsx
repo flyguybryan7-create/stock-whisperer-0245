@@ -7,7 +7,7 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -41,16 +41,19 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
   }, [error]);
 
-  // Auto-recover: most of these are transient (off-hours empty payloads, a
-  // dropped Schwab poll, a brief network blip). Retry silently after a short
-  // delay so the user isn't stranded on the fallback screen.
+  // Auto-recover ONCE for transient failures (off-hours empty payloads, a
+  // dropped poll, a brief network blip). If the retry itself errors, we stop
+  // and let the user act — otherwise we'd loop forever and hammer the server.
+  const autoRetriedRef = useRef(false);
   useEffect(() => {
+    if (autoRetriedRef.current) return;
+    autoRetriedRef.current = true;
     const t = setTimeout(() => {
       router.invalidate();
       reset();
     }, 2500);
     return () => clearTimeout(t);
-  }, [error, router, reset]);
+  }, [router, reset]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
