@@ -1034,7 +1034,7 @@ export default function TradingPlatform() {
   });
   const schwabTopStrikesPerUser = (schwabStrikesData as SchwabTopStrikes | null) ?? null;
 
-  // ---- Schwab options ladder (per-user) — full strike-by-strike volume ----
+  // ---- Schwab options ladder (per-user) — latest 10s strike-by-strike flow ----
   const fetchSchwabLadder = useServerFn(getSchwabOptionsLadder);
   const { data: schwabLadderData } = useQuery({
     queryKey: ["schwabLadder", selectedStock, todayKey, ladderExpiryIndex],
@@ -1055,7 +1055,7 @@ export default function TradingPlatform() {
       }
     },
     enabled: !!schwabTokens?.access_token && !!selectedStock,
-    refetchInterval: 1_500,
+    refetchInterval: 10_000,
     refetchIntervalInBackground: true,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
@@ -1108,13 +1108,13 @@ export default function TradingPlatform() {
     staleTime: 5_000,
   });
 
-  // Shared ladder for signed-out viewers.
+  // Shared ladder for signed-out viewers — same 10s cadence as per-user Schwab.
   const fetchSharedLadder = useServerFn(getSharedSchwabOptionsLadder);
   const { data: sharedLadderData } = useQuery({
     queryKey: ["sharedSchwabLadder", selectedStock, sharedStrikesTodayKey, ladderExpiryIndex],
     queryFn: async () => (await fetchSharedLadder({ data: { symbol: selectedStock, expiryIndex: ladderExpiryIndex } })) ?? null,
     enabled: !!selectedStock,
-    refetchInterval: 2_000,
+    refetchInterval: 10_000,
     refetchIntervalInBackground: true,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,

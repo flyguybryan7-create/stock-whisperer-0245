@@ -6,8 +6,8 @@ type LadderSnapshot = { at: number; byStrike: Map<number, StrikeSnapshot> };
 const FLOW_WINDOW_MAX_MS = 2 * 60_000;
 const ladderSnapshots = new Map<string, LadderSnapshot>();
 
-function getRecentFlowRungs(sym: string, expiry: string, rungs: SchwabLadderRung[]) {
-  const key = `${sym}:${expiry}`;
+function getRecentFlowRungs(scope: string, sym: string, expiry: string, rungs: SchwabLadderRung[]) {
+  const key = `${scope}:${sym}:${expiry}`;
   const now = Date.now();
   const prev = ladderSnapshots.get(key);
   const current = new Map<number, StrikeSnapshot>();
@@ -30,7 +30,7 @@ function getRecentFlowRungs(sym: string, expiry: string, rungs: SchwabLadderRung
   return { rungs: recent, callVolume: callDelta, putVolume: putDelta, windowSeconds: Math.max(1, Math.round((now - prev.at) / 1000)) };
 }
 
-export function buildLadderFromChain(sym: string, json: any, expiryIndex = 0): SchwabOptionsLadder | null {
+export function buildLadderFromChain(sym: string, json: any, expiryIndex = 0, snapshotScope = "default"): SchwabOptionsLadder | null {
   const callMap = json?.callExpDateMap ?? {};
   const putMap = json?.putExpDateMap ?? {};
   const spot = Number.isFinite(json?.underlyingPrice) ? Number(json.underlyingPrice) : null;
@@ -65,7 +65,7 @@ export function buildLadderFromChain(sym: string, json: any, expiryIndex = 0): S
     if (pv > (magP?.volume ?? 0)) magP = { strike, volume: pv };
     rungs.push({ strike, callVol: cv, putVol: pv, callOi: coi, putOi: poi });
   }
-  const recentFlow = getRecentFlowRungs(sym, expiry, rungs);
+  const recentFlow = getRecentFlowRungs(snapshotScope, sym, expiry, rungs);
   let displayRungs = recentFlow?.rungs ?? rungs;
   let trimmed = displayRungs;
   if (spot && spot > 0) {

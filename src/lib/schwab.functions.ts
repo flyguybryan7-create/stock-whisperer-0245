@@ -395,7 +395,7 @@ export const getSchwabOptionsLadder = createServerFn({ method: "POST" })
       return null;
     }
     const json: any = await res.json().catch(() => ({}));
-    return buildLadderFromChain(sym, json, data.expiryIndex ?? 0);
+    return buildLadderFromChain(sym, json, data.expiryIndex ?? 0, "user");
   });
 
 export { buildLadderFromChain as _buildLadderFromChain } from "./schwab-ladder.server";
