@@ -176,7 +176,7 @@ function isUsableOptionsLadder(ladder: SchwabOptionsLadder | null | undefined, s
 }
 
 function buildRecentClientFlowLadder(ladder: SchwabOptionsLadder, previous: SchwabOptionsLadder | null): SchwabOptionsLadder | null {
-  if (ladder.source === "oi" || ladder.flowWindowSeconds || !previous || previous.expiry !== ladder.expiry) return null;
+  if (ladder.source === "oi" || ladder.flowWindowSeconds || !previous || previous.symbol !== ladder.symbol || previous.expiry !== ladder.expiry) return null;
   const prevByStrike = new Map(previous.ladder.map((r) => [r.strike, r]));
   const recentRungs = ladder.ladder.map((r) => {
     const prev = prevByStrike.get(r.strike);
@@ -1235,13 +1235,17 @@ export default function TradingPlatform() {
     const usable = candidates.filter((l) => isUsableOptionsLadder(l, selectedStock));
     return usable.find((l) => (l?.source ?? "volume") === "volume") ?? usable[0] ?? null;
   }, [schwabLadderData, sharedLadderData, fastLadderData, selectedStock]);
+  const recentSchwabTopStrikes = useMemo(
+    () => (mergedSchwabLadder?.flowWindowSeconds ? buildTopStrikesFromLadder(mergedSchwabLadder) : null),
+    [mergedSchwabLadder],
+  );
 
   // Public aliases the rest of the component already uses. Now backed by the
   // merged feed so shared/published-link viewers see the same live data.
   const schwabQuotes = mergedSchwabQuotes;
   const schwabQuote: SchwabQuote | null = mergedSchwabQuotes[selectedStock] ?? null;
   const schwabFundamentals = mergedSchwabFund;
-  const schwabTopStrikes = mergedSchwabStrikes;
+  const schwabTopStrikes = recentSchwabTopStrikes ?? mergedSchwabStrikes;
   const schwabLadder = mergedSchwabLadder;
   const liveBase = live[selectedStock];
   const selectedMark = schwabQuote?.last ?? liveBase?.price;
