@@ -371,6 +371,9 @@ export type SchwabOptionsLadder = {
   // used to expose staleness in the UI — public feeds are 15-min delayed
   // and don't always roll to the new session immediately after open).
   asOf?: string | null;
+  // When present, Schwab ladder volumes are the latest delta window instead
+  // of all-day cumulative volume, so the magnet can move as new flow prints.
+  flowWindowSeconds?: number | null;
 };
 
 import { buildLadderFromChain } from "./schwab-ladder.server";
