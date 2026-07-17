@@ -210,6 +210,36 @@ function buildRecentClientFlowLadder(ladder: SchwabOptionsLadder, previous: Schw
   };
 }
 
+function buildTopStrikesFromLadder(ladder: SchwabOptionsLadder): SchwabTopStrikes | null {
+  if (!isUsableOptionsLadder(ladder, ladder.symbol)) return null;
+  const calls = ladder.ladder
+    .filter((r) => r.callVol > 0)
+    .sort((a, b) => b.callVol - a.callVol)
+    .slice(0, 2)
+    .map((r) => ({ strike: r.strike, volume: r.callVol, pct: ladder.callVolume > 0 ? r.callVol / ladder.callVolume : 0 }));
+  const puts = ladder.ladder
+    .filter((r) => r.putVol > 0)
+    .sort((a, b) => b.putVol - a.putVol)
+    .slice(0, 2)
+    .map((r) => ({ strike: r.strike, volume: r.putVol, pct: ladder.putVolume > 0 ? r.putVol / ladder.putVolume : 0 }));
+  if (!calls.length && !puts.length) return null;
+  return {
+    symbol: ladder.symbol,
+    expiry: ladder.expiry,
+    dte: ladder.dte,
+    label: ladder.label,
+    topCallStrike: calls[0]?.strike ?? null,
+    topCallPct: calls[0]?.pct ?? null,
+    topPutStrike: puts[0]?.strike ?? null,
+    topPutPct: puts[0]?.pct ?? null,
+    callVolume: ladder.callVolume,
+    putVolume: ladder.putVolume,
+    topCalls: calls,
+    topPuts: puts,
+    pcRatio: ladder.callVolume > 0 ? +(ladder.putVolume / ladder.callVolume).toFixed(3) : null,
+  };
+}
+
 function getVisiblePriceDomain(rows: any[]): [number, number] | ["auto", "auto"] {
   if (!rows.length) return ["auto", "auto"];
   const keys = ["open", "high", "low", "close", "sma9", "sma15", "sma20", "ema21", "bbUpper", "bbLower", "bullLabelY", "sellLabelY", "buyArrowY", "sellArrowY"];
