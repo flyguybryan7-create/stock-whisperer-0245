@@ -175,6 +175,41 @@ function isUsableOptionsLadder(ladder: SchwabOptionsLadder | null | undefined, s
   return hasStrikeData && hasMagnet;
 }
 
+function buildRecentClientFlowLadder(ladder: SchwabOptionsLadder, previous: SchwabOptionsLadder | null): SchwabOptionsLadder | null {
+  if (ladder.source === "oi" || ladder.flowWindowSeconds || !previous || previous.expiry !== ladder.expiry) return null;
+  const prevByStrike = new Map(previous.ladder.map((r) => [r.strike, r]));
+  const recentRungs = ladder.ladder.map((r) => {
+    const prev = prevByStrike.get(r.strike);
+    return {
+      ...r,
+      callVol: Math.max(0, r.callVol - (prev?.callVol ?? 0)),
+      putVol: Math.max(0, r.putVol - (prev?.putVol ?? 0)),
+    };
+  });
+  let callVolume = 0;
+  let putVolume = 0;
+  let magnetCall: { strike: number; volume: number } | null = null;
+  let magnetPut: { strike: number; volume: number } | null = null;
+  for (const r of recentRungs) {
+    callVolume += r.callVol;
+    putVolume += r.putVol;
+    if (r.callVol > (magnetCall?.volume ?? 0)) magnetCall = { strike: r.strike, volume: r.callVol };
+    if (r.putVol > (magnetPut?.volume ?? 0)) magnetPut = { strike: r.strike, volume: r.putVol };
+  }
+  if (callVolume + putVolume <= 0) return null;
+  const seconds = previous.asOf ? Math.max(1, Math.round((Date.now() - new Date(previous.asOf).getTime()) / 1000)) : 10;
+  return {
+    ...ladder,
+    callVolume,
+    putVolume,
+    magnetCall: magnetCall ? { strike: magnetCall.strike, volume: magnetCall.volume, pct: callVolume > 0 ? magnetCall.volume / callVolume : 0 } : null,
+    magnetPut: magnetPut ? { strike: magnetPut.strike, volume: magnetPut.volume, pct: putVolume > 0 ? magnetPut.volume / putVolume : 0 } : null,
+    ladder: recentRungs,
+    flowWindowSeconds: seconds,
+    asOf: new Date().toISOString(),
+  };
+}
+
 function getVisiblePriceDomain(rows: any[]): [number, number] | ["auto", "auto"] {
   if (!rows.length) return ["auto", "auto"];
   const keys = ["open", "high", "low", "close", "sma9", "sma15", "sma20", "ema21", "bbUpper", "bbLower", "bullLabelY", "sellLabelY", "buyArrowY", "sellArrowY"];
