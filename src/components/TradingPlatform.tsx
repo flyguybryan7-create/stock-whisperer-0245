@@ -768,6 +768,8 @@ export default function TradingPlatform() {
   const fetchIntradayBatch = useServerFn(getIntradayBatch);
   const fetchScreenerFn = useServerFn(fetchScreener);
   const queryClient = useQueryClient();
+  const previousSchwabLadderRef = useRef<SchwabOptionsLadder | null>(null);
+  const previousSharedLadderRef = useRef<SchwabOptionsLadder | null>(null);
   const [showScreener, setShowScreener] = useState(false);
   const [screenerTab, setScreenerTab] = useState<"gainers" | "losers" | "actives">("gainers");
   const [countdown, setCountdown] = useState(15);
@@ -1106,14 +1108,20 @@ export default function TradingPlatform() {
     queryFn: async () => {
       if (!schwabTokens?.access_token) return null;
       try {
-        return await fetchSchwabLadder({ data: { accessToken: schwabTokens.access_token, symbol: selectedStock, expiryIndex: ladderExpiryIndex } });
+        const raw = await fetchSchwabLadder({ data: { accessToken: schwabTokens.access_token, symbol: selectedStock, expiryIndex: ladderExpiryIndex } });
+        const recent = raw ? buildRecentClientFlowLadder(raw, previousSchwabLadderRef.current) : null;
+        previousSchwabLadderRef.current = raw;
+        return recent ?? raw;
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         if (msg.includes("schwab_unauthorized") && schwabTokens.refresh_token) {
           try {
             const fresh = await refreshSchwab({ data: { refreshToken: schwabTokens.refresh_token } });
             persistTokens(fresh);
-            return await fetchSchwabLadder({ data: { accessToken: fresh.access_token, symbol: selectedStock, expiryIndex: ladderExpiryIndex } });
+            const raw = await fetchSchwabLadder({ data: { accessToken: fresh.access_token, symbol: selectedStock, expiryIndex: ladderExpiryIndex } });
+            const recent = raw ? buildRecentClientFlowLadder(raw, previousSchwabLadderRef.current) : null;
+            previousSchwabLadderRef.current = raw;
+            return recent ?? raw;
           } catch { return null; }
         }
         return null;
@@ -1177,7 +1185,12 @@ export default function TradingPlatform() {
   const fetchSharedLadder = useServerFn(getSharedSchwabOptionsLadder);
   const { data: sharedLadderData } = useQuery({
     queryKey: ["sharedSchwabLadder", selectedStock, sharedStrikesTodayKey, ladderExpiryIndex],
-    queryFn: async () => (await fetchSharedLadder({ data: { symbol: selectedStock, expiryIndex: ladderExpiryIndex } })) ?? null,
+    queryFn: async () => {
+      const raw = (await fetchSharedLadder({ data: { symbol: selectedStock, expiryIndex: ladderExpiryIndex } })) ?? null;
+      const recent = raw ? buildRecentClientFlowLadder(raw, previousSharedLadderRef.current) : null;
+      previousSharedLadderRef.current = raw;
+      return recent ?? raw;
+    },
     enabled: !!selectedStock,
     refetchInterval: 10_000,
     refetchIntervalInBackground: true,
