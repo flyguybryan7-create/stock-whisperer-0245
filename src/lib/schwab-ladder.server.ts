@@ -1,6 +1,6 @@
 import type { SchwabOptionsLadder, SchwabLadderRung } from "./schwab.functions";
 
-export function buildLadderFromChain(sym: string, json: any, expiryIndex = 0): SchwabOptionsLadder | null {
+export function buildLadderFromChain(sym: string, json: any, expiryIndex = 0, _snapshotScope = "default"): SchwabOptionsLadder | null {
   const callMap = json?.callExpDateMap ?? {};
   const putMap = json?.putExpDateMap ?? {};
   const spot = Number.isFinite(json?.underlyingPrice) ? Number(json.underlyingPrice) : null;
@@ -35,12 +35,13 @@ export function buildLadderFromChain(sym: string, json: any, expiryIndex = 0): S
     if (pv > (magP?.volume ?? 0)) magP = { strike, volume: pv };
     rungs.push({ strike, callVol: cv, putVol: pv, callOi: coi, putOi: poi });
   }
-  let trimmed = rungs;
+  let displayRungs = rungs;
+  let trimmed = displayRungs;
   if (spot && spot > 0) {
     const lo = spot * 0.75, hi = spot * 1.25;
-    trimmed = rungs.filter((r) => r.strike >= lo && r.strike <= hi);
+    trimmed = displayRungs.filter((r) => r.strike >= lo && r.strike <= hi);
     if (trimmed.length < 8) {
-      trimmed = [...rungs]
+      trimmed = [...displayRungs]
         .sort((a, b) => Math.abs(a.strike - spot) - Math.abs(b.strike - spot))
         .slice(0, 20)
         .sort((a, b) => a.strike - b.strike);
@@ -65,6 +66,12 @@ export function buildLadderFromChain(sym: string, json: any, expiryIndex = 0): S
   let effMagP = magP;
   if (callTot === 0 && putTot === 0) {
     source = "oi";
+    displayRungs = rungs.map((r) => ({ ...r, callVol: r.callOi, putVol: r.putOi }));
+    trimmed = displayRungs;
+    effCallTot = 0;
+    effPutTot = 0;
+    effMagC = null;
+    effMagP = null;
     for (const r of rungs) {
       effCallTot += r.callOi;
       effPutTot += r.putOi;
@@ -72,6 +79,16 @@ export function buildLadderFromChain(sym: string, json: any, expiryIndex = 0): S
       if (r.putOi > (effMagP?.volume ?? 0)) effMagP = { strike: r.strike, volume: r.putOi };
     }
     if (effCallTot === 0 && effPutTot === 0) return null;
+    if (spot && spot > 0) {
+      const lo = spot * 0.75, hi = spot * 1.25;
+      trimmed = displayRungs.filter((r) => r.strike >= lo && r.strike <= hi);
+      if (trimmed.length < 8) {
+        trimmed = [...displayRungs]
+          .sort((a, b) => Math.abs(a.strike - spot) - Math.abs(b.strike - spot))
+          .slice(0, 20)
+          .sort((a, b) => a.strike - b.strike);
+      }
+    }
   }
   return {
     symbol: sym,
@@ -87,5 +104,7 @@ export function buildLadderFromChain(sym: string, json: any, expiryIndex = 0): S
     ladder: trimmed,
     alternateExpiries,
     source,
+    flowWindowSeconds: null,
+    asOf: new Date().toISOString(),
   };
 }

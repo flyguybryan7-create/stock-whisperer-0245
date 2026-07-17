@@ -175,6 +175,71 @@ function isUsableOptionsLadder(ladder: SchwabOptionsLadder | null | undefined, s
   return hasStrikeData && hasMagnet;
 }
 
+function buildRecentClientFlowLadder(ladder: SchwabOptionsLadder, previous: SchwabOptionsLadder | null): SchwabOptionsLadder | null {
+  if (ladder.source === "oi" || ladder.flowWindowSeconds || !previous || previous.symbol !== ladder.symbol || previous.expiry !== ladder.expiry) return null;
+  const prevByStrike = new Map(previous.ladder.map((r) => [r.strike, r]));
+  const recentRungs = ladder.ladder.map((r) => {
+    const prev = prevByStrike.get(r.strike);
+    return {
+      ...r,
+      callVol: Math.max(0, r.callVol - (prev?.callVol ?? 0)),
+      putVol: Math.max(0, r.putVol - (prev?.putVol ?? 0)),
+    };
+  });
+  let callVolume = 0;
+  let putVolume = 0;
+  let magnetCall: { strike: number; volume: number } | null = null;
+  let magnetPut: { strike: number; volume: number } | null = null;
+  for (const r of recentRungs) {
+    callVolume += r.callVol;
+    putVolume += r.putVol;
+    if (r.callVol > (magnetCall?.volume ?? 0)) magnetCall = { strike: r.strike, volume: r.callVol };
+    if (r.putVol > (magnetPut?.volume ?? 0)) magnetPut = { strike: r.strike, volume: r.putVol };
+  }
+  if (callVolume + putVolume <= 0) return null;
+  const seconds = previous.asOf ? Math.max(1, Math.round((Date.now() - new Date(previous.asOf).getTime()) / 1000)) : 10;
+  return {
+    ...ladder,
+    callVolume,
+    putVolume,
+    magnetCall: magnetCall ? { strike: magnetCall.strike, volume: magnetCall.volume, pct: callVolume > 0 ? magnetCall.volume / callVolume : 0 } : null,
+    magnetPut: magnetPut ? { strike: magnetPut.strike, volume: magnetPut.volume, pct: putVolume > 0 ? magnetPut.volume / putVolume : 0 } : null,
+    ladder: recentRungs,
+    flowWindowSeconds: seconds,
+    asOf: new Date().toISOString(),
+  };
+}
+
+function buildTopStrikesFromLadder(ladder: SchwabOptionsLadder): SchwabTopStrikes | null {
+  if (!isUsableOptionsLadder(ladder, ladder.symbol)) return null;
+  const calls = ladder.ladder
+    .filter((r) => r.callVol > 0)
+    .sort((a, b) => b.callVol - a.callVol)
+    .slice(0, 2)
+    .map((r) => ({ strike: r.strike, volume: r.callVol, pct: ladder.callVolume > 0 ? r.callVol / ladder.callVolume : 0 }));
+  const puts = ladder.ladder
+    .filter((r) => r.putVol > 0)
+    .sort((a, b) => b.putVol - a.putVol)
+    .slice(0, 2)
+    .map((r) => ({ strike: r.strike, volume: r.putVol, pct: ladder.putVolume > 0 ? r.putVol / ladder.putVolume : 0 }));
+  if (!calls.length && !puts.length) return null;
+  return {
+    symbol: ladder.symbol,
+    expiry: ladder.expiry,
+    dte: ladder.dte,
+    label: ladder.label,
+    topCallStrike: calls[0]?.strike ?? null,
+    topCallPct: calls[0]?.pct ?? null,
+    topPutStrike: puts[0]?.strike ?? null,
+    topPutPct: puts[0]?.pct ?? null,
+    callVolume: ladder.callVolume,
+    putVolume: ladder.putVolume,
+    topCalls: calls,
+    topPuts: puts,
+    pcRatio: ladder.callVolume > 0 ? +(ladder.putVolume / ladder.callVolume).toFixed(3) : null,
+  };
+}
+
 function getVisiblePriceDomain(rows: any[]): [number, number] | ["auto", "auto"] {
   if (!rows.length) return ["auto", "auto"];
   const keys = ["open", "high", "low", "close", "sma9", "sma15", "sma20", "ema21", "bbUpper", "bbLower", "bullLabelY", "sellLabelY", "buyArrowY", "sellArrowY"];
@@ -703,6 +768,8 @@ export default function TradingPlatform() {
   const fetchIntradayBatch = useServerFn(getIntradayBatch);
   const fetchScreenerFn = useServerFn(fetchScreener);
   const queryClient = useQueryClient();
+  const previousSchwabLadderRef = useRef<SchwabOptionsLadder | null>(null);
+  const previousSharedLadderRef = useRef<SchwabOptionsLadder | null>(null);
   const [showScreener, setShowScreener] = useState(false);
   const [screenerTab, setScreenerTab] = useState<"gainers" | "losers" | "actives">("gainers");
   const [countdown, setCountdown] = useState(15);
@@ -1034,28 +1101,34 @@ export default function TradingPlatform() {
   });
   const schwabTopStrikesPerUser = (schwabStrikesData as SchwabTopStrikes | null) ?? null;
 
-  // ---- Schwab options ladder (per-user) — full strike-by-strike volume ----
+  // ---- Schwab options ladder (per-user) — latest 10s strike-by-strike flow ----
   const fetchSchwabLadder = useServerFn(getSchwabOptionsLadder);
   const { data: schwabLadderData } = useQuery({
     queryKey: ["schwabLadder", selectedStock, todayKey, ladderExpiryIndex],
     queryFn: async () => {
       if (!schwabTokens?.access_token) return null;
       try {
-        return await fetchSchwabLadder({ data: { accessToken: schwabTokens.access_token, symbol: selectedStock, expiryIndex: ladderExpiryIndex } });
+        const raw = await fetchSchwabLadder({ data: { accessToken: schwabTokens.access_token, symbol: selectedStock, expiryIndex: ladderExpiryIndex } });
+        const recent = raw ? buildRecentClientFlowLadder(raw, previousSchwabLadderRef.current) : null;
+        previousSchwabLadderRef.current = raw;
+        return recent ?? raw;
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         if (msg.includes("schwab_unauthorized") && schwabTokens.refresh_token) {
           try {
             const fresh = await refreshSchwab({ data: { refreshToken: schwabTokens.refresh_token } });
             persistTokens(fresh);
-            return await fetchSchwabLadder({ data: { accessToken: fresh.access_token, symbol: selectedStock, expiryIndex: ladderExpiryIndex } });
+            const raw = await fetchSchwabLadder({ data: { accessToken: fresh.access_token, symbol: selectedStock, expiryIndex: ladderExpiryIndex } });
+            const recent = raw ? buildRecentClientFlowLadder(raw, previousSchwabLadderRef.current) : null;
+            previousSchwabLadderRef.current = raw;
+            return recent ?? raw;
           } catch { return null; }
         }
         return null;
       }
     },
     enabled: !!schwabTokens?.access_token && !!selectedStock,
-    refetchInterval: 1_500,
+    refetchInterval: 10_000,
     refetchIntervalInBackground: true,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
@@ -1108,13 +1181,18 @@ export default function TradingPlatform() {
     staleTime: 5_000,
   });
 
-  // Shared ladder for signed-out viewers.
+  // Shared ladder for signed-out viewers — same 10s cadence as per-user Schwab.
   const fetchSharedLadder = useServerFn(getSharedSchwabOptionsLadder);
   const { data: sharedLadderData } = useQuery({
     queryKey: ["sharedSchwabLadder", selectedStock, sharedStrikesTodayKey, ladderExpiryIndex],
-    queryFn: async () => (await fetchSharedLadder({ data: { symbol: selectedStock, expiryIndex: ladderExpiryIndex } })) ?? null,
+    queryFn: async () => {
+      const raw = (await fetchSharedLadder({ data: { symbol: selectedStock, expiryIndex: ladderExpiryIndex } })) ?? null;
+      const recent = raw ? buildRecentClientFlowLadder(raw, previousSharedLadderRef.current) : null;
+      previousSharedLadderRef.current = raw;
+      return recent ?? raw;
+    },
     enabled: !!selectedStock,
-    refetchInterval: 2_000,
+    refetchInterval: 10_000,
     refetchIntervalInBackground: true,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
@@ -1157,13 +1235,17 @@ export default function TradingPlatform() {
     const usable = candidates.filter((l) => isUsableOptionsLadder(l, selectedStock));
     return usable.find((l) => (l?.source ?? "volume") === "volume") ?? usable[0] ?? null;
   }, [schwabLadderData, sharedLadderData, fastLadderData, selectedStock]);
+  const recentSchwabTopStrikes = useMemo(
+    () => (mergedSchwabLadder?.flowWindowSeconds ? buildTopStrikesFromLadder(mergedSchwabLadder) : null),
+    [mergedSchwabLadder],
+  );
 
   // Public aliases the rest of the component already uses. Now backed by the
   // merged feed so shared/published-link viewers see the same live data.
   const schwabQuotes = mergedSchwabQuotes;
   const schwabQuote: SchwabQuote | null = mergedSchwabQuotes[selectedStock] ?? null;
   const schwabFundamentals = mergedSchwabFund;
-  const schwabTopStrikes = mergedSchwabStrikes;
+  const schwabTopStrikes = recentSchwabTopStrikes ?? mergedSchwabStrikes;
   const schwabLadder = mergedSchwabLadder;
   const liveBase = live[selectedStock];
   const selectedMark = schwabQuote?.last ?? liveBase?.price;
