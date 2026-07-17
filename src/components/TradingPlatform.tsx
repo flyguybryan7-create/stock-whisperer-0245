@@ -46,6 +46,7 @@ import {
   getSharedSchwabOptionsLadder,
   hasSharedSchwabToken,
   getFastOptionsLadder,
+  disconnectSharedSchwabPublic,
 } from "@/lib/schwab-shared.functions";
 import { detectTrap, type TrapResult } from "@/lib/trap-indicator";
 import { OptionsFlowChart } from "./OptionsFlowChart";
