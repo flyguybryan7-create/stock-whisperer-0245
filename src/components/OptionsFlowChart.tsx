@@ -261,7 +261,9 @@ export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpi
             </ComposedChart>
           </ResponsiveContainer>
           <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "4px 0 0" }}>
-            Option volume / open interest · refreshes every 10s · magnet strike = heaviest contract concentration
+            {ladder?.flowWindowSeconds
+              ? `Latest ${ladder.flowWindowSeconds}s Schwab flow · magnet strike = freshest volume concentration`
+              : "Option volume / open interest · refreshes every 10s · magnet strike = heaviest contract concentration"}
           </div>
         </>
       )}
