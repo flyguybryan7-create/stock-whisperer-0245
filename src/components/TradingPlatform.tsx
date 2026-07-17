@@ -775,6 +775,28 @@ export default function TradingPlatform() {
     }
   }, [fetchSchwabAuthUrl]);
 
+  const disconnectShared = useServerFn(disconnectSharedSchwabPublic);
+  const disconnectSchwab = useCallback(async () => {
+    try {
+      setSchwabErr(null);
+      try { localStorage.removeItem(SCHWAB_TOKEN_KEY); } catch {}
+      try { sessionStorage.removeItem(SCHWAB_TOKEN_KEY); } catch {}
+      try { localStorage.removeItem(SCHWAB_CONNECT_STARTED_KEY); } catch {}
+      setSchwabTokens(null);
+      await disconnectShared().catch((e) => console.warn("[schwab] disconnect shared failed", e));
+    } catch (e) {
+      setSchwabErr(e instanceof Error ? e.message : String(e));
+    }
+  }, [disconnectShared]);
+  const toggleSchwab = useCallback(() => {
+    if (schwabConnected) {
+      if (typeof window !== "undefined" && !window.confirm("Disconnect Schwab?")) return;
+      void disconnectSchwab();
+    } else {
+      void connectSchwab();
+    }
+  }, [schwabConnected, connectSchwab, disconnectSchwab]);
+
   // Reflect current notification permission + existing subscription.
   useEffect(() => {
     if (!pushSupported()) { setPushPerm("unsupported"); return; }
