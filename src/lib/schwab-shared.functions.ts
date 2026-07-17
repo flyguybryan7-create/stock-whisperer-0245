@@ -171,6 +171,24 @@ export const hasSharedSchwabToken = createServerFn({ method: "GET" }).handler(as
   }
 });
 
+// Public disconnect: wipes ALL stored Schwab owner tokens (shared + any
+// per-user rows) so a subsequent "Connect Schwab" starts a fresh OAuth flow.
+// No auth required — matches setSharedSchwabTokensPublic's trust model.
+export const disconnectSharedSchwabPublic = createServerFn({ method: "POST" }).handler(async () => {
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin
+      .from("schwab_owner_tokens")
+      .delete()
+      .not("user_id", "is", null);
+    if (error) throw new Error(error.message);
+    return { ok: true as const };
+  } catch (e) {
+    console.error("[schwab-shared] disconnectSharedSchwabPublic", e);
+    throw e;
+  }
+});
+
 // ============ Shared quotes (public) ============
 export const getSharedSchwabQuotes = createServerFn({ method: "POST" })
   .inputValidator((d: { symbols: string[] }) => d)

@@ -46,6 +46,7 @@ import {
   getSharedSchwabOptionsLadder,
   hasSharedSchwabToken,
   getFastOptionsLadder,
+  disconnectSharedSchwabPublic,
 } from "@/lib/schwab-shared.functions";
 import { detectTrap, type TrapResult } from "@/lib/trap-indicator";
 import { OptionsFlowChart } from "./OptionsFlowChart";
@@ -773,6 +774,28 @@ export default function TradingPlatform() {
       setSchwabErr(e instanceof Error ? e.message : String(e));
     }
   }, [fetchSchwabAuthUrl]);
+
+  const disconnectShared = useServerFn(disconnectSharedSchwabPublic);
+  const disconnectSchwab = useCallback(async () => {
+    try {
+      setSchwabErr(null);
+      try { localStorage.removeItem(SCHWAB_TOKEN_KEY); } catch {}
+      try { sessionStorage.removeItem(SCHWAB_TOKEN_KEY); } catch {}
+      try { localStorage.removeItem(SCHWAB_CONNECT_STARTED_KEY); } catch {}
+      setSchwabTokens(null);
+      await disconnectShared().catch((e) => console.warn("[schwab] disconnect shared failed", e));
+    } catch (e) {
+      setSchwabErr(e instanceof Error ? e.message : String(e));
+    }
+  }, [disconnectShared]);
+  const toggleSchwab = useCallback(() => {
+    if (schwabConnected) {
+      if (typeof window !== "undefined" && !window.confirm("Disconnect Schwab?")) return;
+      void disconnectSchwab();
+    } else {
+      void connectSchwab();
+    }
+  }, [schwabConnected, connectSchwab, disconnectSchwab]);
 
   // Reflect current notification permission + existing subscription.
   useEffect(() => {
@@ -2266,28 +2289,18 @@ export default function TradingPlatform() {
             LIVE
           </div>
           {schwabConnected ? (
-            <span
-              title={
-                schwabErr
-                  ? `Schwab error: ${schwabErr}`
-                  : schwabTokens
-                    ? `Schwab real-time quote for ${selectedStock}`
-                    : `Schwab connected via shared owner feed (this tab has no local token — that's OK, data is live)`
-              }
-              style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, color: "#39d353", border: "1px solid #39d353", borderRadius: 4, padding: "2px 6px", flexShrink: 0 }}
+            <button
+              type="button"
+              onClick={toggleSchwab}
+              title="Click to disconnect Schwab"
+              style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 800, color: "#39d353", background: "transparent", border: "1px solid #39d353", borderRadius: 4, padding: "2px 6px", cursor: "pointer", flexShrink: 0, letterSpacing: 0.5 }}
             >
-              <span style={{ color: "#8b949e", fontWeight: 800 }}>{schwabTokens ? "SCHWAB" : "SCHWAB·SHARED"}</span>
-              {schwabQuote?.last != null ? `$${schwabQuote.last.toFixed(2)}` : "—"}
-              {schwabQuote?.bid != null && schwabQuote?.ask != null && (
-                <span style={{ color: "#8b949e", fontWeight: 700 }}>
-                  {schwabQuote.bid.toFixed(2)}×{schwabQuote.ask.toFixed(2)}
-                </span>
-              )}
-            </span>
+              SCHWAB {schwabQuote?.last != null ? `$${schwabQuote.last.toFixed(2)}` : "●"}
+            </button>
           ) : (
             <button
               type="button"
-              onClick={connectSchwab}
+              onClick={toggleSchwab}
               title={schwabErr ? `Schwab error: ${schwabErr}` : "Connect Schwab for real-time NBBO quotes"}
               style={{ background: "rgba(57,211,83,0.12)", border: "1px solid #39d353", color: "#39d353", fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 4, cursor: "pointer", letterSpacing: 0.5, flexShrink: 0 }}
             >
