@@ -643,9 +643,21 @@ export async function fetchSemisPulseSnapshot(): Promise<SemisPulseResponse> {
 
 export async function fetchGlobalSemiIndexSnapshot(): Promise<GlobalSemiIndexResponse> {
   try {
+    const { fetchSchwabSharedQuote } = await import("./schwab-shared.server");
     const components: GlobalSemiComponent[] = await Promise.all(
       GLOBAL_SEMI_INDICES.map(async (idx) => {
         if (idx.symbol === "TAIFEX:TXF") return fetchTaifexTaiwanFuturesSnap(idx.name);
+        // ^SOX (PHLX Semi index) is available on Schwab as `$SOX.X`. When a
+        // shared Schwab token is present, use Schwab's real-time index tick
+        // instead of Yahoo's 15-min delayed feed. Falls back to Yahoo if
+        // Schwab is unavailable or returns nothing usable.
+        if (idx.symbol === "^SOX") {
+          const schwab = await fetchSchwabSharedQuote("$SOX.X");
+          if (schwab && schwab.price != null && schwab.prev != null && schwab.prev > 0) {
+            const changePct = ((schwab.price - schwab.prev) / schwab.prev) * 100;
+            return { symbol: idx.symbol, name: idx.name, price: schwab.price, changePct };
+          }
+        }
         // The top tape must match live quote-site percentages. Daily Yahoo
         // chart ranges can expose the first 5-day bar as chartPreviousClose,
         // which makes markets like Nikkei/TAIEX/SOX compare against the wrong
