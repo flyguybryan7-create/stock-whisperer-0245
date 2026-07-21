@@ -51,6 +51,7 @@ import {
 import { detectTrap, type TrapResult } from "@/lib/trap-indicator";
 import { OptionsFlowChart } from "./OptionsFlowChart";
 import { AggressorTapeCVD } from "./AggressorTapeCVD";
+import { IndexChartModal } from "./IndexChartModal";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { useSubscription } from "@/hooks/useSubscription";
 import { supabase } from "@/integrations/supabase/client";
@@ -643,6 +644,7 @@ export default function TradingPlatform() {
   const [ladderExpiryIndex, setLadderExpiryIndex] = useState(0);
   useEffect(() => { setLadderExpiryIndex(0); }, [selectedStock]);
   const [showDetail, setShowDetail] = useState(false);
+  const [indexChart, setIndexChart] = useState<{ label: string; fullName?: string; symbol: string } | null>(null);
   const [search, setSearch] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [alerts, setAlerts] = useState<Record<string, Alert[]>>({});
@@ -2336,6 +2338,13 @@ export default function TradingPlatform() {
               "TAIFEX:TXF": "TWN-F",
               "NKD=F": "NK-F",
             };
+            // Yahoo intraday symbol mapping — TAIFEX:TXF has no Yahoo feed, use ^TWII cash index.
+            const YAHOO_SYMBOL: Record<string, string> = {
+              "^KS11": "^KS11",
+              "^SOX": "^SOX",
+              "TAIFEX:TXF": "^TWII",
+              "NKD=F": "NKD=F",
+            };
             const order = ["^KS11", "^SOX", "TAIFEX:TXF", "NKD=F"];
             const comps = order
               .map((s) => globalSemis.components.find((c) => c.symbol === s))
@@ -2347,14 +2356,16 @@ export default function TradingPlatform() {
                   const color = pct == null ? "#8b949e" : pct >= 0 ? "#39d353" : "#f85149";
                   const pctStr = pct == null ? "—" : `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;
                   return (
-                    <span
+                    <button
                       key={c.symbol}
+                      type="button"
+                      onClick={() => setIndexChart({ label: ABBREV[c.symbol], fullName: c.name, symbol: YAHOO_SYMBOL[c.symbol] })}
                       title={`${c.name} (${c.symbol})`}
-                      style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 800, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 5px", whiteSpace: "nowrap" }}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 800, color, background: "transparent", border: `1px solid ${color}`, borderRadius: 4, padding: "2px 5px", whiteSpace: "nowrap", cursor: "pointer", fontFamily: "inherit" }}
                     >
                       <span style={{ color: "#8b949e", fontWeight: 800 }}>{ABBREV[c.symbol]}</span>
                       <span>{pctStr}</span>
-                    </span>
+                    </button>
                   );
                 })}
               </span>
@@ -2430,14 +2441,16 @@ export default function TradingPlatform() {
                 const flashClass = mom === "BUY" ? "flow-flash-buy" : mom === "SELL" ? "flow-flash-sell" : undefined;
                 const momTip = mom ? `  ·  momentum: ${mom} (last 10s)` : "";
                 return (
-                  <span
+                  <button
                     key={f.symbol}
+                    type="button"
+                    onClick={() => setIndexChart({ label, fullName: `${f.name} futures`, symbol: f.symbol })}
                     title={`${f.name} futures: ${f.price?.toFixed(2) ?? "—"}${momTip}`}
                     className={flashClass}
-                    style={{ color }}
+                    style={{ color, background: "transparent", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "inherit", fontWeight: "inherit" }}
                   >
                     {label} {pct >= 0 ? "+" : ""}{pct.toFixed(2)}%
-                  </span>
+                  </button>
                 );
               })}
             </span>
@@ -3341,6 +3354,14 @@ export default function TradingPlatform() {
         <div style={{ position: "fixed", top: 70, right: 16, background: "#0d1117", border: "1px solid #39d353", borderRadius: 6, padding: "10px 14px", fontSize: 11, color: "#e6edf3", animation: "slideIn 0.3s", zIndex: 101, maxWidth: 320 }}>
           {notification.msg}
         </div>
+      )}
+      {indexChart && (
+        <IndexChartModal
+          label={indexChart.label}
+          fullName={indexChart.fullName}
+          symbol={indexChart.symbol}
+          onClose={() => setIndexChart(null)}
+        />
       )}
     </div>
   );
