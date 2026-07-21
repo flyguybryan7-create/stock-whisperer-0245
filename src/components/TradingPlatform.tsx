@@ -644,6 +644,7 @@ export default function TradingPlatform() {
   const [ladderExpiryIndex, setLadderExpiryIndex] = useState(0);
   useEffect(() => { setLadderExpiryIndex(0); }, [selectedStock]);
   const [showDetail, setShowDetail] = useState(false);
+  const [indexChart, setIndexChart] = useState<{ label: string; fullName?: string; symbol: string } | null>(null);
   const [search, setSearch] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [alerts, setAlerts] = useState<Record<string, Alert[]>>({});
