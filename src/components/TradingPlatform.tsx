@@ -3355,6 +3355,14 @@ export default function TradingPlatform() {
           {notification.msg}
         </div>
       )}
+      {indexChart && (
+        <IndexChartModal
+          label={indexChart.label}
+          fullName={indexChart.fullName}
+          symbol={indexChart.symbol}
+          onClose={() => setIndexChart(null)}
+        />
+      )}
     </div>
   );
 }
