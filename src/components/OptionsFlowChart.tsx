@@ -118,7 +118,14 @@ export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpi
     return m;
   }, [data]);
 
-  const noWeeklies = ladder && !ladder.hasWeeklies;
+  // "No weeklies" means the entire chain lacks any near-term (≤10 DTE) expiry.
+  // Do NOT flag it just because the user picked a farther-out expiry from the
+  // dropdown — Schwab returns Jul 24, Jul 31, Aug 7, Aug 14 … all weeklies for
+  // most large-caps, so a mid-cycle Aug 14 selection is not "no weeklies".
+  const chainHasWeeklies = ladder?.alternateExpiries?.some(
+    (e) => typeof e.dte === "number" && e.dte <= 10,
+  ) || (typeof ladder?.dte === "number" && ladder.dte <= 10);
+  const noWeeklies = !!ladder && !chainHasWeeklies;
   const empty = !ladder || !data.length;
 
   return (
