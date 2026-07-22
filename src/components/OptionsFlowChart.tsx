@@ -118,7 +118,14 @@ export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpi
     return m;
   }, [data]);
 
-  const noWeeklies = ladder && !ladder.hasWeeklies;
+  // "No weeklies" means the entire chain lacks any near-term (≤10 DTE) expiry.
+  // Do NOT flag it just because the user picked a farther-out expiry from the
+  // dropdown — Schwab returns Jul 24, Jul 31, Aug 7, Aug 14 … all weeklies for
+  // most large-caps, so a mid-cycle Aug 14 selection is not "no weeklies".
+  const chainHasWeeklies = ladder?.alternateExpiries?.some(
+    (e) => typeof e.dte === "number" && e.dte <= 10,
+  ) || (typeof ladder?.dte === "number" && ladder.dte <= 10);
+  const noWeeklies = !!ladder && !chainHasWeeklies;
   const empty = !ladder || !data.length;
 
   return (
@@ -139,11 +146,15 @@ export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpi
               }}
               aria-label="Select expiry"
             >
-              {ladder.alternateExpiries.map((e, i) => (
-                <option key={e.expiry} value={i}>
-                  EXP {e.label}{e.dte != null ? ` · ${e.dte}D` : ""}
-                </option>
-              ))}
+              {ladder.alternateExpiries.map((e, i) => {
+                const v = typeof e.volume === "number" ? e.volume : null;
+                const volLabel = v == null ? "" : v >= 1000 ? ` · ${(v / 1000).toFixed(1)}k` : ` · ${v}`;
+                return (
+                  <option key={e.expiry} value={i}>
+                    EXP {e.label}{e.dte != null ? ` · ${e.dte}D` : ""}{volLabel}
+                  </option>
+                );
+              })}
             </select>
           ) : ladder?.label ? (
             <span style={{ padding: "2px 6px", background: "#161b22", border: "1px solid #21262d", borderRadius: 4, color: "#8b949e" }}>

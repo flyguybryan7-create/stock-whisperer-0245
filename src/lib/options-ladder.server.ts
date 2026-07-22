@@ -56,7 +56,7 @@ function finishLadder(args: {
   dte: number | null;
   spot: number | null;
   rungs: SchwabLadderRung[];
-  alternateExpiries: { expiry: string; dte: number | null; label: string }[];
+  alternateExpiries: { expiry: string; dte: number | null; label: string; volume?: number | null }[];
   asOf?: string | null;
 }): SchwabOptionsLadder | null {
   const all = args.rungs.sort((a, b) => a.strike - b.strike);
@@ -210,7 +210,11 @@ async function fetchCboe(symbol: string, expiryIndex: number): Promise<SchwabOpt
     dte: bucket.dte,
     spot: Number.isFinite(json?.data?.current_price) ? Number(json.data.current_price) : null,
     rungs: Array.from(bucket.rungs.values()),
-    alternateExpiries: expiries.slice(0, 8).map(([e, b]) => ({ expiry: e, dte: b.dte, label: labelForExpiry(e) })),
+    alternateExpiries: expiries.slice(0, 8).map(([e, b]) => {
+      let vol = 0;
+      for (const r of b.rungs.values()) vol += r.callVol + r.putVol;
+      return { expiry: e, dte: b.dte, label: labelForExpiry(e), volume: vol };
+    }),
     asOf: newestTradeIso,
   });
 }
@@ -277,7 +281,11 @@ async function fetchNasdaq(symbol: string, expiryIndex: number): Promise<SchwabO
     dte: bucket.dte,
     spot: null,
     rungs: Array.from(bucket.rungs.values()),
-    alternateExpiries: expiries.slice(0, 8).map(([e, b]) => ({ expiry: e, dte: b.dte, label: labelForExpiry(e) })),
+    alternateExpiries: expiries.slice(0, 8).map(([e, b]) => {
+      let vol = 0;
+      for (const r of b.rungs.values()) vol += r.callVol + r.putVol;
+      return { expiry: e, dte: b.dte, label: labelForExpiry(e), volume: vol };
+    }),
     asOf: null,
   });
 }
