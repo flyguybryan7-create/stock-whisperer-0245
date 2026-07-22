@@ -431,10 +431,17 @@ export const getPolygonOptionsLadder = createServerFn({ method: "POST" })
     const alternateExpiries = futureExpiries.slice(0, 8).map((e) => {
       const dObj = new Date(e + "T00:00:00Z");
       const d = Math.round((dObj.getTime() - today.getTime()) / 86400000);
+      let vol = 0;
+      for (const c of contracts) {
+        if (c.details?.expiration_date !== e) continue;
+        const v = Number(c.day?.volume ?? 0) || 0;
+        if (Number.isFinite(v)) vol += v;
+      }
       return {
         expiry: e,
         dte: Number.isFinite(d) ? d : null,
         label: Number.isNaN(dObj.getTime()) ? e : `${dObj.toLocaleString("en-US", { month: "short", timeZone: "UTC" })} ${dObj.getUTCDate()}`,
+        volume: vol,
       };
     });
 
