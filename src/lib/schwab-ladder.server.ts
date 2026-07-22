@@ -53,10 +53,24 @@ export function buildLadderFromChain(sym: string, json: any, expiryIndex = 0, _s
   const alternateExpiries = futureKeys.slice(0, 8).map(({ key, dte: kd }) => {
     const exp = key.split(":")[0];
     const dd = new Date(exp + "T00:00:00");
+    // Sum same-day volume across every strike so the dropdown can show
+    // which expiries actually have flow.
+    let vol = 0;
+    const cE = callMap?.[key] ?? {};
+    const pE = putMap?.[key] ?? {};
+    for (const arr of Object.values(cE) as any[]) {
+      const v = Array.isArray(arr) && arr[0]?.totalVolume ? Number(arr[0].totalVolume) : 0;
+      if (Number.isFinite(v)) vol += v;
+    }
+    for (const arr of Object.values(pE) as any[]) {
+      const v = Array.isArray(arr) && arr[0]?.totalVolume ? Number(arr[0].totalVolume) : 0;
+      if (Number.isFinite(v)) vol += v;
+    }
     return {
       expiry: exp,
       dte: Number.isFinite(kd) ? kd : null,
       label: Number.isNaN(dd.getTime()) ? exp : `${dd.toLocaleString("en-US", { month: "short" })} ${dd.getDate()}`,
+      volume: vol,
     };
   });
   let source: "volume" | "oi" = "volume";
