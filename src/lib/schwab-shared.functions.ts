@@ -758,11 +758,16 @@ export const getNasdaqOptionsLadder = createServerFn({ method: "POST" })
     if (!sortedBuckets.length) return null;
     const nIdx = Math.min(Math.max(0, data.expiryIndex ?? 0), sortedBuckets.length - 1);
     const chosen = sortedBuckets[nIdx];
-    const alternateExpiries = sortedBuckets.slice(0, 8).map((b) => ({
-      expiry: b.meta.expiry,
-      dte: b.meta.dte,
-      label: b.meta.label,
-    }));
+    const alternateExpiries = sortedBuckets.slice(0, 8).map((b) => {
+      let vol = 0;
+      for (const r of b.rows) vol += num(r?.c_Volume) + num(r?.p_Volume);
+      return {
+        expiry: b.meta.expiry,
+        dte: b.meta.dte,
+        label: b.meta.label,
+        volume: vol,
+      };
+    });
 
     type Rung = { strike: number; callVol: number; putVol: number; callOi: number; putOi: number };
     const byStrike = new Map<number, Rung>();
