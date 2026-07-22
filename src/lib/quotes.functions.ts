@@ -194,8 +194,16 @@ async function fetchYahooV7Quotes(symbols: string[]): Promise<Record<string, Liv
       lastTickTime,
       fiftyTwoWeekHigh: q.fiftyTwoWeekHigh,
       fiftyTwoWeekLow: q.fiftyTwoWeekLow,
-      dayHigh: q.regularMarketDayHigh,
-      dayLow: q.regularMarketDayLow,
+      // Yahoo's regularMarketDayHigh/Low can lag the live last-trade tick by a
+      // minute or more, so DAY H would sit below a price the tape has already
+      // printed. During the regular session, widen the range to include the
+      // current mark so DAY H/L never trail visible price action.
+      dayHigh: session === "REGULAR" && price != null
+        ? Math.max(q.regularMarketDayHigh ?? -Infinity, price)
+        : q.regularMarketDayHigh,
+      dayLow: session === "REGULAR" && price != null
+        ? Math.min(q.regularMarketDayLow ?? Infinity, price)
+        : q.regularMarketDayLow,
       open: q.regularMarketOpen,
       bid: cleanBid,
       ask: cleanAsk,
