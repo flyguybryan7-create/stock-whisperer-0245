@@ -580,11 +580,13 @@ export const getCboeOptionsLadder = createServerFn({ method: "POST" })
     const dte = chosenRows[0]?.dte ?? null;
     const alternateExpiries = expiries.slice(0, 8).map((e) => {
       const dObj = new Date(e + "T00:00:00");
-      const dRow = parsed.find((p) => p.expiry === e);
+      const rows = parsed.filter((p) => p.expiry === e);
+      const vol = rows.reduce((s, r) => s + (Number.isFinite(r.volume) ? r.volume : 0), 0);
       return {
         expiry: e,
-        dte: dRow?.dte ?? null,
+        dte: rows[0]?.dte ?? null,
         label: Number.isNaN(dObj.getTime()) ? e : `${dObj.toLocaleString("en-US", { month: "short" })} ${dObj.getDate()}`,
+        volume: vol,
       };
     });
     type Rung = { strike: number; callVol: number; putVol: number; callOi: number; putOi: number };
