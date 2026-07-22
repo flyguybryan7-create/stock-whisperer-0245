@@ -146,11 +146,15 @@ export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpi
               }}
               aria-label="Select expiry"
             >
-              {ladder.alternateExpiries.map((e, i) => (
-                <option key={e.expiry} value={i}>
-                  EXP {e.label}{e.dte != null ? ` · ${e.dte}D` : ""}
-                </option>
-              ))}
+              {ladder.alternateExpiries.map((e, i) => {
+                const v = typeof e.volume === "number" ? e.volume : null;
+                const volLabel = v == null ? "" : v >= 1000 ? ` · ${(v / 1000).toFixed(1)}k` : ` · ${v}`;
+                return (
+                  <option key={e.expiry} value={i}>
+                    EXP {e.label}{e.dte != null ? ` · ${e.dte}D` : ""}{volLabel}
+                  </option>
+                );
+              })}
             </select>
           ) : ladder?.label ? (
             <span style={{ padding: "2px 6px", background: "#161b22", border: "1px solid #21262d", borderRadius: 4, color: "#8b949e" }}>
