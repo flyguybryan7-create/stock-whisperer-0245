@@ -361,7 +361,15 @@ export type SchwabOptionsLadder = {
   // Upcoming expiries (ascending DTE, first 8) so the UI can offer a
   // dropdown to switch between "this week", "next week", etc. Index 0
   // is the currently rendered expiry.
-  alternateExpiries: { expiry: string; dte: number | null; label: string }[];
+  alternateExpiries: {
+    expiry: string;
+    dte: number | null;
+    label: string;
+    // Total same-day contract volume for that expiry (calls + puts). Lets the
+    // UI dropdown show where flow actually is so a user picking a low-volume
+    // mid-cycle week isn't surprised by "13 contracts" magnets.
+    volume?: number | null;
+  }[];
   // "volume" = magnet computed from same-day option volume (best signal).
   // "oi"     = fallback magnet computed from open interest (used when
   //             intraday volume is 0 across all providers, e.g. illiquid
