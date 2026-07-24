@@ -1355,7 +1355,7 @@ export default function TradingPlatform() {
   const fetchEconCal = useServerFn(fetchEconCalendar);
   const { data: econData } = useQuery({
     queryKey: ["econCalendar"],
-    queryFn: () => safeFeedQuery("econCalendar", () => fetchEconCal(), { items: [] }),
+    queryFn: () => safeFeedQuery("econCalendar", () => fetchEconCal(), { items: [], asOf: Date.now() }),
     staleTime: 5 * 60_000,
     refetchInterval: 5 * 60_000,
     refetchIntervalInBackground: true,
