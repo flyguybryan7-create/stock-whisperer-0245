@@ -134,6 +134,25 @@ function niceTicks(domain: [number, number] | ["auto", "auto"] | unknown, target
 
 const PRICE_AXIS_WIDTH = 62;
 
+function isTransientFeedError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("Failed to fetch") ||
+    message.includes("ERR_ABORTED") ||
+    message.includes("aborted") ||
+    message.includes("NetworkError")
+  );
+}
+
+async function safeFeedQuery<T>(label: string, load: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await load();
+  } catch (error) {
+    if (!isTransientFeedError(error)) console.warn(`[feed] ${label} failed`, error);
+    return fallback;
+  }
+}
+
 function intervalSeconds(interval: "1m" | "2m" | "5m" | "15m") {
   return interval === "1m" ? 60 : interval === "2m" ? 120 : interval === "5m" ? 300 : 900;
 }
@@ -820,7 +839,11 @@ export default function TradingPlatform() {
   const fetchHasShared = useServerFn(hasSharedSchwabToken);
   const { data: sharedStatus } = useQuery({
     queryKey: ["hasSharedSchwabToken"],
-    queryFn: async () => (await fetchHasShared()) ?? { present: false as const },
+    queryFn: () => safeFeedQuery(
+      "hasSharedSchwabToken",
+      async () => (await fetchHasShared()) ?? { present: false as const },
+      { present: false as const },
+    ),
     refetchInterval: schwabConnecting ? 3_000 : 30_000,
     staleTime: 15_000,
   });
@@ -963,7 +986,7 @@ export default function TradingPlatform() {
 
   const { data: rawQuotes } = useQuery({
     queryKey: ["quotes", watchlist],
-    queryFn: () => fetchQuotes({ data: { symbols: watchlist } }),
+    queryFn: () => safeFeedQuery("quotes", () => fetchQuotes({ data: { symbols: watchlist } }), {} as Record<string, Candle[]>),
     // v8 chart endpoint — refresh snapshot (day H/L, prev close, 6mo candles)
     // every 10s instead of every 60s so close-price / day range stay current.
     staleTime: 10_000,
@@ -974,8 +997,8 @@ export default function TradingPlatform() {
   // Live intraday prices — refresh every 1s
   const { data: liveQuotes } = useQuery({
     queryKey: ["live", watchlist],
-    queryFn: () => fetchLive({ data: { symbols: watchlist } }),
-    refetchInterval: 250,
+    queryFn: () => safeFeedQuery("live", () => fetchLive({ data: { symbols: watchlist } }), {} as Record<string, LiveQuote>),
+    refetchInterval: 1_000,
     refetchIntervalInBackground: true,
     staleTime: 0,
     enabled: watchlist.length > 0,
@@ -1007,7 +1030,7 @@ export default function TradingPlatform() {
       }
     },
     enabled: !!schwabTokens?.access_token && watchlist.length > 0,
-    refetchInterval: 500,
+    refetchInterval: 1_000,
     refetchIntervalInBackground: true,
     staleTime: 0,
   });
@@ -1143,16 +1166,24 @@ export default function TradingPlatform() {
   const fetchSharedQuotes = useServerFn(getSharedSchwabQuotes);
   const { data: sharedQuoteData } = useQuery({
     queryKey: ["sharedSchwabQuotes", [...watchlist].sort().join(",")],
-    queryFn: async () => (await fetchSharedQuotes({ data: { symbols: watchlist.length ? watchlist : [selectedStock] } })) ?? null,
+    queryFn: () => safeFeedQuery(
+      "sharedSchwabQuotes",
+      async () => (await fetchSharedQuotes({ data: { symbols: watchlist.length ? watchlist : [selectedStock] } })) ?? null,
+      null as Record<string, SchwabQuote> | null,
+    ),
     enabled: watchlist.length > 0,
-    refetchInterval: 500,
+    refetchInterval: 1_000,
     refetchIntervalInBackground: true,
     staleTime: 0,
   });
   const fetchSharedFund = useServerFn(getSharedSchwabFundamentals);
   const { data: sharedFundData } = useQuery({
     queryKey: ["sharedSchwabFundamentals", [...watchlist].sort().join(",")],
-    queryFn: async () => (await fetchSharedFund({ data: { symbols: watchlist } })) ?? null,
+    queryFn: () => safeFeedQuery(
+      "sharedSchwabFundamentals",
+      async () => (await fetchSharedFund({ data: { symbols: watchlist } })) ?? null,
+      null as Record<string, SchwabFundamental> | null,
+    ),
     enabled: watchlist.length > 0,
     refetchInterval: 10 * 60_000,
     staleTime: 10 * 60_000,
@@ -1161,7 +1192,11 @@ export default function TradingPlatform() {
   const sharedStrikesTodayKey = new Date().toISOString().slice(0, 10);
   const { data: sharedStrikesData } = useQuery({
     queryKey: ["sharedSchwabStrikes", selectedStock, sharedStrikesTodayKey],
-    queryFn: async () => (await fetchSharedStrikes({ data: { symbol: selectedStock } })) ?? null,
+    queryFn: () => safeFeedQuery(
+      "sharedSchwabStrikes",
+      async () => (await fetchSharedStrikes({ data: { symbol: selectedStock } })) ?? null,
+      null as SchwabTopStrikes | null,
+    ),
     enabled: !!selectedStock,
     refetchInterval: 10_000,
     refetchIntervalInBackground: true,
@@ -1170,10 +1205,10 @@ export default function TradingPlatform() {
   const fetchSharedHistory = useServerFn(getSharedSchwabPriceHistory);
   const { data: sharedHistoryData } = useQuery({
     queryKey: ["sharedSchwabHistory", selectedStock, intradayInterval],
-    queryFn: () => {
+    queryFn: () => safeFeedQuery("sharedSchwabHistory", () => {
       const freq = intradayInterval === "1m" ? 1 : intradayInterval === "2m" ? 1 : intradayInterval === "5m" ? 5 : 15;
       return fetchSharedHistory({ data: { symbol: selectedStock, minutes: freq as 1 | 5 | 10 | 15 | 30, days: 2 } }).then((r) => r ?? null);
-    },
+    }, null as SchwabBar[] | null),
     enabled: intradayRange === "24H" && !schwabTokens?.access_token,
     refetchInterval: 15_000,
     staleTime: 5_000,
@@ -1183,10 +1218,10 @@ export default function TradingPlatform() {
   const fetchSharedLadder = useServerFn(getSharedSchwabOptionsLadder);
   const { data: sharedLadderData } = useQuery({
     queryKey: ["sharedSchwabLadder", selectedStock, sharedStrikesTodayKey, ladderExpiryIndex],
-    queryFn: async () => {
+    queryFn: () => safeFeedQuery("sharedSchwabLadder", async () => {
       const raw = (await fetchSharedLadder({ data: { symbol: selectedStock, expiryIndex: ladderExpiryIndex } })) ?? null;
       return raw;
-    },
+    }, null as SchwabOptionsLadder | null),
     enabled: !!selectedStock,
     refetchInterval: 10_000,
     refetchIntervalInBackground: true,
@@ -1200,7 +1235,11 @@ export default function TradingPlatform() {
   const fetchFastLadder = useServerFn(getFastOptionsLadder);
   const { data: fastLadderData } = useQuery({
     queryKey: ["fastOptionsLadder", selectedStock, sharedStrikesTodayKey, ladderExpiryIndex],
-    queryFn: () => fetchFastLadder({ data: { symbol: selectedStock, expiryIndex: ladderExpiryIndex } }),
+    queryFn: () => safeFeedQuery(
+      "fastOptionsLadder",
+      () => fetchFastLadder({ data: { symbol: selectedStock, expiryIndex: ladderExpiryIndex } }),
+      null as SchwabOptionsLadder | null,
+    ),
     enabled: !!selectedStock,
     refetchInterval: 5_000,
     refetchIntervalInBackground: true,
@@ -1269,7 +1308,7 @@ export default function TradingPlatform() {
   // Screener — gainers / losers / most active, refresh every 15s.
   const { data: screenerData, isFetching: screenerFetching, dataUpdatedAt: screenerUpdatedAt } = useQuery({
     queryKey: ["screener"],
-    queryFn: () => fetchScreenerFn(),
+    queryFn: () => safeFeedQuery("screener", () => fetchScreenerFn(), null),
     refetchInterval: 15_000,
     staleTime: 12_000,
     enabled: showScreener,
@@ -1284,7 +1323,7 @@ export default function TradingPlatform() {
   // Short interest / float — refresh every 30 min (Yahoo updates twice a month)
   const { data: shortData } = useQuery({
     queryKey: ["short", watchlist],
-    queryFn: () => fetchShort({ data: { symbols: watchlist } }),
+    queryFn: () => safeFeedQuery("short", () => fetchShort({ data: { symbols: watchlist } }), {} as Record<string, ShortInterest>),
     staleTime: 30 * 60_000,
     refetchInterval: 30 * 60_000,
     enabled: watchlist.length > 0,
@@ -1294,7 +1333,7 @@ export default function TradingPlatform() {
   // Global semiconductor index tracker — 6 major indices, 15s refresh
   const { data: globalSemis } = useQuery({
     queryKey: ["globalSemis"],
-    queryFn: () => fetchGlobalSemiIndexFn(),
+    queryFn: () => safeFeedQuery("globalSemis", () => fetchGlobalSemiIndexFn(), null),
     staleTime: 12_000,
     refetchInterval: 15_000,
     refetchIntervalInBackground: true,
@@ -1306,7 +1345,7 @@ export default function TradingPlatform() {
   // Macro market-moving news (CNBC / MarketWatch / WSJ) — refresh every 5 minutes.
   const { data: macroNews } = useQuery({
     queryKey: ["macroNews"],
-    queryFn: () => fetchMacroNewsFn(),
+    queryFn: () => safeFeedQuery("macroNews", () => fetchMacroNewsFn(), null),
     staleTime: 5 * 60_000,
     refetchInterval: 5 * 60_000,
   });
@@ -1316,7 +1355,7 @@ export default function TradingPlatform() {
   const fetchEconCal = useServerFn(fetchEconCalendar);
   const { data: econData } = useQuery({
     queryKey: ["econCalendar"],
-    queryFn: () => fetchEconCal(),
+    queryFn: () => safeFeedQuery("econCalendar", () => fetchEconCal(), { items: [], asOf: Date.now() }),
     staleTime: 5 * 60_000,
     refetchInterval: 5 * 60_000,
     refetchIntervalInBackground: true,
@@ -1330,7 +1369,7 @@ export default function TradingPlatform() {
   // batch at 3s — those drive the flash alerts.
   const { data: fastPulse } = useQuery({
     queryKey: ["fastPulse"],
-    queryFn: () => fetchFastPulseFn(),
+    queryFn: () => safeFeedQuery("fastPulse", () => fetchFastPulseFn(), null),
     staleTime: 0,
     refetchInterval: 1_000,
     refetchIntervalInBackground: true,
@@ -1380,7 +1419,11 @@ export default function TradingPlatform() {
   // News for selected stock
   const { data: newsData } = useQuery({
     queryKey: ["news", selectedStock, stockNames[selectedStock] || ""],
-    queryFn: () => fetchNews({ data: { symbol: selectedStock, companyName: stockNames[selectedStock] } }),
+    queryFn: () => safeFeedQuery(
+      "news",
+      () => fetchNews({ data: { symbol: selectedStock, companyName: stockNames[selectedStock] } }),
+      { items: [], sector: null },
+    ),
     staleTime: 5 * 60_000,
     refetchInterval: 5 * 60_000,
     enabled: !!selectedStock,
@@ -1400,7 +1443,7 @@ export default function TradingPlatform() {
   // Intraday bars drive both the live signal and intraday charting.
   const { data: intradayData } = useQuery({
     queryKey: ["intraday", selectedStock, intradayRange, intradayInterval],
-    queryFn: () => fetchIntraday({ data: intradayRequest }),
+    queryFn: () => safeFeedQuery("intraday", () => fetchIntraday({ data: intradayRequest }), [] as IntradayBar[]),
     refetchInterval: 15_000,
     enabled: !!selectedStock,
   });
@@ -1466,7 +1509,11 @@ export default function TradingPlatform() {
   // BUY/SELL/HOLD badges next to each ticker react to live MACD momentum.
   const { data: watchlistIntradayData } = useQuery({
     queryKey: ["intradayBatch", [...watchlist].sort().join(",")],
-    queryFn: () => fetchIntradayBatch({ data: { symbols: watchlist, interval: "1m", range: "2d" } }),
+    queryFn: () => safeFeedQuery(
+      "intradayBatch",
+      () => fetchIntradayBatch({ data: { symbols: watchlist, interval: "1m", range: "2d" } }),
+      {} as Record<string, IntradayBar[]>,
+    ),
     refetchInterval: 3_000,
     refetchIntervalInBackground: true,
     staleTime: 2_000,
@@ -1488,7 +1535,11 @@ export default function TradingPlatform() {
       // Key by the chunk's symbols (order-independent) so reordering or
       // adding/removing tiles doesn't invalidate unrelated chunks.
       queryKey: ["optionsActivity", [...chunk].sort().join(",")],
-      queryFn: () => fetchOptionsActivityFn({ data: { symbols: chunk } }),
+      queryFn: () => safeFeedQuery(
+        "optionsActivity",
+        () => fetchOptionsActivityFn({ data: { symbols: chunk } }),
+        { items: {} } as { items: Record<string, OptionsActivity> },
+      ),
       refetchInterval: 60_000,
       refetchIntervalInBackground: true,
       staleTime: 45_000,
@@ -1502,7 +1553,11 @@ export default function TradingPlatform() {
   }, [optionsActivityQueries]);
   const { data: selectedOptionsActivity } = useQuery({
     queryKey: ["selectedOptionsActivity", selectedStock],
-    queryFn: () => fetchOptionsActivityFn({ data: { symbols: [selectedStock] } }),
+    queryFn: () => safeFeedQuery(
+      "selectedOptionsActivity",
+      () => fetchOptionsActivityFn({ data: { symbols: [selectedStock] } }),
+      { items: {} } as { items: Record<string, OptionsActivity> },
+    ),
     refetchInterval: 60_000,
     refetchIntervalInBackground: true,
     staleTime: 45_000,
@@ -1584,12 +1639,16 @@ export default function TradingPlatform() {
   // AI sentiment based on headlines
   const { data: sentimentData } = useQuery({
     queryKey: ["sentiment", selectedStock, newsItems.map((n) => n.title).join("|")],
-    queryFn: () => fetchSentiment({
-      data: {
-        symbol: selectedStock,
-        headlines: newsItems.map((n) => ({ title: n.title, scope: n.scope })),
-      },
-    }),
+    queryFn: () => safeFeedQuery(
+      "sentiment",
+      () => fetchSentiment({
+        data: {
+          symbol: selectedStock,
+          headlines: newsItems.map((n) => ({ title: n.title, scope: n.scope })),
+        },
+      }),
+      { score: 0, label: "NEUTRAL", summary: "", drivers: [] } as SentimentResult,
+    ),
     enabled: newsItems.length > 0 && !!user,
     staleTime: 5 * 60_000,
   });
@@ -1603,7 +1662,7 @@ export default function TradingPlatform() {
   }, [search]);
   const { data: searchResults = [], isFetching: searching } = useQuery({
     queryKey: ["symbolSearch", debouncedQuery],
-    queryFn: () => fetchSearch({ data: { query: debouncedQuery } }),
+    queryFn: () => safeFeedQuery("symbolSearch", () => fetchSearch({ data: { query: debouncedQuery } }), [] as SymbolSearchResult[]),
     enabled: debouncedQuery.length >= 1,
     staleTime: 30_000,
   });
