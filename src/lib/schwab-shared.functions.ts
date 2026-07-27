@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { SchwabQuote, SchwabFundamental, SchwabTopStrikes, SchwabBar, SchwabOptionsLadder } from "./schwab.functions";
 import { buildLadderFromChain } from "./schwab-ladder.server";
+import { magnetsFromRungs } from "./ladder-magnet.server";
 import { fetchFastPublicOptionsLadder } from "./options-ladder.server";
 
 /**
@@ -499,15 +500,10 @@ export const getPolygonOptionsLadder = createServerFn({ method: "POST" })
           .sort((a, b) => a.strike - b.strike);
       }
     }
-    // Ensure magnet strikes are always visible in the ladder even if they
-    // fall outside the ±25% window around spot.
+    // Magnet comes from the rendered near-the-money window only.
     {
-      const need = new Set<number>();
-      if (effMagC) need.add(effMagC.strike);
-      if (effMagP) need.add(effMagP.strike);
-      const have = new Set(trimmed.map((r) => r.strike));
-      const extras = all.filter((r) => need.has(r.strike) && !have.has(r.strike));
-      if (extras.length) trimmed = [...trimmed, ...extras].sort((a, b) => a.strike - b.strike);
+      const w = magnetsFromRungs(trimmed, source);
+      if (w.call || w.put) { effMagC = w.call; effMagP = w.put; }
     }
     const dObj = new Date(nearest + "T00:00:00");
     const label = Number.isNaN(dObj.getTime()) ? nearest
@@ -639,15 +635,10 @@ export const getCboeOptionsLadder = createServerFn({ method: "POST" })
           .sort((a, b) => a.strike - b.strike);
       }
     }
-    // Ensure magnet strikes are always visible in the ladder even if they
-    // fall outside the ±25% window around spot.
+    // Magnet comes from the rendered near-the-money window only.
     {
-      const need = new Set<number>();
-      if (effMagC) need.add(effMagC.strike);
-      if (effMagP) need.add(effMagP.strike);
-      const have = new Set(trimmed.map((r) => r.strike));
-      const extras = all.filter((r) => need.has(r.strike) && !have.has(r.strike));
-      if (extras.length) trimmed = [...trimmed, ...extras].sort((a, b) => a.strike - b.strike);
+      const w = magnetsFromRungs(trimmed, source);
+      if (w.call || w.put) { effMagC = w.call; effMagP = w.put; }
     }
     const dObj = new Date(nearest + "T00:00:00");
     const label = Number.isNaN(dObj.getTime()) ? nearest
@@ -824,15 +815,10 @@ export const getNasdaqOptionsLadder = createServerFn({ method: "POST" })
           .sort((a, b) => a.strike - b.strike);
       }
     }
-    // Ensure magnet strikes are always visible in the ladder even if they
-    // fall outside the ±25% window around spot.
+    // Magnet comes from the rendered near-the-money window only.
     {
-      const need = new Set<number>();
-      if (effMagC) need.add(effMagC.strike);
-      if (effMagP) need.add(effMagP.strike);
-      const have = new Set(trimmed.map((r) => r.strike));
-      const extras = all.filter((r) => need.has(r.strike) && !have.has(r.strike));
-      if (extras.length) trimmed = [...trimmed, ...extras].sort((a, b) => a.strike - b.strike);
+      const w = magnetsFromRungs(trimmed, source);
+      if (w.call || w.put) { effMagC = w.call; effMagP = w.put; }
     }
     return {
       symbol: sym,

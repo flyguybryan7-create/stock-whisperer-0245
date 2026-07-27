@@ -1,4 +1,5 @@
 import type { SchwabOptionsLadder, SchwabLadderRung } from "./schwab.functions";
+import { magnetsFromRungs } from "./ladder-magnet.server";
 
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
@@ -125,6 +126,13 @@ function finishLadder(args: {
   const have = new Set(trimmed.map((r) => r.strike));
   const extras = displayRungs.filter((r) => need.has(r.strike) && !have.has(r.strike));
   if (extras.length) trimmed = [...trimmed, ...extras].sort((a, b) => a.strike - b.strike);
+
+  // Magnet must come from the rendered near-the-money window, not the whole
+  // chain — deep OTM spread legs are not price targets.
+  {
+    const w = magnetsFromRungs(trimmed, "volume");
+    if (w.call || w.put) { effMagC = w.call; effMagP = w.put; }
+  }
 
   return {
     symbol: args.symbol,

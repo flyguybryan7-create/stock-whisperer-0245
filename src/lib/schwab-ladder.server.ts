@@ -1,4 +1,5 @@
 import type { SchwabOptionsLadder, SchwabLadderRung } from "./schwab.functions";
+import { magnetsFromRungs } from "./ladder-magnet.server";
 
 export function buildLadderFromChain(sym: string, json: any, expiryIndex = 0, _snapshotScope = "default"): SchwabOptionsLadder | null {
   const callMap = json?.callExpDateMap ?? {};
@@ -104,6 +105,9 @@ export function buildLadderFromChain(sym: string, json: any, expiryIndex = 0, _s
       }
     }
   }
+  // Pick the magnet only from the rendered near-the-money window so deep OTM
+  // spread legs can't masquerade as the target strike.
+  const windowMag = magnetsFromRungs(trimmed, "volume");
   return {
     symbol: sym,
     expiry,
@@ -113,8 +117,8 @@ export function buildLadderFromChain(sym: string, json: any, expiryIndex = 0, _s
     spot,
     callVolume: effCallTot,
     putVolume: effPutTot,
-    magnetCall: effMagC ? { strike: effMagC.strike, volume: effMagC.volume, pct: effCallTot > 0 ? effMagC.volume / effCallTot : 0 } : null,
-    magnetPut: effMagP ? { strike: effMagP.strike, volume: effMagP.volume, pct: effPutTot > 0 ? effMagP.volume / effPutTot : 0 } : null,
+    magnetCall: windowMag.call ? { strike: windowMag.call.strike, volume: windowMag.call.volume, pct: effCallTot > 0 ? windowMag.call.volume / effCallTot : 0 } : null,
+    magnetPut: windowMag.put ? { strike: windowMag.put.strike, volume: windowMag.put.volume, pct: effPutTot > 0 ? windowMag.put.volume / effPutTot : 0 } : null,
     ladder: trimmed,
     alternateExpiries,
     source,

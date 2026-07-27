@@ -22,7 +22,7 @@ function timeToClose(now: Date): string {
 function fmtVol(v: number): string {
   if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
   if (v >= 1e3) return `${(v / 1e3).toFixed(1)}k`;
-  return `${v}`;
+  return `${Math.round(v)}`;
 }
 
 function fmtAsOf(iso: string): string {
