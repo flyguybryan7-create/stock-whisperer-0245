@@ -105,6 +105,9 @@ export function buildLadderFromChain(sym: string, json: any, expiryIndex = 0, _s
       }
     }
   }
+  // Pick the magnet only from the rendered near-the-money window so deep OTM
+  // spread legs can't masquerade as the target strike.
+  const windowMag = magnetsFromRungs(trimmed, "volume");
   return {
     symbol: sym,
     expiry,
