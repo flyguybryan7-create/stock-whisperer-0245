@@ -144,11 +144,23 @@ function isTransientFeedError(error: unknown) {
   );
 }
 
+const feedEverSucceeded = new Set<string>();
+
+/**
+ * Feed queries must never crash the app, but they must also never overwrite
+ * previously-good data with an empty value. Re-throwing lets React Query keep
+ * the last successful `data` (the global `throwOnError: false` in router.tsx
+ * stops it from reaching an error boundary). The `fallback` is only used for
+ * the very first load, when there is nothing cached to preserve.
+ */
 async function safeFeedQuery<T>(label: string, load: () => Promise<T>, fallback: T): Promise<T> {
   try {
-    return await load();
+    const result = await load();
+    feedEverSucceeded.add(label);
+    return result;
   } catch (error) {
     if (!isTransientFeedError(error)) console.warn(`[feed] ${label} failed`, error);
+    if (feedEverSucceeded.has(label)) throw error;
     return fallback;
   }
 }
