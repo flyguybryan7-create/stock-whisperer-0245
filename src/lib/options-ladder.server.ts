@@ -126,6 +126,13 @@ function finishLadder(args: {
   const extras = displayRungs.filter((r) => need.has(r.strike) && !have.has(r.strike));
   if (extras.length) trimmed = [...trimmed, ...extras].sort((a, b) => a.strike - b.strike);
 
+  // Magnet must come from the rendered near-the-money window, not the whole
+  // chain — deep OTM spread legs are not price targets.
+  {
+    const w = magnetsFromRungs(trimmed, "volume");
+    if (w.call || w.put) { effMagC = w.call; effMagP = w.put; }
+  }
+
   return {
     symbol: args.symbol,
     expiry: args.expiry,
