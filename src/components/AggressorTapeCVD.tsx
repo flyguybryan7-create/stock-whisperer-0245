@@ -25,9 +25,8 @@ type Props = {
   // instead of this tab's localStorage. Lets the tape run even when the
   // OAuth callback landed on a different origin (preview vs published).
   sharedAvailable?: boolean;
-  // Called when this tab's stored Schwab refresh token is dead (revoked or
-  // expired). The parent clears it so the tape can fall back to the shared
-  // server-side token instead of looping on a 400.
+  // Called when a stored Schwab token is dead (revoked or expired). The parent
+  // clears local/shared connection state so the UI asks for a fresh reconnect.
   onTokensInvalid?: () => void;
 };
 
@@ -104,6 +103,11 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
         let quotes: Record<string, { last: number | null; bid: number | null; ask: number | null; totalVolume: number | null }> | null;
         if (useShared) {
           quotes = await fetchSharedQuotes({ data: { symbols: [symbol] } });
+          if (!quotes) {
+            setStatus("reconnect Schwab");
+            onTokensInvalid?.();
+            return;
+          }
         } else {
           let token = tokens!.access_token;
           try {
