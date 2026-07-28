@@ -849,7 +849,9 @@ export default function TradingPlatform() {
     try { localStorage.removeItem(SCHWAB_TOKEN_KEY); } catch {}
     try { sessionStorage.removeItem(SCHWAB_TOKEN_KEY); } catch {}
     setSchwabTokens(null);
-  }, []);
+    queryClient.setQueryData(["hasSharedSchwabToken"], { present: false as const });
+    void queryClient.invalidateQueries({ queryKey: ["hasSharedSchwabToken"] });
+  }, [queryClient]);
 
 
   // Server-side "is a shared Schwab owner token stored?" check. This lets the
