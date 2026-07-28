@@ -255,7 +255,10 @@ export const getSharedSchwabFundamentals = createServerFn({ method: "POST" })
       `/marketdata/v1/quotes?symbols=${encodeURIComponent(syms.join(","))}&fields=fundamental`,
       tok.accessToken,
     );
-    if (!res.ok) return null;
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) await deleteOwnerToken(tok.userId);
+      return null;
+    }
     const json: any = await res.json().catch(() => ({}));
     const out: Record<string, SchwabFundamental> = {};
     for (const sym of syms) {
@@ -284,7 +287,10 @@ export const getSharedSchwabTopStrikes = createServerFn({ method: "POST" })
       `/marketdata/v1/chains?symbol=${encodeURIComponent(sym)}&contractType=ALL&includeQuotes=false&range=ALL&strikeCount=200`,
       tok.accessToken,
     );
-    if (!res.ok) return null;
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) await deleteOwnerToken(tok.userId);
+      return null;
+    }
     const json: any = await res.json().catch(() => ({}));
     const callMap = json?.callExpDateMap ?? {};
     const putMap = json?.putExpDateMap ?? {};
@@ -344,7 +350,10 @@ export const getSharedSchwabPriceHistory = createServerFn({ method: "POST" })
       `/marketdata/v1/pricehistory?symbol=${encodeURIComponent(sym)}&periodType=day&period=${period}&frequencyType=minute&frequency=${freq}&needExtendedHoursData=true`,
       tok.accessToken,
     );
-    if (!res.ok) return null;
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) await deleteOwnerToken(tok.userId);
+      return null;
+    }
     const json: any = await res.json().catch(() => ({}));
     const candles: any[] = Array.isArray(json?.candles) ? json.candles : [];
     return candles
@@ -368,7 +377,10 @@ export const getSharedSchwabOptionsLadder = createServerFn({ method: "POST" })
       `/marketdata/v1/chains?symbol=${encodeURIComponent(sym)}&contractType=ALL&includeQuotes=false&range=ALL&strikeCount=200`,
       tok.accessToken,
     );
-    if (!res.ok) return null;
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) await deleteOwnerToken(tok.userId);
+      return null;
+    }
     const json: any = await res.json().catch(() => ({}));
     return buildLadderFromChain(sym, json, data.expiryIndex ?? 0, "shared");
   });
