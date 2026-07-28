@@ -8,6 +8,17 @@ type OwnerTokenRow = {
   obtained_at: string;
 };
 
+function isDeadSchwabTokenMessage(msg: string): boolean {
+  const m = msg.toLowerCase();
+  return m.includes("invalid_grant") || m.includes("unsupported_token_type") || m.includes("expired or revoked") || m.includes("invalid, expired or revoked");
+}
+
+async function deleteOwnerToken(userId: string): Promise<void> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { error } = await supabaseAdmin.from("schwab_owner_tokens").delete().eq("user_id", userId);
+  if (error) console.error("[schwab-shared.server] delete dead owner token", error.message);
+}
+
 /**
  * Load the current shared Schwab owner access token, refreshing if it's
  * within 60s of expiry. Returns null when no owner has connected yet or
@@ -45,7 +56,12 @@ export async function loadOwnerAccessTokenFresh(): Promise<string | null> {
     body: body.toString(),
   });
   if (!res.ok) {
+    const text = await res.text();
     console.error("[schwab-shared.server] refresh failed", res.status);
+    if (isDeadSchwabTokenMessage(text)) {
+      await deleteOwnerToken(row.user_id);
+      return null;
+    }
     return row.access_token;
   }
   const fresh: any = await res.json();
@@ -80,6 +96,17 @@ export async function fetchSchwabSharedQuote(
     });
     if (!res.ok) {
       console.error("[schwab-shared.server] quote", symbol, res.status);
+      if (res.status === 401 || res.status === 403) {
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const { data } = await supabaseAdmin
+          .from("schwab_owner_tokens")
+          .select("user_id")
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const userId = (data as { user_id?: string } | null)?.user_id;
+        if (userId) await deleteOwnerToken(userId);
+      }
       return null;
     }
     const json: any = await res.json().catch(() => ({}));
