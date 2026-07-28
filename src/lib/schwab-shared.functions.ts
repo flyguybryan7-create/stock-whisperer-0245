@@ -28,7 +28,18 @@ type OwnerTokenRow = {
   obtained_at: string;
 };
 
-async function loadOwnerTokenFresh(): Promise<{ accessToken: string } | null> {
+function isDeadSchwabTokenMessage(msg: string): boolean {
+  const m = msg.toLowerCase();
+  return m.includes("invalid_grant") || m.includes("unsupported_token_type") || m.includes("expired or revoked") || m.includes("invalid, expired or revoked");
+}
+
+async function deleteOwnerToken(userId: string): Promise<void> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { error } = await supabaseAdmin.from("schwab_owner_tokens").delete().eq("user_id", userId);
+  if (error) console.error("[schwab-shared] delete dead owner token", error.message);
+}
+
+async function loadOwnerTokenFresh(): Promise<{ accessToken: string; userId: string } | null> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { data, error } = await supabaseAdmin
     .from("schwab_owner_tokens")
@@ -45,13 +56,13 @@ async function loadOwnerTokenFresh(): Promise<{ accessToken: string } | null> {
   const expiresAt = new Date(row.expires_at).getTime();
   // Refresh 60s before expiry
   if (expiresAt - Date.now() > 60_000) {
-    return { accessToken: row.access_token };
+    return { accessToken: row.access_token, userId: row.user_id };
   }
   const clientId = process.env.SCHWAB_CLIENT_ID;
   const clientSecret = process.env.SCHWAB_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
     console.error("[schwab-shared] missing Schwab client credentials");
-    return { accessToken: row.access_token }; // best-effort
+    return { accessToken: row.access_token, userId: row.user_id }; // best-effort
   }
   const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
   const body = new URLSearchParams({
@@ -64,8 +75,13 @@ async function loadOwnerTokenFresh(): Promise<{ accessToken: string } | null> {
     body: body.toString(),
   });
   if (!res.ok) {
-    console.error("[schwab-shared] refresh failed", res.status, (await res.text()).slice(0, 200));
-    return { accessToken: row.access_token };
+    const text = await res.text();
+    console.error("[schwab-shared] refresh failed", res.status, text.slice(0, 200));
+    if (isDeadSchwabTokenMessage(text)) {
+      await deleteOwnerToken(row.user_id);
+      return null;
+    }
+    return { accessToken: row.access_token, userId: row.user_id };
   }
   const fresh: any = await res.json();
   const newExpiresAt = new Date(Date.now() + (Number(fresh.expires_in) || 1800) * 1000).toISOString();
@@ -78,7 +94,7 @@ async function loadOwnerTokenFresh(): Promise<{ accessToken: string } | null> {
       obtained_at: new Date().toISOString(),
     })
     .eq("user_id", row.user_id);
-  return { accessToken: fresh.access_token };
+  return { accessToken: fresh.access_token, userId: row.user_id };
 }
 
 async function schwabGet(path: string, accessToken: string): Promise<Response> {
@@ -157,15 +173,9 @@ export const setSharedSchwabTokensPublic = createServerFn({ method: "POST" })
 // — e.g. after OAuth redirected the user through a different origin.
 export const hasSharedSchwabToken = createServerFn({ method: "GET" }).handler(async () => {
   try {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data, error } = await supabaseAdmin
-      .from("schwab_owner_tokens")
-      .select("user_id, expires_at")
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (error || !data) return { present: false as const };
-    return { present: true as const, expiresAt: (data as { expires_at: string }).expires_at };
+    const tok = await loadOwnerTokenFresh();
+    if (!tok) return { present: false as const };
+    return { present: true as const };
   } catch (e) {
     console.error("[schwab-shared] hasSharedSchwabToken", e);
     return { present: false as const };
@@ -204,6 +214,7 @@ export const getSharedSchwabQuotes = createServerFn({ method: "POST" })
     );
     if (!res.ok) {
       console.error("[schwab-shared] quotes", res.status, (await res.text()).slice(0, 200));
+      if (res.status === 401 || res.status === 403) await deleteOwnerToken(tok.userId);
       return null;
     }
     const json: any = await res.json().catch(() => ({}));
