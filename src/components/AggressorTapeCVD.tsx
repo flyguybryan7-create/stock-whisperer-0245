@@ -25,6 +25,10 @@ type Props = {
   // instead of this tab's localStorage. Lets the tape run even when the
   // OAuth callback landed on a different origin (preview vs published).
   sharedAvailable?: boolean;
+  // Called when this tab's stored Schwab refresh token is dead (revoked or
+  // expired). The parent clears it so the tape can fall back to the shared
+  // server-side token instead of looping on a 400.
+  onTokensInvalid?: () => void;
 };
 
 function fmtVol(v: number): string {
@@ -55,7 +59,15 @@ function classify(last: number, bid: number | null, ask: number | null, prevLast
   return "MID";
 }
 
-export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = false }: Props) {
+// Schwab returns invalid_grant / unsupported_token_type once a refresh token
+// has been revoked or aged out. Retrying that never succeeds — the stored
+// token has to be dropped.
+function isDeadRefresh(msg: string): boolean {
+  const m = msg.toLowerCase();
+  return m.includes("invalid_grant") || m.includes("unsupported_token_type") || m.includes("expired or revoked");
+}
+
+export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = false, onTokensInvalid }: Props) {
   const fetchQuotes = useServerFn(getSchwabQuotes);
   const refresh = useServerFn(refreshSchwabToken);
   const fetchSharedQuotes = useServerFn(getSharedSchwabQuotes);
@@ -99,7 +111,20 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
           } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
             if (msg.includes("schwab_unauthorized") && tokens!.refresh_token) {
-              const fresh = await refresh({ data: { refreshToken: tokens!.refresh_token } });
+              let fresh: SchwabTokens;
+              try {
+                fresh = await refresh({ data: { refreshToken: tokens!.refresh_token } });
+              } catch (re) {
+                const rmsg = re instanceof Error ? re.message : String(re);
+                if (isDeadRefresh(rmsg)) {
+                  // Drop the dead token; the effect re-runs and either uses the
+                  // shared server token or shows the connect prompt.
+                  setStatus(sharedAvailable ? "switching to shared feed…" : "reconnect Schwab");
+                  onTokensInvalid?.();
+                  return;
+                }
+                throw re;
+              }
               onTokens(fresh);
               token = fresh.access_token;
               quotes = await fetchQuotes({ data: { accessToken: token, symbols: [symbol] } });
@@ -152,7 +177,7 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
     tick();
     const id = setInterval(tick, 2000);
     return () => { cancelled = true; clearInterval(id); };
-  }, [tokens, symbol, sharedAvailable, fetchQuotes, fetchSharedQuotes, refresh, onTokens]);
+  }, [tokens, symbol, sharedAvailable, fetchQuotes, fetchSharedQuotes, refresh, onTokens, onTokensInvalid]);
 
   // Rolling window: only show the last WINDOW_MS of tape so the chart
   // "flows" with the market as new prints arrive instead of piling up

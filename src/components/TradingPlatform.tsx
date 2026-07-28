@@ -843,6 +843,14 @@ export default function TradingPlatform() {
     try { sessionStorage.setItem(SCHWAB_TOKEN_KEY, JSON.stringify(t)); } catch {}
   }, []);
 
+  // Drop a revoked/expired Schwab token so feeds fall back to the shared
+  // server-side owner token instead of retrying a refresh that can't succeed.
+  const clearDeadTokens = useCallback(() => {
+    try { localStorage.removeItem(SCHWAB_TOKEN_KEY); } catch {}
+    try { sessionStorage.removeItem(SCHWAB_TOKEN_KEY); } catch {}
+    setSchwabTokens(null);
+  }, []);
+
 
   // Server-side "is a shared Schwab owner token stored?" check. This lets the
   // UI show a connected state even when this tab's localStorage was wiped —
@@ -3216,6 +3224,7 @@ export default function TradingPlatform() {
             tokens={schwabTokens}
             onTokens={persistTokens}
             sharedAvailable={sharedSchwabConnected}
+            onTokensInvalid={clearDeadTokens}
           />
 
           {/* Company-specific news + AI sentiment (shown first) */}
