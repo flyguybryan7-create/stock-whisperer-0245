@@ -120,15 +120,10 @@ function finishLadder(args: {
     }
   }
 
-  const need = new Set<number>();
-  if (effMagC) need.add(effMagC.strike);
-  if (effMagP) need.add(effMagP.strike);
-  const have = new Set(trimmed.map((r) => r.strike));
-  const extras = displayRungs.filter((r) => need.has(r.strike) && !have.has(r.strike));
-  if (extras.length) trimmed = [...trimmed, ...extras].sort((a, b) => a.strike - b.strike);
-
   // Magnet must come from the rendered near-the-money window, not the whole
-  // chain — deep OTM spread legs are not price targets.
+  // chain — deep OTM spread legs are not price targets. Do NOT re-inject the
+  // full-chain magnet strike into `trimmed`; that would let the deep-OTM leg
+  // win again and make this filter a no-op.
   {
     const w = magnetsFromRungs(trimmed, "volume");
     if (w.call || w.put) { effMagC = w.call; effMagP = w.put; }
