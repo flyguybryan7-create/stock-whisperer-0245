@@ -67,13 +67,18 @@ type Props = {
   ladder: SchwabOptionsLadder | null;
   expiryIndex?: number;
   onExpiryChange?: (index: number) => void;
+  /** Timestamp of the last successful poll. */
+  updatedAt?: number | null;
+  /** Contracts added since the previous poll. */
+  deltaCall?: number;
+  deltaPut?: number;
 };
 
-export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpiryChange }: Props) {
+export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpiryChange, updatedAt = null, deltaCall = 0, deltaPut = 0 }: Props) {
   // Live clock for the time-to-close readout — ticks every 30s.
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 30_000);
+    const id = setInterval(() => setNow(new Date()), 5_000);
     return () => clearInterval(id);
   }, []);
 
@@ -166,6 +171,22 @@ export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpi
           </span>
         </div>
       </div>
+
+      {/* Live accumulation readout — proves the ladder is polling and growing */}
+      {updatedAt != null && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontFamily: mono, fontSize: 9, color: "#6e7681", padding: "0 2px 6px" }}>
+          <span style={{ color: "#39d353" }}>● LIVE</span>
+          <span>updated {Math.max(0, Math.round((now.getTime() - updatedAt) / 1000))}s ago</span>
+          {(deltaCall > 0 || deltaPut > 0) && (
+            <span>
+              added this poll:{" "}
+              <span style={{ color: "#39d353", fontWeight: 700 }}>+{fmtVol(deltaCall)}C</span>{" · "}
+              <span style={{ color: "#f85149", fontWeight: 700 }}>+{fmtVol(deltaPut)}P</span>
+            </span>
+          )}
+          <span>· session totals accumulate all day</span>
+        </div>
+      )}
 
       {noWeeklies && (
         <div style={{ padding: 8, marginBottom: 8, background: "#161b22", border: "1px solid #30363d", borderRadius: 4, fontSize: 10, color: "#e3b341" }}>

@@ -208,6 +208,52 @@ function isUsableOptionsLadder(ladder: SchwabOptionsLadder | null | undefined, s
 }
 
 function buildRecentClientFlowLadder(ladder: SchwabOptionsLadder, previous: SchwabOptionsLadder | null): SchwabOptionsLadder | null {
+  return buildRecentClientFlowLadderImpl(ladder, previous);
+}
+
+/**
+ * Session accumulator for the Options Flow Magnet.
+ *
+ * Providers occasionally hand back a partially-populated snapshot (cache miss,
+ * a slower mirror, a strike temporarily absent). Rendering that raw makes the
+ * chart look like it resets instead of accumulating. We ratchet every strike to
+ * the highest volume seen this session for the same symbol+expiry+day, so bars
+ * only ever grow through the trading day.
+ */
+type LadderAccum = { key: string; rungs: Map<number, { c: number; p: number }> };
+
+function accumulateLadder(
+  ladder: SchwabOptionsLadder,
+  acc: LadderAccum,
+): SchwabOptionsLadder {
+  let callVolume = 0;
+  let putVolume = 0;
+  const rungs = ladder.ladder.map((r) => {
+    const prev = acc.rungs.get(r.strike);
+    const c = Math.max(r.callVol, prev?.c ?? 0);
+    const p = Math.max(r.putVol, prev?.p ?? 0);
+    acc.rungs.set(r.strike, { c, p });
+    callVolume += c;
+    putVolume += p;
+    return { ...r, callVol: c, putVol: p };
+  });
+  let magnetCall: { strike: number; volume: number } | null = null;
+  let magnetPut: { strike: number; volume: number } | null = null;
+  for (const r of rungs) {
+    if (r.callVol > (magnetCall?.volume ?? 0)) magnetCall = { strike: r.strike, volume: r.callVol };
+    if (r.putVol > (magnetPut?.volume ?? 0)) magnetPut = { strike: r.strike, volume: r.putVol };
+  }
+  return {
+    ...ladder,
+    ladder: rungs,
+    callVolume: Math.max(callVolume, ladder.callVolume),
+    putVolume: Math.max(putVolume, ladder.putVolume),
+    magnetCall: magnetCall ? { strike: magnetCall.strike, volume: magnetCall.volume, pct: callVolume > 0 ? magnetCall.volume / callVolume : 0 } : ladder.magnetCall,
+    magnetPut: magnetPut ? { strike: magnetPut.strike, volume: magnetPut.volume, pct: putVolume > 0 ? magnetPut.volume / putVolume : 0 } : ladder.magnetPut,
+  };
+}
+
+function buildRecentClientFlowLadderImpl(ladder: SchwabOptionsLadder, previous: SchwabOptionsLadder | null): SchwabOptionsLadder | null {
   if (ladder.source === "oi" || ladder.flowWindowSeconds || !previous || previous.symbol !== ladder.symbol || previous.expiry !== ladder.expiry) return null;
   const prevByStrike = new Map(previous.ladder.map((r) => [r.strike, r]));
   const recentRungs = ladder.ladder.map((r) => {
@@ -1297,13 +1343,45 @@ export default function TradingPlatform() {
     [mergedSchwabLadder],
   );
 
+  // Ratchet cumulative session volume so the magnet chart grows through the
+  // day instead of dipping whenever a provider returns a thin snapshot.
+  const ladderAccumRef = useRef<LadderAccum | null>(null);
+  const accumulatedLadder = useMemo(() => {
+    const l = mergedSchwabLadder;
+    if (!l || l.symbol !== selectedStock) return null;
+    if (l.source === "oi" || l.flowWindowSeconds) return l;
+    const key = `${l.symbol}|${l.expiry}|${new Date().toISOString().slice(0, 10)}`;
+    if (!ladderAccumRef.current || ladderAccumRef.current.key !== key) {
+      ladderAccumRef.current = { key, rungs: new Map() };
+    }
+    return accumulateLadder(l, ladderAccumRef.current);
+  }, [mergedSchwabLadder, selectedStock]);
+
+  // Track growth between polls so the chart can show "+N contracts" live.
+  const ladderTotalsRef = useRef<{ key: string; call: number; put: number } | null>(null);
+  const [ladderPulse, setLadderPulse] = useState<{ updatedAt: number; deltaCall: number; deltaPut: number } | null>(null);
+  useEffect(() => {
+    const l = accumulatedLadder;
+    if (!l) return;
+    const key = `${l.symbol}|${l.expiry}`;
+    const prev = ladderTotalsRef.current;
+    ladderTotalsRef.current = { key, call: l.callVolume, put: l.putVolume };
+    if (!prev || prev.key !== key) {
+      setLadderPulse({ updatedAt: Date.now(), deltaCall: 0, deltaPut: 0 });
+      return;
+    }
+    const deltaCall = Math.max(0, l.callVolume - prev.call);
+    const deltaPut = Math.max(0, l.putVolume - prev.put);
+    setLadderPulse({ updatedAt: Date.now(), deltaCall, deltaPut });
+  }, [accumulatedLadder]);
+
   // Public aliases the rest of the component already uses. Now backed by the
   // merged feed so shared/published-link viewers see the same live data.
   const schwabQuotes = mergedSchwabQuotes;
   const schwabQuote: SchwabQuote | null = mergedSchwabQuotes[selectedStock] ?? null;
   const schwabFundamentals = mergedSchwabFund;
   const schwabTopStrikes = recentSchwabTopStrikes ?? mergedSchwabStrikes;
-  const schwabLadder = mergedSchwabLadder;
+  const schwabLadder = accumulatedLadder;
   const liveBase = live[selectedStock];
   const selectedMark = schwabQuote?.last ?? liveBase?.price;
   const selectedSchwabNbbo = bidAskNearMark(selectedMark, schwabQuote?.bid, schwabQuote?.ask);
@@ -3215,6 +3293,9 @@ export default function TradingPlatform() {
             ladder={schwabLadder && schwabLadder.symbol === selectedStock ? schwabLadder : null}
             expiryIndex={ladderExpiryIndex}
             onExpiryChange={setLadderExpiryIndex}
+            updatedAt={ladderPulse?.updatedAt ?? null}
+            deltaCall={ladderPulse?.deltaCall ?? 0}
+            deltaPut={ladderPulse?.deltaPut ?? 0}
           />
 
           {/* Day-trader Aggressor Tape + CVD — built on top of Schwab NBBO
