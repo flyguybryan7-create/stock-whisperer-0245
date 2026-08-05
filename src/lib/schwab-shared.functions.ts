@@ -255,7 +255,6 @@ export const getSharedSchwabFundamentals = createServerFn({ method: "POST" })
       tok.accessToken,
     );
     if (!res.ok) {
-      if (res.status === 401 || res.status === 403) await deleteOwnerToken(tok.userId);
       return null;
     }
     const json: any = await res.json().catch(() => ({}));
@@ -287,7 +286,6 @@ export const getSharedSchwabTopStrikes = createServerFn({ method: "POST" })
       tok.accessToken,
     );
     if (!res.ok) {
-      if (res.status === 401 || res.status === 403) await deleteOwnerToken(tok.userId);
       return null;
     }
     const json: any = await res.json().catch(() => ({}));
@@ -350,7 +348,6 @@ export const getSharedSchwabPriceHistory = createServerFn({ method: "POST" })
       tok.accessToken,
     );
     if (!res.ok) {
-      if (res.status === 401 || res.status === 403) await deleteOwnerToken(tok.userId);
       return null;
     }
     const json: any = await res.json().catch(() => ({}));
@@ -377,7 +374,6 @@ export const getSharedSchwabOptionsLadder = createServerFn({ method: "POST" })
       tok.accessToken,
     );
     if (!res.ok) {
-      if (res.status === 401 || res.status === 403) await deleteOwnerToken(tok.userId);
       return null;
     }
     const json: any = await res.json().catch(() => ({}));
