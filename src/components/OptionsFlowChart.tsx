@@ -78,7 +78,7 @@ export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpi
   // Live clock for the time-to-close readout — ticks every 30s.
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 30_000);
+    const id = setInterval(() => setNow(new Date()), 5_000);
     return () => clearInterval(id);
   }, []);
 
