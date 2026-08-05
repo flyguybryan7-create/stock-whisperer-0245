@@ -208,6 +208,52 @@ function isUsableOptionsLadder(ladder: SchwabOptionsLadder | null | undefined, s
 }
 
 function buildRecentClientFlowLadder(ladder: SchwabOptionsLadder, previous: SchwabOptionsLadder | null): SchwabOptionsLadder | null {
+  return buildRecentClientFlowLadderImpl(ladder, previous);
+}
+
+/**
+ * Session accumulator for the Options Flow Magnet.
+ *
+ * Providers occasionally hand back a partially-populated snapshot (cache miss,
+ * a slower mirror, a strike temporarily absent). Rendering that raw makes the
+ * chart look like it resets instead of accumulating. We ratchet every strike to
+ * the highest volume seen this session for the same symbol+expiry+day, so bars
+ * only ever grow through the trading day.
+ */
+type LadderAccum = { key: string; rungs: Map<number, { c: number; p: number }> };
+
+function accumulateLadder(
+  ladder: SchwabOptionsLadder,
+  acc: LadderAccum,
+): SchwabOptionsLadder {
+  let callVolume = 0;
+  let putVolume = 0;
+  const rungs = ladder.ladder.map((r) => {
+    const prev = acc.rungs.get(r.strike);
+    const c = Math.max(r.callVol, prev?.c ?? 0);
+    const p = Math.max(r.putVol, prev?.p ?? 0);
+    acc.rungs.set(r.strike, { c, p });
+    callVolume += c;
+    putVolume += p;
+    return { ...r, callVol: c, putVol: p };
+  });
+  let magnetCall: { strike: number; volume: number } | null = null;
+  let magnetPut: { strike: number; volume: number } | null = null;
+  for (const r of rungs) {
+    if (r.callVol > (magnetCall?.volume ?? 0)) magnetCall = { strike: r.strike, volume: r.callVol };
+    if (r.putVol > (magnetPut?.volume ?? 0)) magnetPut = { strike: r.strike, volume: r.putVol };
+  }
+  return {
+    ...ladder,
+    ladder: rungs,
+    callVolume: Math.max(callVolume, ladder.callVolume),
+    putVolume: Math.max(putVolume, ladder.putVolume),
+    magnetCall: magnetCall ? { strike: magnetCall.strike, volume: magnetCall.volume, pct: callVolume > 0 ? magnetCall.volume / callVolume : 0 } : ladder.magnetCall,
+    magnetPut: magnetPut ? { strike: magnetPut.strike, volume: magnetPut.volume, pct: putVolume > 0 ? magnetPut.volume / putVolume : 0 } : ladder.magnetPut,
+  };
+}
+
+function buildRecentClientFlowLadderImpl(ladder: SchwabOptionsLadder, previous: SchwabOptionsLadder | null): SchwabOptionsLadder | null {
   if (ladder.source === "oi" || ladder.flowWindowSeconds || !previous || previous.symbol !== ladder.symbol || previous.expiry !== ladder.expiry) return null;
   const prevByStrike = new Map(previous.ladder.map((r) => [r.strike, r]));
   const recentRungs = ladder.ladder.map((r) => {
