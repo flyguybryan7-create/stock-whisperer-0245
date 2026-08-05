@@ -76,6 +76,9 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
   const lastPriceRef = useRef<number | null>(null);
   const cvdRef = useRef<number>(0);
   const symbolRef = useRef(symbol);
+  // Shared-feed failures are usually transient (rate limit, 5xx, brief blip).
+  // Only treat the connection as dead after several consecutive misses.
+  const sharedFailRef = useRef(0);
 
   // Reset the tape when the user switches tickers so buy/sell/CVD reflect
   // only the currently displayed symbol.
@@ -104,10 +107,16 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
         if (useShared) {
           quotes = await fetchSharedQuotes({ data: { symbols: [symbol] } });
           if (!quotes) {
-            setStatus("reconnect Schwab");
-            onTokensInvalid?.();
+            sharedFailRef.current += 1;
+            if (sharedFailRef.current >= 5) {
+              setStatus("reconnect Schwab");
+              onTokensInvalid?.();
+            } else {
+              setStatus("shared feed hiccup — retrying…");
+            }
             return;
           }
+          sharedFailRef.current = 0;
         } else {
           let token = tokens!.access_token;
           try {
