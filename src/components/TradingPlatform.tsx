@@ -1343,13 +1343,45 @@ export default function TradingPlatform() {
     [mergedSchwabLadder],
   );
 
+  // Ratchet cumulative session volume so the magnet chart grows through the
+  // day instead of dipping whenever a provider returns a thin snapshot.
+  const ladderAccumRef = useRef<LadderAccum | null>(null);
+  const accumulatedLadder = useMemo(() => {
+    const l = mergedSchwabLadder;
+    if (!l || l.symbol !== selectedStock) return null;
+    if (l.source === "oi" || l.flowWindowSeconds) return l;
+    const key = `${l.symbol}|${l.expiry}|${new Date().toISOString().slice(0, 10)}`;
+    if (!ladderAccumRef.current || ladderAccumRef.current.key !== key) {
+      ladderAccumRef.current = { key, rungs: new Map() };
+    }
+    return accumulateLadder(l, ladderAccumRef.current);
+  }, [mergedSchwabLadder, selectedStock]);
+
+  // Track growth between polls so the chart can show "+N contracts" live.
+  const ladderTotalsRef = useRef<{ key: string; call: number; put: number } | null>(null);
+  const [ladderPulse, setLadderPulse] = useState<{ updatedAt: number; deltaCall: number; deltaPut: number } | null>(null);
+  useEffect(() => {
+    const l = accumulatedLadder;
+    if (!l) return;
+    const key = `${l.symbol}|${l.expiry}`;
+    const prev = ladderTotalsRef.current;
+    ladderTotalsRef.current = { key, call: l.callVolume, put: l.putVolume };
+    if (!prev || prev.key !== key) {
+      setLadderPulse({ updatedAt: Date.now(), deltaCall: 0, deltaPut: 0 });
+      return;
+    }
+    const deltaCall = Math.max(0, l.callVolume - prev.call);
+    const deltaPut = Math.max(0, l.putVolume - prev.put);
+    setLadderPulse({ updatedAt: Date.now(), deltaCall, deltaPut });
+  }, [accumulatedLadder]);
+
   // Public aliases the rest of the component already uses. Now backed by the
   // merged feed so shared/published-link viewers see the same live data.
   const schwabQuotes = mergedSchwabQuotes;
   const schwabQuote: SchwabQuote | null = mergedSchwabQuotes[selectedStock] ?? null;
   const schwabFundamentals = mergedSchwabFund;
   const schwabTopStrikes = recentSchwabTopStrikes ?? mergedSchwabStrikes;
-  const schwabLadder = mergedSchwabLadder;
+  const schwabLadder = accumulatedLadder;
   const liveBase = live[selectedStock];
   const selectedMark = schwabQuote?.last ?? liveBase?.price;
   const selectedSchwabNbbo = bidAskNearMark(selectedMark, schwabQuote?.bid, schwabQuote?.ask);
