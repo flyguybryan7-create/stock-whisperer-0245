@@ -96,17 +96,9 @@ export async function fetchSchwabSharedQuote(
     });
     if (!res.ok) {
       console.error("[schwab-shared.server] quote", symbol, res.status);
-      if (res.status === 401 || res.status === 403) {
-        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const { data } = await supabaseAdmin
-          .from("schwab_owner_tokens")
-          .select("user_id")
-          .order("updated_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        const userId = (data as { user_id?: string } | null)?.user_id;
-        if (userId) await deleteOwnerToken(userId);
-      }
+      // A quote-level 401/403 can be transient (rate limit spillover, brief
+      // upstream auth blip). Only a failed *refresh* proves the stored token
+      // is dead, and that path already deletes it.
       return null;
     }
     const json: any = await res.json().catch(() => ({}));
