@@ -3293,6 +3293,9 @@ export default function TradingPlatform() {
             ladder={schwabLadder && schwabLadder.symbol === selectedStock ? schwabLadder : null}
             expiryIndex={ladderExpiryIndex}
             onExpiryChange={setLadderExpiryIndex}
+            updatedAt={ladderPulse?.updatedAt ?? null}
+            deltaCall={ladderPulse?.deltaCall ?? 0}
+            deltaPut={ladderPulse?.deltaPut ?? 0}
           />
 
           {/* Day-trader Aggressor Tape + CVD — built on top of Schwab NBBO
