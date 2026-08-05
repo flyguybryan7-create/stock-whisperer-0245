@@ -214,7 +214,6 @@ export const getSharedSchwabQuotes = createServerFn({ method: "POST" })
     );
     if (!res.ok) {
       console.error("[schwab-shared] quotes", res.status, (await res.text()).slice(0, 200));
-      if (res.status === 401 || res.status === 403) await deleteOwnerToken(tok.userId);
       return null;
     }
     const json: any = await res.json().catch(() => ({}));
