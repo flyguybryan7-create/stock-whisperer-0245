@@ -157,7 +157,10 @@ async function safeFeedQuery<T>(label: string, load: () => Promise<T>, fallback:
   try {
     const result = await load();
     feedEverSucceeded.add(label);
-    return result;
+    // React Query rejects `undefined` as query data — a server function that
+    // resolves to undefined (e.g. a 500 swallowed upstream) would otherwise
+    // blow up the whole route with "Query data cannot be undefined".
+    return (result === undefined ? fallback : result);
   } catch (error) {
     if (!isTransientFeedError(error)) console.warn(`[feed] ${label} failed`, error);
     if (feedEverSucceeded.has(label)) throw error;
