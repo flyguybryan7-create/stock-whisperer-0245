@@ -171,6 +171,22 @@ export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpi
           ⚡ OPTIONS FLOW MAGNET · {symbol}
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center", fontFamily: mono, fontSize: 10 }}>
+          <div style={{ display: "flex", border: "1px solid #30363d", borderRadius: 4, overflow: "hidden" }}>
+            {([["cum", "WEEK+"], ["day", "TODAY"]] as const).map(([m, label]) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMode(m)}
+                style={{
+                  padding: "2px 7px", border: "none", cursor: "pointer", fontFamily: mono, fontSize: 10, fontWeight: 700,
+                  background: mode === m ? "#d2a8ff" : "#161b22",
+                  color: mode === m ? "#0d1117" : "#8b949e",
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           {ladder?.alternateExpiries && ladder.alternateExpiries.length > 1 && onExpiryChange ? (
             <select
               value={Math.min(expiryIndex, ladder.alternateExpiries.length - 1)}
@@ -214,7 +230,25 @@ export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpi
               <span style={{ color: "#f85149", fontWeight: 700 }}>+{fmtVol(deltaPut)}P</span>
             </span>
           )}
-          <span>· session totals accumulate all day</span>
+          <span>· {mode === "cum" ? "cumulative open interest (all prior days + today)" : "today's session volume only"}</span>
+        </div>
+      )}
+
+      {/* Estimated buy vs sell pressure — Lee-Ready on the chain snapshot */}
+      {flowSide && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", fontFamily: mono, fontSize: 9, color: "#8b949e", padding: "0 2px 8px" }}>
+          <span style={{ letterSpacing: 1, color: "#6e7681" }}>EST. AGGRESSOR</span>
+          <span>
+            CALLS <span style={{ color: "#39d353", fontWeight: 700 }}>{(flowSide.callBuyPct * 100).toFixed(0)}% BOUGHT</span>
+            {" / "}
+            <span style={{ color: "#f0883e", fontWeight: 700 }}>{(100 - flowSide.callBuyPct * 100).toFixed(0)}% SOLD</span>
+          </span>
+          <span>
+            PUTS <span style={{ color: "#f85149", fontWeight: 700 }}>{(flowSide.putBuyPct * 100).toFixed(0)}% BOUGHT</span>
+            {" / "}
+            <span style={{ color: "#f0883e", fontWeight: 700 }}>{(100 - flowSide.putBuyPct * 100).toFixed(0)}% SOLD</span>
+          </span>
+          <span style={{ color: "#6e7681" }}>· est. from trade price vs bid/ask</span>
         </div>
       )}
 
