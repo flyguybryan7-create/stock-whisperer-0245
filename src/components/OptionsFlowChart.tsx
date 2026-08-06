@@ -282,7 +282,7 @@ export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpi
               {magnet.side} ${magnet.strike}
             </div>
             <div style={{ fontSize: 9, color: "#8b949e", fontFamily: mono }}>
-              {fmtVol(magnet.volume)} contracts · {(magnet.pct * 100).toFixed(1)}% of {magnet.side.toLowerCase()} flow
+              {fmtVol(magnet.volume)} {mode === "cum" ? "open contracts" : "contracts"} · {(magnet.pct * 100).toFixed(1)}% of {magnet.side.toLowerCase()} {mode === "cum" ? "OI" : "flow"}
             </div>
           </div>
           <div style={{ textAlign: "right" }}>
@@ -306,9 +306,9 @@ export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpi
       ) : (
         <>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "#8b949e", fontFamily: mono, padding: "0 4px 4px" }}>
-            <span>◀ PUT FLOW · {fmtVol(ladder!.putVolume)}</span>
+            <span>◀ PUT {mode === "cum" ? "OI" : "FLOW"} · {fmtVol(totals.put)}</span>
             <span style={{ color: "#c9d1d9" }}>STRIKE</span>
-            <span>CALL FLOW · {fmtVol(ladder!.callVolume)} ▶</span>
+            <span>CALL {mode === "cum" ? "OI" : "FLOW"} · {fmtVol(totals.call)} ▶</span>
           </div>
           {/* Horizontal ladder — puts left (red), calls right (green),
               zero axis is strike price. Spot marked with a horizontal line. */}
@@ -357,9 +357,9 @@ export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpi
             </ComposedChart>
           </ResponsiveContainer>
           <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "4px 0 0" }}>
-            {ladder?.source === "oi"
-              ? "Open interest positioning · magnet strike = heaviest OI concentration"
-              : "Cumulative session option volume · refreshes every 10s · magnet strike = heaviest volume concentration"}
+            {mode === "cum"
+              ? "Cumulative open interest — contracts still held from prior days/weeks plus today · magnet strike = heaviest OI concentration"
+              : "Today's session option volume · magnet strike = heaviest volume concentration"}
           </div>
         </>
       )}
