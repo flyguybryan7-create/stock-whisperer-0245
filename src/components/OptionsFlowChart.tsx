@@ -75,6 +75,10 @@ type Props = {
 };
 
 export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpiryChange, updatedAt = null, deltaCall = 0, deltaPut = 0 }: Props) {
+  // "day"  = today's option volume only (resets each session)
+  // "cum"  = open interest: every contract still held from prior days/weeks,
+  //          i.e. the accumulated positioning built up before today.
+  const [mode, setMode] = useState<"day" | "cum">("cum");
   // Live clock for the time-to-close readout — ticks every 30s.
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -84,34 +88,60 @@ export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpi
 
   const data = useMemo(() => {
     if (!ladder?.ladder?.length) return [];
-    return ladder.ladder.map((r) => ({
-      strike: r.strike,
-      strikeLabel: `$${r.strike}`,
-      // Put volume drawn as negative so it points left of the zero axis;
-      // call volume points right. That gives you the classic "flow ladder".
-      putVolNeg: -r.putVol,
-      callVol: r.callVol,
-      putVol: r.putVol,
-    }));
+    return ladder.ladder.map((r) => {
+      const c = mode === "cum" ? r.callOi : r.callVol;
+      const p = mode === "cum" ? r.putOi : r.putVol;
+      return {
+        strike: r.strike,
+        strikeLabel: `$${r.strike}`,
+        // Put volume drawn as negative so it points left of the zero axis;
+        // call volume points right. That gives you the classic "flow ladder".
+        putVolNeg: -p,
+        callVol: c,
+        putVol: p,
+      };
+    });
+  }, [ladder, mode]);
+
+  // Totals for the selected mode.
+  const totals = useMemo(() => {
+    let call = 0, put = 0;
+    for (const d of data) { call += d.callVol; put += d.putVol; }
+    if (mode === "day" && ladder) {
+      call = Math.max(call, ladder.callVolume);
+      put = Math.max(put, ladder.putVolume);
+    }
+    return { call, put };
+  }, [data, mode, ladder]);
+
+  // Estimated buy vs sell split (Lee-Ready on the chain snapshot). Only
+  // meaningful for traded volume, so it's hidden in cumulative/OI mode.
+  const flowSide = useMemo(() => {
+    const cb = ladder?.callBuyVolume ?? 0;
+    const cs = ladder?.callSellVolume ?? 0;
+    const pb = ladder?.putBuyVolume ?? 0;
+    const ps = ladder?.putSellVolume ?? 0;
+    if (cb + cs + pb + ps <= 0) return null;
+    return {
+      cb, cs, pb, ps,
+      callBuyPct: cb + cs > 0 ? cb / (cb + cs) : 0,
+      putBuyPct: pb + ps > 0 ? pb / (pb + ps) : 0,
+    };
   }, [ladder]);
 
   const magnet = useMemo(() => {
-    if (!ladder) return null;
-    const c = ladder.magnetCall?.volume ?? 0;
-    const p = ladder.magnetPut?.volume ?? 0;
-    if (c === 0 && p === 0) return null;
-    return c >= p ? {
-      side: "CALL" as const,
-      strike: ladder.magnetCall!.strike,
-      pct: ladder.magnetCall!.pct,
-      volume: ladder.magnetCall!.volume,
-    } : {
-      side: "PUT" as const,
-      strike: ladder.magnetPut!.strike,
-      pct: ladder.magnetPut!.pct,
-      volume: ladder.magnetPut!.volume,
-    };
-  }, [ladder]);
+    if (!data.length) return null;
+    let bestC = { strike: 0, volume: 0 };
+    let bestP = { strike: 0, volume: 0 };
+    for (const d of data) {
+      if (d.callVol > bestC.volume) bestC = { strike: d.strike, volume: d.callVol };
+      if (d.putVol > bestP.volume) bestP = { strike: d.strike, volume: d.putVol };
+    }
+    if (bestC.volume === 0 && bestP.volume === 0) return null;
+    return bestC.volume >= bestP.volume
+      ? { side: "CALL" as const, strike: bestC.strike, volume: bestC.volume, pct: totals.call > 0 ? bestC.volume / totals.call : 0 }
+      : { side: "PUT" as const, strike: bestP.strike, volume: bestP.volume, pct: totals.put > 0 ? bestP.volume / totals.put : 0 };
+  }, [data, totals]);
 
   const distance = magnet && spot ? magnet.strike - spot : null;
   const distancePct = magnet && spot ? ((magnet.strike - spot) / spot) * 100 : null;
