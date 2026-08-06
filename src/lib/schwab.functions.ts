@@ -345,6 +345,14 @@ export type SchwabLadderRung = {
   putVol: number;
   callOi: number;
   putOi: number;
+  // Aggressor-split volume (Lee-Ready style: trade price vs bid/ask).
+  // buy = lifted the offer (bullish for that contract type),
+  // sell = hit the bid (written/sold). Optional: not every provider
+  // exposes bid/ask/last per contract.
+  callBuyVol?: number;
+  callSellVol?: number;
+  putBuyVol?: number;
+  putSellVol?: number;
 };
 export type SchwabOptionsLadder = {
   symbol: string;
@@ -357,6 +365,11 @@ export type SchwabOptionsLadder = {
   putVolume: number;
   magnetCall: { strike: number; pct: number; volume: number } | null;
   magnetPut: { strike: number; pct: number; volume: number } | null;
+  // Session-wide aggressor split (sum of the rendered rungs).
+  callBuyVolume?: number;
+  callSellVolume?: number;
+  putBuyVolume?: number;
+  putSellVolume?: number;
   ladder: SchwabLadderRung[]; // sorted ascending by strike, trimmed near spot
   // Upcoming expiries (ascending DTE, first 8) so the UI can offer a
   // dropdown to switch between "this week", "next week", etc. Index 0
