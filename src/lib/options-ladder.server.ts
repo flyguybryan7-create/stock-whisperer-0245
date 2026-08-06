@@ -210,7 +210,10 @@ async function fetchCboe(symbol: string, expiryIndex: number): Promise<SchwabOpt
   const staleSession = !!(newestTradeIso && newestTradeIso.slice(0, 10) < today_et);
   if (staleSession) {
     for (const bucket of byExpiry.values()) {
-      for (const r of bucket.rungs.values()) { r.callVol = 0; r.putVol = 0; }
+      for (const r of bucket.rungs.values()) {
+        r.callVol = 0; r.putVol = 0;
+        r.callBuyVol = 0; r.callSellVol = 0; r.putBuyVol = 0; r.putSellVol = 0;
+      }
     }
   }
 
