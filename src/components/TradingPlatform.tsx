@@ -220,7 +220,7 @@ function buildRecentClientFlowLadder(ladder: SchwabOptionsLadder, previous: Schw
  * the highest volume seen this session for the same symbol+expiry+day, so bars
  * only ever grow through the trading day.
  */
-type LadderAccum = { key: string; rungs: Map<number, { c: number; p: number }> };
+type LadderAccum = { key: string; rungs: Map<number, { c: number; p: number; cb: number; cs: number; pb: number; ps: number }> };
 
 function accumulateLadder(
   ladder: SchwabOptionsLadder,
@@ -228,14 +228,20 @@ function accumulateLadder(
 ): SchwabOptionsLadder {
   let callVolume = 0;
   let putVolume = 0;
+  let callBuyVolume = 0, callSellVolume = 0, putBuyVolume = 0, putSellVolume = 0;
   const rungs = ladder.ladder.map((r) => {
     const prev = acc.rungs.get(r.strike);
     const c = Math.max(r.callVol, prev?.c ?? 0);
     const p = Math.max(r.putVol, prev?.p ?? 0);
-    acc.rungs.set(r.strike, { c, p });
+    const cb = Math.max(r.callBuyVol ?? 0, prev?.cb ?? 0);
+    const cs = Math.max(r.callSellVol ?? 0, prev?.cs ?? 0);
+    const pb = Math.max(r.putBuyVol ?? 0, prev?.pb ?? 0);
+    const ps = Math.max(r.putSellVol ?? 0, prev?.ps ?? 0);
+    acc.rungs.set(r.strike, { c, p, cb, cs, pb, ps });
     callVolume += c;
     putVolume += p;
-    return { ...r, callVol: c, putVol: p };
+    callBuyVolume += cb; callSellVolume += cs; putBuyVolume += pb; putSellVolume += ps;
+    return { ...r, callVol: c, putVol: p, callBuyVol: cb, callSellVol: cs, putBuyVol: pb, putSellVol: ps };
   });
   let magnetCall: { strike: number; volume: number } | null = null;
   let magnetPut: { strike: number; volume: number } | null = null;
@@ -248,6 +254,7 @@ function accumulateLadder(
     ladder: rungs,
     callVolume: Math.max(callVolume, ladder.callVolume),
     putVolume: Math.max(putVolume, ladder.putVolume),
+    callBuyVolume, callSellVolume, putBuyVolume, putSellVolume,
     magnetCall: magnetCall ? { strike: magnetCall.strike, volume: magnetCall.volume, pct: callVolume > 0 ? magnetCall.volume / callVolume : 0 } : ladder.magnetCall,
     magnetPut: magnetPut ? { strike: magnetPut.strike, volume: magnetPut.volume, pct: putVolume > 0 ? magnetPut.volume / putVolume : 0 } : ladder.magnetPut,
   };

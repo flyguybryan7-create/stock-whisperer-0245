@@ -75,6 +75,10 @@ type Props = {
 };
 
 export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpiryChange, updatedAt = null, deltaCall = 0, deltaPut = 0 }: Props) {
+  // "day"  = today's option volume only (resets each session)
+  // "cum"  = open interest: every contract still held from prior days/weeks,
+  //          i.e. the accumulated positioning built up before today.
+  const [mode, setMode] = useState<"day" | "cum">("cum");
   // Live clock for the time-to-close readout — ticks every 30s.
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -84,34 +88,60 @@ export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpi
 
   const data = useMemo(() => {
     if (!ladder?.ladder?.length) return [];
-    return ladder.ladder.map((r) => ({
-      strike: r.strike,
-      strikeLabel: `$${r.strike}`,
-      // Put volume drawn as negative so it points left of the zero axis;
-      // call volume points right. That gives you the classic "flow ladder".
-      putVolNeg: -r.putVol,
-      callVol: r.callVol,
-      putVol: r.putVol,
-    }));
+    return ladder.ladder.map((r) => {
+      const c = mode === "cum" ? r.callOi : r.callVol;
+      const p = mode === "cum" ? r.putOi : r.putVol;
+      return {
+        strike: r.strike,
+        strikeLabel: `$${r.strike}`,
+        // Put volume drawn as negative so it points left of the zero axis;
+        // call volume points right. That gives you the classic "flow ladder".
+        putVolNeg: -p,
+        callVol: c,
+        putVol: p,
+      };
+    });
+  }, [ladder, mode]);
+
+  // Totals for the selected mode.
+  const totals = useMemo(() => {
+    let call = 0, put = 0;
+    for (const d of data) { call += d.callVol; put += d.putVol; }
+    if (mode === "day" && ladder) {
+      call = Math.max(call, ladder.callVolume);
+      put = Math.max(put, ladder.putVolume);
+    }
+    return { call, put };
+  }, [data, mode, ladder]);
+
+  // Estimated buy vs sell split (Lee-Ready on the chain snapshot). Only
+  // meaningful for traded volume, so it's hidden in cumulative/OI mode.
+  const flowSide = useMemo(() => {
+    const cb = ladder?.callBuyVolume ?? 0;
+    const cs = ladder?.callSellVolume ?? 0;
+    const pb = ladder?.putBuyVolume ?? 0;
+    const ps = ladder?.putSellVolume ?? 0;
+    if (cb + cs + pb + ps <= 0) return null;
+    return {
+      cb, cs, pb, ps,
+      callBuyPct: cb + cs > 0 ? cb / (cb + cs) : 0,
+      putBuyPct: pb + ps > 0 ? pb / (pb + ps) : 0,
+    };
   }, [ladder]);
 
   const magnet = useMemo(() => {
-    if (!ladder) return null;
-    const c = ladder.magnetCall?.volume ?? 0;
-    const p = ladder.magnetPut?.volume ?? 0;
-    if (c === 0 && p === 0) return null;
-    return c >= p ? {
-      side: "CALL" as const,
-      strike: ladder.magnetCall!.strike,
-      pct: ladder.magnetCall!.pct,
-      volume: ladder.magnetCall!.volume,
-    } : {
-      side: "PUT" as const,
-      strike: ladder.magnetPut!.strike,
-      pct: ladder.magnetPut!.pct,
-      volume: ladder.magnetPut!.volume,
-    };
-  }, [ladder]);
+    if (!data.length) return null;
+    let bestC = { strike: 0, volume: 0 };
+    let bestP = { strike: 0, volume: 0 };
+    for (const d of data) {
+      if (d.callVol > bestC.volume) bestC = { strike: d.strike, volume: d.callVol };
+      if (d.putVol > bestP.volume) bestP = { strike: d.strike, volume: d.putVol };
+    }
+    if (bestC.volume === 0 && bestP.volume === 0) return null;
+    return bestC.volume >= bestP.volume
+      ? { side: "CALL" as const, strike: bestC.strike, volume: bestC.volume, pct: totals.call > 0 ? bestC.volume / totals.call : 0 }
+      : { side: "PUT" as const, strike: bestP.strike, volume: bestP.volume, pct: totals.put > 0 ? bestP.volume / totals.put : 0 };
+  }, [data, totals]);
 
   const distance = magnet && spot ? magnet.strike - spot : null;
   const distancePct = magnet && spot ? ((magnet.strike - spot) / spot) * 100 : null;
@@ -141,6 +171,22 @@ export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpi
           ⚡ OPTIONS FLOW MAGNET · {symbol}
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center", fontFamily: mono, fontSize: 10 }}>
+          <div style={{ display: "flex", border: "1px solid #30363d", borderRadius: 4, overflow: "hidden" }}>
+            {([["cum", "WEEK+"], ["day", "TODAY"]] as const).map(([m, label]) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMode(m)}
+                style={{
+                  padding: "2px 7px", border: "none", cursor: "pointer", fontFamily: mono, fontSize: 10, fontWeight: 700,
+                  background: mode === m ? "#d2a8ff" : "#161b22",
+                  color: mode === m ? "#0d1117" : "#8b949e",
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           {ladder?.alternateExpiries && ladder.alternateExpiries.length > 1 && onExpiryChange ? (
             <select
               value={Math.min(expiryIndex, ladder.alternateExpiries.length - 1)}
@@ -184,7 +230,25 @@ export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpi
               <span style={{ color: "#f85149", fontWeight: 700 }}>+{fmtVol(deltaPut)}P</span>
             </span>
           )}
-          <span>· session totals accumulate all day</span>
+          <span>· {mode === "cum" ? "cumulative open interest (all prior days + today)" : "today's session volume only"}</span>
+        </div>
+      )}
+
+      {/* Estimated buy vs sell pressure — Lee-Ready on the chain snapshot */}
+      {flowSide && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", fontFamily: mono, fontSize: 9, color: "#8b949e", padding: "0 2px 8px" }}>
+          <span style={{ letterSpacing: 1, color: "#6e7681" }}>EST. AGGRESSOR</span>
+          <span>
+            CALLS <span style={{ color: "#39d353", fontWeight: 700 }}>{(flowSide.callBuyPct * 100).toFixed(0)}% BOUGHT</span>
+            {" / "}
+            <span style={{ color: "#f0883e", fontWeight: 700 }}>{(100 - flowSide.callBuyPct * 100).toFixed(0)}% SOLD</span>
+          </span>
+          <span>
+            PUTS <span style={{ color: "#f85149", fontWeight: 700 }}>{(flowSide.putBuyPct * 100).toFixed(0)}% BOUGHT</span>
+            {" / "}
+            <span style={{ color: "#f0883e", fontWeight: 700 }}>{(100 - flowSide.putBuyPct * 100).toFixed(0)}% SOLD</span>
+          </span>
+          <span style={{ color: "#6e7681" }}>· est. from trade price vs bid/ask</span>
         </div>
       )}
 
@@ -218,7 +282,7 @@ export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpi
               {magnet.side} ${magnet.strike}
             </div>
             <div style={{ fontSize: 9, color: "#8b949e", fontFamily: mono }}>
-              {fmtVol(magnet.volume)} contracts · {(magnet.pct * 100).toFixed(1)}% of {magnet.side.toLowerCase()} flow
+              {fmtVol(magnet.volume)} {mode === "cum" ? "open contracts" : "contracts"} · {(magnet.pct * 100).toFixed(1)}% of {magnet.side.toLowerCase()} {mode === "cum" ? "OI" : "flow"}
             </div>
           </div>
           <div style={{ textAlign: "right" }}>
@@ -242,9 +306,9 @@ export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpi
       ) : (
         <>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "#8b949e", fontFamily: mono, padding: "0 4px 4px" }}>
-            <span>◀ PUT FLOW · {fmtVol(ladder!.putVolume)}</span>
+            <span>◀ PUT {mode === "cum" ? "OI" : "FLOW"} · {fmtVol(totals.put)}</span>
             <span style={{ color: "#c9d1d9" }}>STRIKE</span>
-            <span>CALL FLOW · {fmtVol(ladder!.callVolume)} ▶</span>
+            <span>CALL {mode === "cum" ? "OI" : "FLOW"} · {fmtVol(totals.call)} ▶</span>
           </div>
           {/* Horizontal ladder — puts left (red), calls right (green),
               zero axis is strike price. Spot marked with a horizontal line. */}
@@ -293,9 +357,9 @@ export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpi
             </ComposedChart>
           </ResponsiveContainer>
           <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "4px 0 0" }}>
-            {ladder?.source === "oi"
-              ? "Open interest positioning · magnet strike = heaviest OI concentration"
-              : "Cumulative session option volume · refreshes every 10s · magnet strike = heaviest volume concentration"}
+            {mode === "cum"
+              ? "Cumulative open interest — contracts still held from prior days/weeks plus today · magnet strike = heaviest OI concentration"
+              : "Today's session option volume · magnet strike = heaviest volume concentration"}
           </div>
         </>
       )}
