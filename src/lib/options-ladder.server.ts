@@ -183,11 +183,19 @@ async function fetchCboe(symbol: string, expiryIndex: number): Promise<SchwabOpt
     const bucket = byExpiry.get(expiry) ?? { dte, rungs: new Map<number, SchwabLadderRung>() };
     const rung = bucket.rungs.get(strike) ?? { strike, callVol: 0, putVol: 0, callOi: 0, putOi: 0 };
     if (m[3] === "C") {
-      rung.callVol += num(row?.volume);
+      const v = num(row?.volume);
+      const s = splitByAggressor(v, num(row?.last_trade_price), num(row?.bid), num(row?.ask));
+      rung.callVol += v;
       rung.callOi += num(row?.open_interest);
+      rung.callBuyVol = (rung.callBuyVol ?? 0) + s.buy;
+      rung.callSellVol = (rung.callSellVol ?? 0) + s.sell;
     } else {
-      rung.putVol += num(row?.volume);
+      const v = num(row?.volume);
+      const s = splitByAggressor(v, num(row?.last_trade_price), num(row?.bid), num(row?.ask));
+      rung.putVol += v;
       rung.putOi += num(row?.open_interest);
+      rung.putBuyVol = (rung.putBuyVol ?? 0) + s.buy;
+      rung.putSellVol = (rung.putSellVol ?? 0) + s.sell;
     }
     bucket.rungs.set(strike, rung);
     byExpiry.set(expiry, bucket);
@@ -269,8 +277,16 @@ async function fetchNasdaq(symbol: string, expiryIndex: number): Promise<SchwabO
     if (!meta || strike <= 0) continue;
     const bucket = byExpiry.get(meta.expiry) ?? { dte: meta.dte, rungs: new Map<number, SchwabLadderRung>() };
     const rung = bucket.rungs.get(strike) ?? { strike, callVol: 0, putVol: 0, callOi: 0, putOi: 0 };
-    rung.callVol += num(row?.c_Volume);
-    rung.putVol += num(row?.p_Volume);
+    const cv = num(row?.c_Volume);
+    const pv = num(row?.p_Volume);
+    const cs = splitByAggressor(cv, num(row?.c_Last), num(row?.c_Bid), num(row?.c_Ask));
+    const ps = splitByAggressor(pv, num(row?.p_Last), num(row?.p_Bid), num(row?.p_Ask));
+    rung.callVol += cv;
+    rung.putVol += pv;
+    rung.callBuyVol = (rung.callBuyVol ?? 0) + cs.buy;
+    rung.callSellVol = (rung.callSellVol ?? 0) + cs.sell;
+    rung.putBuyVol = (rung.putBuyVol ?? 0) + ps.buy;
+    rung.putSellVol = (rung.putSellVol ?? 0) + ps.sell;
     rung.callOi += num(row?.c_Openinterest);
     rung.putOi += num(row?.p_Openinterest);
     bucket.rungs.set(strike, rung);
