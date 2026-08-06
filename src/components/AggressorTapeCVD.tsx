@@ -66,6 +66,78 @@ function isDeadRefresh(msg: string): boolean {
   return m.includes("invalid_grant") || m.includes("unsupported_token_type") || m.includes("expired or revoked");
 }
 
+// ---------------------------------------------------------------------------
+// Signal engine
+//
+// Everything below is derived from the same NBBO tape the CVD is built from,
+// so the recommendation moves in lockstep with what's drawn on the chart.
+// Four confirming inputs, scored -1..+1 each:
+//   1. CVD slope       — is net aggressor flow accelerating up or down?
+//   2. Flow imbalance  — what share of recent volume lifted the offer?
+//   3. Price momentum  — is price confirming the flow?
+//   4. Divergence      — flow pushing one way while price refuses to follow
+//                        (absorption) is the highest-conviction reversal tell.
+// A weighted score crosses +/- thresholds to fire a B or S marker; we throttle
+// so the tape doesn't spray a marker on every single poll.
+// ---------------------------------------------------------------------------
+type Signal = { t: number; price: number; action: "B" | "S"; score: number; reason: string };
+
+const SIGNAL_LOOKBACK = 20;     // prints used for slope / imbalance
+const SIGNAL_MIN_GAP_MS = 20_000;
+const SIGNAL_THRESHOLD = 0.45;
+
+function linSlope(vals: number[]): number {
+  const n = vals.length;
+  if (n < 2) return 0;
+  let sx = 0, sy = 0, sxy = 0, sxx = 0;
+  for (let i = 0; i < n; i++) { sx += i; sy += vals[i]!; sxy += i * vals[i]!; sxx += i * i; }
+  const denom = n * sxx - sx * sx;
+  if (denom === 0) return 0;
+  return (n * sxy - sx * sy) / denom;
+}
+
+function clamp(v: number): number { return Math.max(-1, Math.min(1, v)); }
+
+function scoreWindow(win: Print[]): { score: number; reason: string } | null {
+  if (win.length < 6) return null;
+  const cvds = win.map((p) => p.cvd);
+  const prices = win.map((p) => p.price);
+
+  let buy = 0, sell = 0;
+  for (const p of win) {
+    if (p.side === "BUY") buy += p.size;
+    else if (p.side === "SELL") sell += p.size;
+  }
+  const totalVol = buy + sell;
+  if (totalVol <= 0) return null;
+
+  // Normalize the CVD slope by average print size so it's ticker-agnostic.
+  const avgSize = totalVol / win.length;
+  const cvdSlope = clamp(linSlope(cvds) / (avgSize || 1));
+  const imbalance = clamp((buy - sell) / totalVol);
+
+  const first = prices[0]!;
+  const last = prices[prices.length - 1]!;
+  const priceMove = first > 0 ? (last - first) / first : 0;
+  // 0.15% over the window is a full-strength move for an intraday tape.
+  const momentum = clamp(priceMove / 0.0015);
+
+  // Divergence: strong flow one way, price flat or against it => absorption.
+  const flow = (cvdSlope + imbalance) / 2;
+  const divergence = Math.abs(flow) > 0.4 && Math.sign(momentum || 0) !== Math.sign(flow)
+    ? -clamp(flow) // fade the aggressors being absorbed
+    : 0;
+
+  const score = clamp(0.35 * cvdSlope + 0.3 * imbalance + 0.2 * momentum + 0.15 * divergence * 2);
+
+  let reason: string;
+  if (divergence !== 0) reason = flow > 0 ? "buy flow absorbed at highs" : "sell flow absorbed at lows";
+  else if (Math.abs(imbalance) > 0.5) reason = imbalance > 0 ? "offers lifted, CVD rising" : "bids hit, CVD falling";
+  else reason = score > 0 ? "flow + price confirming up" : "flow + price confirming down";
+
+  return { score, reason };
+}
+
 export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = false, onTokensInvalid }: Props) {
   const fetchQuotes = useServerFn(getSchwabQuotes);
   const refresh = useServerFn(refreshSchwabToken);
@@ -79,6 +151,8 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
   // Shared-feed failures are usually transient (rate limit, 5xx, brief blip).
   // Only treat the connection as dead after several consecutive misses.
   const sharedFailRef = useRef(0);
+  const [signals, setSignals] = useState<Signal[]>([]);
+  const lastSignalRef = useRef<{ t: number; action: "B" | "S" } | null>(null);
 
   // Reset the tape when the user switches tickers so buy/sell/CVD reflect
   // only the currently displayed symbol.
@@ -86,6 +160,8 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
     if (symbolRef.current !== symbol) {
       symbolRef.current = symbol;
       setPrints([]);
+      setSignals([]);
+      lastSignalRef.current = null;
       cvdRef.current = 0;
       lastVolRef.current = null;
       lastPriceRef.current = null;
@@ -243,6 +319,37 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
     ? (totals.buy - totals.sell) / (totals.buy + totals.sell)
     : 0;
 
+  // Live recommendation: recomputed on every new print from the trailing window.
+  const live = useMemo(() => {
+    const win = prints.slice(-SIGNAL_LOOKBACK);
+    const s = scoreWindow(win);
+    if (!s) return null;
+    const action: "B" | "S" | "WAIT" =
+      s.score >= SIGNAL_THRESHOLD ? "B" : s.score <= -SIGNAL_THRESHOLD ? "S" : "WAIT";
+    return { ...s, action, price: win[win.length - 1]?.price ?? null };
+  }, [prints]);
+
+  // Commit a marker onto the tape when conviction crosses the threshold,
+  // throttled so we don't stamp the same call every 2s.
+  useEffect(() => {
+    if (!live || live.action === "WAIT" || live.price == null) return;
+    const now = Date.now();
+    const prev = lastSignalRef.current;
+    if (prev && prev.action === live.action && now - prev.t < SIGNAL_MIN_GAP_MS) return;
+    lastSignalRef.current = { t: now, action: live.action };
+    setSignals((s) => {
+      const next = [...s, { t: now, price: live.price!, action: live.action as "B" | "S", score: live.score, reason: live.reason }];
+      return next.length > 60 ? next.slice(next.length - 60) : next;
+    });
+  }, [live]);
+
+  const visibleSignals = useMemo(
+    () => signals.filter((s) => s.t >= nowTick - WINDOW_MS),
+    [signals, nowTick],
+  );
+  const buyMarks = useMemo(() => visibleSignals.filter((s) => s.action === "B"), [visibleSignals]);
+  const sellMarks = useMemo(() => visibleSignals.filter((s) => s.action === "S"), [visibleSignals]);
+
   const priceDomain = useMemo<[number, number] | ["auto", "auto"]>(() => {
     if (chartData.length === 0) return ["auto", "auto"];
     let min = Infinity, max = -Infinity;
@@ -312,6 +419,34 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
         </div>
       </div>
 
+      {/* Live recommendation derived from the same tape the chart draws */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8, marginBottom: 8, padding: "6px 8px",
+        background: "#010409", borderRadius: 4,
+        border: `1px solid ${live?.action === "B" ? "#39d353" : live?.action === "S" ? "#f85149" : "#30363d"}`,
+      }}>
+        <div style={{
+          width: 26, height: 26, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center",
+          fontFamily: mono, fontSize: 14, fontWeight: 900,
+          background: live?.action === "B" ? "#39d353" : live?.action === "S" ? "#f85149" : "#21262d",
+          color: live?.action === "B" || live?.action === "S" ? "#010409" : "#8b949e",
+        }}>
+          {live?.action === "B" ? "B" : live?.action === "S" ? "S" : "–"}
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 8, color: "#8b949e", letterSpacing: 1 }}>LIVE READ</div>
+          <div style={{ fontSize: 10, color: "#c9d1d9", fontFamily: mono, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {live ? `${live.action === "WAIT" ? "NO EDGE" : live.action === "B" ? "BUY" : "SELL"} · ${live.reason}` : "building tape…"}
+          </div>
+        </div>
+        <div style={{ marginLeft: "auto", textAlign: "right" }}>
+          <div style={{ fontSize: 8, color: "#8b949e", letterSpacing: 1 }}>CONVICTION</div>
+          <div style={{ fontSize: 12, fontWeight: 800, fontFamily: mono, color: live && live.score >= 0 ? "#39d353" : "#f85149" }}>
+            {live ? `${Math.round(Math.abs(live.score) * 100)}%` : "—"}
+          </div>
+        </div>
+      </div>
+
       {chartData.length < 2 ? (
         <div style={{ padding: 20, textAlign: "center", fontSize: 10, color: "#6e7681" }}>
           Waiting for trades… (needs at least 2 quote polls to compute the first print)
@@ -351,6 +486,23 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
                 shape={(props: { cx?: number; cy?: number; fill?: string }) => (
                   <circle cx={props.cx} cy={props.cy} r={2.5} fill={props.fill} fillOpacity={0.85} />
                 )} />
+              {/* B / S recommendation markers stamped on the price line */}
+              <Scatter yAxisId="p" dataKey="price" data={buyMarks} isAnimationActive={false}
+                shape={(props: { cx?: number; cy?: number }) => (
+                  <g>
+                    <circle cx={props.cx} cy={(props.cy ?? 0) + 14} r={7} fill="#39d353" fillOpacity={0.9} />
+                    <text x={props.cx} y={(props.cy ?? 0) + 14} textAnchor="middle" dominantBaseline="central"
+                      fontSize={9} fontWeight={900} fontFamily={mono} fill="#010409">B</text>
+                  </g>
+                )} />
+              <Scatter yAxisId="p" dataKey="price" data={sellMarks} isAnimationActive={false}
+                shape={(props: { cx?: number; cy?: number }) => (
+                  <g>
+                    <circle cx={props.cx} cy={(props.cy ?? 0) - 14} r={7} fill="#f85149" fillOpacity={0.9} />
+                    <text x={props.cx} y={(props.cy ?? 0) - 14} textAnchor="middle" dominantBaseline="central"
+                      fontSize={9} fontWeight={900} fontFamily={mono} fill="#010409">S</text>
+                  </g>
+                )} />
             </ComposedChart>
           </ResponsiveContainer>
 
@@ -376,7 +528,7 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
           </ResponsiveContainer>
 
           <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "4px 0 0" }}>
-            Lee–Ready tick rule · CVD divergence vs price = absorption / exhaustion signal · polls every 2s
+            Lee–Ready tick rule · B/S marks = CVD slope + flow imbalance + momentum + absorption divergence · polls every 2s · not financial advice
           </div>
         </>
       )}
