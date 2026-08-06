@@ -1,5 +1,6 @@
 import type { SchwabOptionsLadder, SchwabLadderRung } from "./schwab.functions";
 import { magnetsFromRungs } from "./ladder-magnet.server";
+import { splitByAggressor, sumAggressor } from "./ladder-side.server";
 
 export function buildLadderFromChain(sym: string, json: any, expiryIndex = 0, _snapshotScope = "default"): SchwabOptionsLadder | null {
   const callMap = json?.callExpDateMap ?? {};
@@ -31,10 +32,18 @@ export function buildLadderFromChain(sym: string, json: any, expiryIndex = 0, _s
     const pv = Array.isArray(p) && p[0]?.totalVolume ? Number(p[0].totalVolume) : 0;
     const coi = Array.isArray(c) && c[0]?.openInterest ? Number(c[0].openInterest) : 0;
     const poi = Array.isArray(p) && p[0]?.openInterest ? Number(p[0].openInterest) : 0;
+    const cq = Array.isArray(c) ? c[0] : null;
+    const pq = Array.isArray(p) ? p[0] : null;
+    const cSide = splitByAggressor(cv, Number(cq?.last ?? cq?.mark), Number(cq?.bid), Number(cq?.ask));
+    const pSide = splitByAggressor(pv, Number(pq?.last ?? pq?.mark), Number(pq?.bid), Number(pq?.ask));
     callTot += cv; putTot += pv;
     if (cv > (magC?.volume ?? 0)) magC = { strike, volume: cv };
     if (pv > (magP?.volume ?? 0)) magP = { strike, volume: pv };
-    rungs.push({ strike, callVol: cv, putVol: pv, callOi: coi, putOi: poi });
+    rungs.push({
+      strike, callVol: cv, putVol: pv, callOi: coi, putOi: poi,
+      callBuyVol: cSide.buy, callSellVol: cSide.sell,
+      putBuyVol: pSide.buy, putSellVol: pSide.sell,
+    });
   }
   let displayRungs = rungs;
   let trimmed = displayRungs;
@@ -108,6 +117,7 @@ export function buildLadderFromChain(sym: string, json: any, expiryIndex = 0, _s
   // Pick the magnet only from the rendered near-the-money window so deep OTM
   // spread legs can't masquerade as the target strike.
   const windowMag = magnetsFromRungs(trimmed, "volume");
+  const aggressor = sumAggressor(trimmed);
   return {
     symbol: sym,
     expiry,
@@ -119,6 +129,7 @@ export function buildLadderFromChain(sym: string, json: any, expiryIndex = 0, _s
     putVolume: effPutTot,
     magnetCall: windowMag.call ? { strike: windowMag.call.strike, volume: windowMag.call.volume, pct: effCallTot > 0 ? windowMag.call.volume / effCallTot : 0 } : null,
     magnetPut: windowMag.put ? { strike: windowMag.put.strike, volume: windowMag.put.volume, pct: effPutTot > 0 ? windowMag.put.volume / effPutTot : 0 } : null,
+    ...aggressor,
     ladder: trimmed,
     alternateExpiries,
     source,
