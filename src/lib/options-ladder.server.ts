@@ -1,5 +1,6 @@
 import type { SchwabOptionsLadder, SchwabLadderRung } from "./schwab.functions";
 import { magnetsFromRungs } from "./ladder-magnet.server";
+import { splitByAggressor, sumAggressor } from "./ladder-side.server";
 
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
@@ -128,6 +129,7 @@ function finishLadder(args: {
     const w = magnetsFromRungs(trimmed, "volume");
     if (w.call || w.put) { effMagC = w.call; effMagP = w.put; }
   }
+  const aggressor = sumAggressor(trimmed);
 
   return {
     symbol: args.symbol,
@@ -140,6 +142,7 @@ function finishLadder(args: {
     putVolume: effPutTot,
     magnetCall: effMagC ? { strike: effMagC.strike, volume: effMagC.volume, pct: effCallTot > 0 ? effMagC.volume / effCallTot : 0 } : null,
     magnetPut: effMagP ? { strike: effMagP.strike, volume: effMagP.volume, pct: effPutTot > 0 ? effMagP.volume / effPutTot : 0 } : null,
+    ...aggressor,
     ladder: trimmed,
     alternateExpiries: args.alternateExpiries,
     source,
