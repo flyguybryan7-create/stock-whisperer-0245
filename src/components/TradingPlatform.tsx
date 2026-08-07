@@ -2554,7 +2554,7 @@ export default function TradingPlatform() {
             <button
               type="button"
               onClick={toggleSchwab}
-              title="Click to disconnect Schwab"
+              title="Schwab connected — owner passcode required to disconnect"
               style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 800, color: "#39d353", background: "transparent", border: "1px solid #39d353", borderRadius: 4, padding: "2px 6px", cursor: "pointer", flexShrink: 0, letterSpacing: 0.5 }}
             >
               SCHWAB {schwabQuote?.last != null ? `$${schwabQuote.last.toFixed(2)}` : "●"}
