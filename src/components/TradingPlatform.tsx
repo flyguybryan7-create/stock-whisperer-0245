@@ -946,22 +946,28 @@ export default function TradingPlatform() {
   }, [fetchSchwabAuthUrl]);
 
   const disconnectShared = useServerFn(disconnectSharedSchwabPublic);
-  const disconnectSchwab = useCallback(async () => {
+  // Owner-only: the server verifies the passcode, so a visitor clicking the
+  // badge can never take the shared Schwab connection down.
+  const disconnectSchwab = useCallback(async (passcode: string) => {
     try {
       setSchwabErr(null);
+      await disconnectShared({ data: { passcode } });
       try { localStorage.removeItem(SCHWAB_TOKEN_KEY); } catch {}
       try { sessionStorage.removeItem(SCHWAB_TOKEN_KEY); } catch {}
       try { localStorage.removeItem(SCHWAB_CONNECT_STARTED_KEY); } catch {}
       setSchwabTokens(null);
-      await disconnectShared().catch((e) => console.warn("[schwab] disconnect shared failed", e));
+      queryClient.setQueryData(["hasSharedSchwabToken"], { present: false as const });
+      void queryClient.invalidateQueries({ queryKey: ["hasSharedSchwabToken"] });
     } catch (e) {
       setSchwabErr(e instanceof Error ? e.message : String(e));
     }
-  }, [disconnectShared]);
+  }, [disconnectShared, queryClient]);
   const toggleSchwab = useCallback(() => {
     if (schwabConnected) {
-      if (typeof window !== "undefined" && !window.confirm("Disconnect Schwab?")) return;
-      void disconnectSchwab();
+      if (typeof window === "undefined") return;
+      const passcode = window.prompt("Owner passcode required to disconnect Schwab:");
+      if (!passcode) return;
+      void disconnectSchwab(passcode);
     } else {
       void connectSchwab();
     }
