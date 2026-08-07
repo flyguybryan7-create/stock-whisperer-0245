@@ -182,23 +182,32 @@ export const hasSharedSchwabToken = createServerFn({ method: "GET" }).handler(as
   }
 });
 
-// Public disconnect: wipes ALL stored Schwab owner tokens (shared + any
+// Owner-only disconnect: wipes ALL stored Schwab owner tokens (shared + any
 // per-user rows) so a subsequent "Connect Schwab" starts a fresh OAuth flow.
-// No auth required — matches setSharedSchwabTokensPublic's trust model.
-export const disconnectSharedSchwabPublic = createServerFn({ method: "POST" }).handler(async () => {
-  try {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { error } = await supabaseAdmin
-      .from("schwab_owner_tokens")
-      .delete()
-      .not("user_id", "is", null);
-    if (error) throw new Error(error.message);
-    return { ok: true as const };
-  } catch (e) {
-    console.error("[schwab-shared] disconnectSharedSchwabPublic", e);
-    throw e;
-  }
-});
+// Requires the owner passcode (SCHWAB_OWNER_PASSCODE) — visitors can see the
+// connected state but can never tear the shared connection down.
+export const disconnectSharedSchwabPublic = createServerFn({ method: "POST" })
+  .inputValidator((d: { passcode: string }) => d)
+  .handler(async ({ data }) => {
+    const { createHash, timingSafeEqual } = await import("node:crypto");
+    const expected = process.env['SCHWAB_OWNER_PASSCODE'];
+    if (!expected) throw new Error("Disconnect is locked: owner passcode is not configured.");
+    const a = createHash("sha256").update(String(data?.passcode ?? ""), "utf8").digest();
+    const b = createHash("sha256").update(expected, "utf8").digest();
+    if (!timingSafeEqual(a, b)) throw new Error("Incorrect owner passcode.");
+    try {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { error } = await supabaseAdmin
+        .from("schwab_owner_tokens")
+        .delete()
+        .not("user_id", "is", null);
+      if (error) throw new Error(error.message);
+      return { ok: true as const };
+    } catch (e) {
+      console.error("[schwab-shared] disconnectSharedSchwabPublic", e);
+      throw e;
+    }
+  });
 
 // ============ Shared quotes (public) ============
 export const getSharedSchwabQuotes = createServerFn({ method: "POST" })
