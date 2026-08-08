@@ -98,9 +98,8 @@ async function loadOwnerTokenFresh(): Promise<{ accessToken: string; userId: str
 }
 
 async function schwabGet(path: string, accessToken: string): Promise<Response> {
-  return fetch(`https://api.schwabapi.com${path}`, {
-    headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
-  });
+  const { schwabApiFetch } = await import("./schwab-http.server");
+  return schwabApiFetch(`https://api.schwabapi.com${path}`, accessToken);
 }
 
 function cleanBidAsk(mark: number | null, bid: number | null, ask: number | null): { bid: number | null; ask: number | null } {
