@@ -1,4 +1,5 @@
 import { SCHWAB_TOKEN_URL } from "./schwab-oauth.server";
+import { schwabApiFetch } from "./schwab-http.server";
 
 type OwnerTokenRow = {
   user_id: string;
@@ -91,9 +92,7 @@ export async function fetchSchwabSharedQuote(
   if (!token) return null;
   try {
     const url = `https://api.schwabapi.com/marketdata/v1/quotes?symbols=${encodeURIComponent(symbol)}&fields=quote,regular`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
-    });
+    const res = await schwabApiFetch(url, token);
     if (!res.ok) {
       console.error("[schwab-shared.server] quote", symbol, res.status);
       // A quote-level 401/403 can be transient (rate limit spillover, brief
