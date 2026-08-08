@@ -98,12 +98,8 @@ export const getSchwabQuotes = createServerFn({ method: "POST" })
     const syms = (data.symbols || []).map((s) => s.toUpperCase()).filter(Boolean);
     if (syms.length === 0) return {};
     const url = `https://api.schwabapi.com/marketdata/v1/quotes?symbols=${encodeURIComponent(syms.join(","))}&fields=quote,regular`;
-    const res = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${data.accessToken}`,
-        Accept: "application/json",
-      },
-    });
+    const { schwabApiFetch } = await import("./schwab-http.server");
+    const res = await schwabApiFetch(url, data.accessToken);
     const text = await res.text();
     if (res.status === 401) throw new Error("schwab_unauthorized");
     if (!res.ok) throw new Error(`Schwab quotes failed (${res.status}): ${text.slice(0, 300)}`);
@@ -181,9 +177,8 @@ export const getSchwabPriceHistory = createServerFn({ method: "POST" })
     const url =
       `https://api.schwabapi.com/marketdata/v1/pricehistory?symbol=${encodeURIComponent(sym)}` +
       `&periodType=day&period=${period}&frequencyType=minute&frequency=${freq}&needExtendedHoursData=true`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${data.accessToken}`, Accept: "application/json" },
-    });
+    const { schwabApiFetch } = await import("./schwab-http.server");
+    const res = await schwabApiFetch(url, data.accessToken);
     if (res.status === 401) throw new Error("schwab_unauthorized");
     if (!res.ok) {
       console.error("[schwab] pricehistory", sym, res.status, (await res.text()).slice(0, 200));
@@ -219,9 +214,8 @@ export const getSchwabFundamentals = createServerFn({ method: "POST" })
     const syms = (data.symbols || []).map((s) => s.toUpperCase()).filter(Boolean);
     if (syms.length === 0) return {};
     const url = `https://api.schwabapi.com/marketdata/v1/quotes?symbols=${encodeURIComponent(syms.join(","))}&fields=fundamental`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${data.accessToken}`, Accept: "application/json" },
-    });
+    const { schwabApiFetch } = await import("./schwab-http.server");
+    const res = await schwabApiFetch(url, data.accessToken);
     if (res.status === 401) throw new Error("schwab_unauthorized");
     if (!res.ok) {
       console.error("[schwab] fundamentals", res.status, (await res.text()).slice(0, 200));
@@ -268,9 +262,8 @@ export const getSchwabTopStrikes = createServerFn({ method: "POST" })
     const url =
       `https://api.schwabapi.com/marketdata/v1/chains?symbol=${encodeURIComponent(sym)}` +
       `&contractType=ALL&includeQuotes=false&range=ALL&strikeCount=200`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${data.accessToken}`, Accept: "application/json" },
-    });
+    const { schwabApiFetch } = await import("./schwab-http.server");
+    const res = await schwabApiFetch(url, data.accessToken);
     if (res.status === 401) throw new Error("schwab_unauthorized");
     if (!res.ok) {
       console.error("[schwab] chains", sym, res.status, (await res.text()).slice(0, 200));
@@ -407,9 +400,8 @@ export const getSchwabOptionsLadder = createServerFn({ method: "POST" })
     const url =
       `https://api.schwabapi.com/marketdata/v1/chains?symbol=${encodeURIComponent(sym)}` +
       `&contractType=ALL&includeQuotes=false&range=ALL&strikeCount=200`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${data.accessToken}`, Accept: "application/json" },
-    });
+    const { schwabApiFetch } = await import("./schwab-http.server");
+    const res = await schwabApiFetch(url, data.accessToken);
     if (res.status === 401) throw new Error("schwab_unauthorized");
     if (!res.ok) {
       console.error("[schwab] ladder", sym, res.status, (await res.text()).slice(0, 200));
