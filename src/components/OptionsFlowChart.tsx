@@ -131,9 +131,18 @@ export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpi
 
   const magnet = useMemo(() => {
     if (!data.length) return null;
+    // The "target strike" must be a plausible price magnet, not a deep OTM
+    // hedge/spread leg. Restrict candidates to a DTE-scaled expected-move
+    // window around spot (≈±8% for weeklies, up to ±20% for far-dated).
+    const dte = Math.max(0, ladder?.dte ?? 0);
+    const band = Math.min(0.2, Math.max(0.08, 0.06 + 0.012 * Math.sqrt(dte)));
+    const inBand = spot && spot > 0
+      ? data.filter((d) => Math.abs(d.strike - spot) / spot <= band)
+      : data;
+    const pool = inBand.length ? inBand : data;
     let bestC = { strike: 0, volume: 0 };
     let bestP = { strike: 0, volume: 0 };
-    for (const d of data) {
+    for (const d of pool) {
       if (d.callVol > bestC.volume) bestC = { strike: d.strike, volume: d.callVol };
       if (d.putVol > bestP.volume) bestP = { strike: d.strike, volume: d.putVol };
     }
@@ -141,7 +150,7 @@ export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpi
     return bestC.volume >= bestP.volume
       ? { side: "CALL" as const, strike: bestC.strike, volume: bestC.volume, pct: totals.call > 0 ? bestC.volume / totals.call : 0 }
       : { side: "PUT" as const, strike: bestP.strike, volume: bestP.volume, pct: totals.put > 0 ? bestP.volume / totals.put : 0 };
-  }, [data, totals]);
+  }, [data, totals, spot, ladder?.dte]);
 
   const distance = magnet && spot ? magnet.strike - spot : null;
   const distancePct = magnet && spot ? ((magnet.strike - spot) / spot) * 100 : null;
