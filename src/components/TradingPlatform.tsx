@@ -168,11 +168,11 @@ async function safeFeedQuery<T>(label: string, load: () => Promise<T>, fallback:
   }
 }
 
-function intervalSeconds(interval: "1m" | "2m" | "5m" | "15m") {
-  return interval === "1m" ? 60 : interval === "2m" ? 120 : interval === "5m" ? 300 : 900;
+function intervalSeconds(interval: "1m" | "2m" | "5m" | "15m" | "30m" | "60m") {
+  return interval === "1m" ? 60 : interval === "2m" ? 120 : interval === "5m" ? 300 : interval === "15m" ? 900 : interval === "30m" ? 1800 : 3600;
 }
 
-function alignEpochToInterval(epochSec: number, interval: "1m" | "2m" | "5m" | "15m") {
+function alignEpochToInterval(epochSec: number, interval: "1m" | "2m" | "5m" | "15m" | "30m" | "60m") {
   const step = intervalSeconds(interval);
   return Math.floor(epochSec / step) * step;
 }
@@ -746,7 +746,7 @@ export default function TradingPlatform() {
   const [longHorizon, setLongHorizon] = useState<200 | 252 | null>(200);
   const [chartMode, setChartMode] = useState<"D" | "INTRADAY">("INTRADAY");
   const [intradayRange, setIntradayRange] = useState<"1D" | "2D" | "5D" | "24H">("1D");
-  const [intradayInterval, setIntradayInterval] = useState<"1m" | "2m" | "5m" | "15m">("1m");
+  const [intradayInterval, setIntradayInterval] = useState<"1m" | "2m" | "5m" | "15m" | "30m" | "60m">("1m");
   // User-tweakable zoom multiplier for chart bar width (pinch / +/- buttons).
   const [chartZoom, setChartZoom] = useState(1);
   const [pushPerm, setPushPerm] = useState<PushPermission>("default");
@@ -1133,7 +1133,7 @@ export default function TradingPlatform() {
     queryKey: ["schwabHistory", selectedStock, intradayInterval, schwabTokens?.access_token ?? ""],
     queryFn: async () => {
       if (!schwabTokens?.access_token) return null;
-      const freq = intradayInterval === "1m" ? 1 : intradayInterval === "2m" ? 1 : intradayInterval === "5m" ? 5 : 15;
+      const freq = intradayInterval === "1m" ? 1 : intradayInterval === "2m" ? 1 : intradayInterval === "5m" ? 5 : intradayInterval === "15m" ? 15 : intradayInterval === "30m" ? 30 : 60;
       try {
         return await fetchSchwabHistory({
           data: { accessToken: schwabTokens.access_token, symbol: selectedStock, minutes: freq as 1 | 5 | 10 | 15 | 30, days: 2 },
@@ -1293,7 +1293,7 @@ export default function TradingPlatform() {
   const { data: sharedHistoryData } = useQuery({
     queryKey: ["sharedSchwabHistory", selectedStock, intradayInterval],
     queryFn: () => safeFeedQuery("sharedSchwabHistory", () => {
-      const freq = intradayInterval === "1m" ? 1 : intradayInterval === "2m" ? 1 : intradayInterval === "5m" ? 5 : 15;
+      const freq = intradayInterval === "1m" ? 1 : intradayInterval === "2m" ? 1 : intradayInterval === "5m" ? 5 : intradayInterval === "15m" ? 15 : intradayInterval === "30m" ? 30 : 60;
       return fetchSharedHistory({ data: { symbol: selectedStock, minutes: freq as 1 | 5 | 10 | 15 | 30, days: 2 } }).then((r) => r ?? null);
     }, null as SchwabBar[] | null),
     enabled: intradayRange === "24H" && !schwabTokens?.access_token,
@@ -3154,7 +3154,7 @@ export default function TradingPlatform() {
               ))}
             </div>
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-              {(["1m", "2m", "5m", "15m"] as const).map((interval) => (
+              {(["1m", "2m", "5m", "15m", "30m", "60m"] as const).map((interval) => (
                 <button key={interval} onClick={() => { setChartMode("INTRADAY"); setIntradayInterval(interval); }}
                   style={{ background: chartMode === "INTRADAY" && intradayInterval === interval ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "2px 8px", fontSize: 10, color: chartMode === "INTRADAY" && intradayInterval === interval ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
                   {interval}
