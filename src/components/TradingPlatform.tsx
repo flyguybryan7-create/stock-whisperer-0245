@@ -1550,13 +1550,23 @@ export default function TradingPlatform() {
   const newsItems: NewsItem[] = (newsData?.items ?? []).filter((n) => n.scope === "company");
   const sector = newsData?.sector ?? null;
 
+  // 15m/30m/60m candles paired with a long horizon use Yahoo's extended
+  // history windows (Yahoo caps sub-hourly history at 60 days).
+  const longIntraday =
+    longHorizon != null && (intradayInterval === "15m" || intradayInterval === "30m" || intradayInterval === "60m");
   const intradayRequest = useMemo(
     () => ({
       symbol: selectedStock,
       interval: intradayInterval,
-      range: (intradayRange === "24H" ? "2d" : intradayRange.toLowerCase()) as "1d" | "2d" | "5d",
+      range: (longIntraday
+        ? intradayInterval === "60m"
+          ? longHorizon === 252 ? "1y" : "6mo"
+          : "60d"
+        : intradayRange === "24H"
+          ? "2d"
+          : intradayRange.toLowerCase()) as "1d" | "2d" | "5d" | "60d" | "6mo" | "1y",
     }),
-    [selectedStock, intradayInterval, intradayRange],
+    [selectedStock, intradayInterval, intradayRange, longIntraday, longHorizon],
   );
 
   // Intraday bars drive both the live signal and intraday charting.
