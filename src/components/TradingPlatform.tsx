@@ -1571,7 +1571,7 @@ export default function TradingPlatform() {
 
   // Intraday bars drive both the live signal and intraday charting.
   const { data: intradayData } = useQuery({
-    queryKey: ["intraday", selectedStock, intradayRange, intradayInterval],
+    queryKey: ["intraday", selectedStock, intradayRange, intradayInterval, intradayRequest.range],
     queryFn: () => safeFeedQuery("intraday", () => fetchIntraday({ data: intradayRequest }), [] as IntradayBar[]),
     refetchInterval: 15_000,
     enabled: !!selectedStock,
@@ -3141,21 +3141,25 @@ export default function TradingPlatform() {
           <div style={{ display: "grid", gap: 4, marginBottom: 4 }}>
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
               {(["24H", "1D", "2D", "5D"] as const).map((r) => (
-                <button key={r} onClick={() => { setChartMode("INTRADAY"); setIntradayRange(r); }}
+                <button key={r} onClick={() => { setChartMode("INTRADAY"); setLongHorizon(null); setIntradayRange(r); }}
                   style={{ background: chartMode === "INTRADAY" && intradayRange === r ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "2px 8px", fontSize: 10, color: chartMode === "INTRADAY" && intradayRange === r ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
                   {r}{r === "24H" && !schwabTokens ? "*" : ""}
                 </button>
               ))}
-              {[14, 30, 60, 90, 120].map(r => (
-                <button key={r} onClick={() => { setChartMode("D"); setChartRange(r); }}
-                  style={{ background: chartMode === "D" && chartRange === r ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "2px 8px", fontSize: 10, color: chartMode === "D" && chartRange === r ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
-                  {r}D
+              {([[200, "200D"], [252, "1Y"]] as const).map(([r, label]) => (
+                <button key={r} onClick={() => { setChartMode("D"); setChartRange(r); setLongHorizon(r); }}
+                  style={{ background: longHorizon === r ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "2px 8px", fontSize: 10, color: longHorizon === r ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
+                  {label}
                 </button>
               ))}
             </div>
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
               {(["1m", "2m", "5m", "15m", "30m", "60m"] as const).map((interval) => (
-                <button key={interval} onClick={() => { setChartMode("INTRADAY"); setIntradayInterval(interval); }}
+                <button key={interval} onClick={() => {
+                  setChartMode("INTRADAY");
+                  setIntradayInterval(interval);
+                  if (interval === "1m" || interval === "2m" || interval === "5m") setLongHorizon(null);
+                }}
                   style={{ background: chartMode === "INTRADAY" && intradayInterval === interval ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "2px 8px", fontSize: 10, color: chartMode === "INTRADAY" && intradayInterval === interval ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
                   {interval}
                 </button>
