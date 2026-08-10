@@ -3172,7 +3172,7 @@ export default function TradingPlatform() {
             title="⚡ PRICE · MOVING AVERAGES · BOLLINGER / OV SIGNALS"
             titleRight={
               <span style={{ display: "inline-flex", gap: 6, alignItems: "center", marginLeft: 6 }}>
-                <span style={{ fontSize: 9, color: "#8b949e" }}>{chartMode === "D" ? `${chartRange}D` : `${intradayRange} : ${intradayInterval}`} · live edge</span>
+                <span style={{ fontSize: 9, color: "#8b949e" }}>{chartMode === "D" ? (chartRange === 252 ? "1Y" : `${chartRange}D`) : longIntraday ? `${longHorizon === 252 ? "1Y" : "200D"} : ${intradayInterval}` : `${intradayRange} : ${intradayInterval}`} · live edge</span>
                 <button onClick={() => setChartZoom((z) => Math.max(0.4, +(z / 1.25).toFixed(2)))}
                   title="Zoom out" style={{ background: "transparent", border: "1px solid #21262d", borderRadius: 4, color: "#8b949e", fontSize: 11, lineHeight: 1, padding: "2px 6px", cursor: "pointer", fontFamily: mono }}>−</button>
                 <button onClick={() => setChartZoom(1)}
