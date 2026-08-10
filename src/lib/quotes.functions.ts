@@ -256,7 +256,8 @@ export type Candle = {
 };
 
 async function fetchOne(symbol: string): Promise<Candle[]> {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=6mo`;
+  // 2y of daily candles so the 200D and 1Y views have enough bars.
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=2y`;
   const res = await fetch(url, {
     headers: { "User-Agent": "Mozilla/5.0 (compatible; BryanTrade/1.0)" },
   });
@@ -387,12 +388,18 @@ export type IntradayBar = {
 };
 
 export const getIntraday = createServerFn({ method: "POST" })
-  .inputValidator((input: { symbol: string; interval?: "1m" | "2m" | "5m" | "15m" | "30m" | "60m"; range?: "1d" | "2d" | "5d" }) => ({
+  .inputValidator((input: {
+    symbol: string;
+    interval?: "1m" | "2m" | "5m" | "15m" | "30m" | "60m";
+    range?: "1d" | "2d" | "5d" | "1mo" | "60d" | "6mo" | "1y" | "2y";
+  }) => ({
     symbol: String(input.symbol).toUpperCase().slice(0, 10),
     interval: ["1m","2m","5m","15m","30m","60m"].includes(input.interval ?? "")
       ? (input.interval as "1m"|"2m"|"5m"|"15m"|"30m"|"60m")
       : "1m",
-    range: input.range === "5d" || input.range === "1d" ? input.range : "2d",
+    range: (["1d","2d","5d","1mo","60d","6mo","1y","2y"] as const).includes(input.range as never)
+      ? (input.range as "1d"|"2d"|"5d"|"1mo"|"60d"|"6mo"|"1y"|"2y")
+      : "2d",
   }))
   .handler(async ({ data }): Promise<IntradayBar[]> => {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(data.symbol)}?interval=${data.interval}&range=${data.range}&includePrePost=true`;
