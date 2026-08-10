@@ -168,11 +168,11 @@ async function safeFeedQuery<T>(label: string, load: () => Promise<T>, fallback:
   }
 }
 
-function intervalSeconds(interval: "1m" | "2m" | "5m" | "15m") {
-  return interval === "1m" ? 60 : interval === "2m" ? 120 : interval === "5m" ? 300 : 900;
+function intervalSeconds(interval: "1m" | "2m" | "5m" | "15m" | "30m" | "60m") {
+  return interval === "1m" ? 60 : interval === "2m" ? 120 : interval === "5m" ? 300 : interval === "15m" ? 900 : interval === "30m" ? 1800 : 3600;
 }
 
-function alignEpochToInterval(epochSec: number, interval: "1m" | "2m" | "5m" | "15m") {
+function alignEpochToInterval(epochSec: number, interval: "1m" | "2m" | "5m" | "15m" | "30m" | "60m") {
   const step = intervalSeconds(interval);
   return Math.floor(epochSec / step) * step;
 }
@@ -740,10 +740,13 @@ export default function TradingPlatform() {
   const [alertPrice, setAlertPrice] = useState("");
   const [alertType, setAlertType] = useState<"above" | "below">("above");
   const [notification, setNotification] = useState<{ msg: string } | null>(null);
-  const [chartRange, setChartRange] = useState(60);
+  const [chartRange, setChartRange] = useState(200);
+  // When a long horizon (200D / 1Y) is selected, the 15m/30m/60m interval
+  // buttons chart that same horizon with intraday candles.
+  const [longHorizon, setLongHorizon] = useState<200 | 252 | null>(200);
   const [chartMode, setChartMode] = useState<"D" | "INTRADAY">("INTRADAY");
   const [intradayRange, setIntradayRange] = useState<"1D" | "2D" | "5D" | "24H">("1D");
-  const [intradayInterval, setIntradayInterval] = useState<"1m" | "2m" | "5m" | "15m">("1m");
+  const [intradayInterval, setIntradayInterval] = useState<"1m" | "2m" | "5m" | "15m" | "30m" | "60m">("1m");
   // User-tweakable zoom multiplier for chart bar width (pinch / +/- buttons).
   const [chartZoom, setChartZoom] = useState(1);
   const [pushPerm, setPushPerm] = useState<PushPermission>("default");
@@ -1130,7 +1133,7 @@ export default function TradingPlatform() {
     queryKey: ["schwabHistory", selectedStock, intradayInterval, schwabTokens?.access_token ?? ""],
     queryFn: async () => {
       if (!schwabTokens?.access_token) return null;
-      const freq = intradayInterval === "1m" ? 1 : intradayInterval === "2m" ? 1 : intradayInterval === "5m" ? 5 : 15;
+      const freq = intradayInterval === "1m" ? 1 : intradayInterval === "2m" ? 1 : intradayInterval === "5m" ? 5 : intradayInterval === "15m" ? 15 : intradayInterval === "30m" ? 30 : 60;
       try {
         return await fetchSchwabHistory({
           data: { accessToken: schwabTokens.access_token, symbol: selectedStock, minutes: freq as 1 | 5 | 10 | 15 | 30, days: 2 },
@@ -1290,7 +1293,7 @@ export default function TradingPlatform() {
   const { data: sharedHistoryData } = useQuery({
     queryKey: ["sharedSchwabHistory", selectedStock, intradayInterval],
     queryFn: () => safeFeedQuery("sharedSchwabHistory", () => {
-      const freq = intradayInterval === "1m" ? 1 : intradayInterval === "2m" ? 1 : intradayInterval === "5m" ? 5 : 15;
+      const freq = intradayInterval === "1m" ? 1 : intradayInterval === "2m" ? 1 : intradayInterval === "5m" ? 5 : intradayInterval === "15m" ? 15 : intradayInterval === "30m" ? 30 : 60;
       return fetchSharedHistory({ data: { symbol: selectedStock, minutes: freq as 1 | 5 | 10 | 15 | 30, days: 2 } }).then((r) => r ?? null);
     }, null as SchwabBar[] | null),
     enabled: intradayRange === "24H" && !schwabTokens?.access_token,
@@ -1547,18 +1550,28 @@ export default function TradingPlatform() {
   const newsItems: NewsItem[] = (newsData?.items ?? []).filter((n) => n.scope === "company");
   const sector = newsData?.sector ?? null;
 
+  // 15m/30m/60m candles paired with a long horizon use Yahoo's extended
+  // history windows (Yahoo caps sub-hourly history at 60 days).
+  const longIntraday =
+    longHorizon != null && (intradayInterval === "15m" || intradayInterval === "30m" || intradayInterval === "60m");
   const intradayRequest = useMemo(
     () => ({
       symbol: selectedStock,
       interval: intradayInterval,
-      range: (intradayRange === "24H" ? "2d" : intradayRange.toLowerCase()) as "1d" | "2d" | "5d",
+      range: (longIntraday
+        ? intradayInterval === "60m"
+          ? longHorizon === 252 ? "1y" : "6mo"
+          : "60d"
+        : intradayRange === "24H"
+          ? "2d"
+          : intradayRange.toLowerCase()) as "1d" | "2d" | "5d" | "60d" | "6mo" | "1y",
     }),
-    [selectedStock, intradayInterval, intradayRange],
+    [selectedStock, intradayInterval, intradayRange, longIntraday, longHorizon],
   );
 
   // Intraday bars drive both the live signal and intraday charting.
   const { data: intradayData } = useQuery({
-    queryKey: ["intraday", selectedStock, intradayRange, intradayInterval],
+    queryKey: ["intraday", selectedStock, intradayRange, intradayInterval, intradayRequest.range],
     queryFn: () => safeFeedQuery("intraday", () => fetchIntraday({ data: intradayRequest }), [] as IntradayBar[]),
     refetchInterval: 15_000,
     enabled: !!selectedStock,
@@ -3128,21 +3141,25 @@ export default function TradingPlatform() {
           <div style={{ display: "grid", gap: 4, marginBottom: 4 }}>
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
               {(["24H", "1D", "2D", "5D"] as const).map((r) => (
-                <button key={r} onClick={() => { setChartMode("INTRADAY"); setIntradayRange(r); }}
+                <button key={r} onClick={() => { setChartMode("INTRADAY"); setLongHorizon(null); setIntradayRange(r); }}
                   style={{ background: chartMode === "INTRADAY" && intradayRange === r ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "2px 8px", fontSize: 10, color: chartMode === "INTRADAY" && intradayRange === r ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
                   {r}{r === "24H" && !schwabTokens ? "*" : ""}
                 </button>
               ))}
-              {[14, 30, 60, 90, 120].map(r => (
-                <button key={r} onClick={() => { setChartMode("D"); setChartRange(r); }}
-                  style={{ background: chartMode === "D" && chartRange === r ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "2px 8px", fontSize: 10, color: chartMode === "D" && chartRange === r ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
-                  {r}D
+              {([[200, "200D"], [252, "1Y"]] as const).map(([r, label]) => (
+                <button key={r} onClick={() => { setChartMode("D"); setChartRange(r); setLongHorizon(r); }}
+                  style={{ background: longHorizon === r ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "2px 8px", fontSize: 10, color: longHorizon === r ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
+                  {label}
                 </button>
               ))}
             </div>
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-              {(["1m", "2m", "5m", "15m"] as const).map((interval) => (
-                <button key={interval} onClick={() => { setChartMode("INTRADAY"); setIntradayInterval(interval); }}
+              {(["1m", "2m", "5m", "15m", "30m", "60m"] as const).map((interval) => (
+                <button key={interval} onClick={() => {
+                  setChartMode("INTRADAY");
+                  setIntradayInterval(interval);
+                  if (interval === "1m" || interval === "2m" || interval === "5m") setLongHorizon(null);
+                }}
                   style={{ background: chartMode === "INTRADAY" && intradayInterval === interval ? "#21262d" : "transparent", border: "1px solid #21262d", borderRadius: 4, padding: "2px 8px", fontSize: 10, color: chartMode === "INTRADAY" && intradayInterval === interval ? "#58a6ff" : "#8b949e", cursor: "pointer", fontFamily: mono }}>
                   {interval}
                 </button>
@@ -3155,7 +3172,7 @@ export default function TradingPlatform() {
             title="⚡ PRICE · MOVING AVERAGES · BOLLINGER / OV SIGNALS"
             titleRight={
               <span style={{ display: "inline-flex", gap: 6, alignItems: "center", marginLeft: 6 }}>
-                <span style={{ fontSize: 9, color: "#8b949e" }}>{chartMode === "D" ? `${chartRange}D` : `${intradayRange} : ${intradayInterval}`} · live edge</span>
+                <span style={{ fontSize: 9, color: "#8b949e" }}>{chartMode === "D" ? (chartRange === 252 ? "1Y" : `${chartRange}D`) : longIntraday ? `${longHorizon === 252 ? "1Y" : "200D"} : ${intradayInterval}` : `${intradayRange} : ${intradayInterval}`} · live edge</span>
                 <button onClick={() => setChartZoom((z) => Math.max(0.4, +(z / 1.25).toFixed(2)))}
                   title="Zoom out" style={{ background: "transparent", border: "1px solid #21262d", borderRadius: 4, color: "#8b949e", fontSize: 11, lineHeight: 1, padding: "2px 6px", cursor: "pointer", fontFamily: mono }}>−</button>
                 <button onClick={() => setChartZoom(1)}
