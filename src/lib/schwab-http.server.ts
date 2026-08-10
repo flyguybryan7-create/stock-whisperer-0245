@@ -15,8 +15,13 @@
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 
-const COOLDOWN_MS = 20_000;
+const BASE_COOLDOWN_MS = 20_000;
+const MAX_COOLDOWN_MS = 5 * 60_000;
 let blockedUntil = 0;
+let consecutiveBlocks = 0;
+
+/** Coalesce identical in-flight GETs so parallel pollers hit the edge once. */
+const inflight = new Map<string, Promise<Response>>();
 
 export function schwabEdgeBlocked(): boolean {
   return Date.now() < blockedUntil;
@@ -29,15 +34,34 @@ function deniedResponse(): Response {
 /** GET a Schwab market-data URL (absolute) with anti-block headers + backoff. */
 export async function schwabApiFetch(url: string, accessToken: string): Promise<Response> {
   if (schwabEdgeBlocked()) return deniedResponse();
-  const res = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: "application/json",
-      "User-Agent": UA,
-      "Accept-Language": "en-US,en;q=0.9",
-    },
-  });
-  if (res.status === 403) blockedUntil = Date.now() + COOLDOWN_MS;
-  else if (res.ok) blockedUntil = 0;
-  return res;
+  const existing = inflight.get(url);
+  if (existing) return (await existing).clone();
+  const p = (async () => {
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+        "User-Agent": UA,
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+    });
+    if (res.status === 403 || res.status === 429) {
+      // Escalate the backoff each time the edge keeps denying us; a flat 20s
+      // retry loop is what keeps an Akamai block alive.
+      consecutiveBlocks = Math.min(consecutiveBlocks + 1, 5);
+      const wait = Math.min(BASE_COOLDOWN_MS * 2 ** (consecutiveBlocks - 1), MAX_COOLDOWN_MS);
+      blockedUntil = Date.now() + wait;
+    } else if (res.ok) {
+      consecutiveBlocks = 0;
+      blockedUntil = 0;
+    }
+    return res;
+  })();
+  inflight.set(url, p);
+  try {
+    const res = await p;
+    return res.clone();
+  } finally {
+    inflight.delete(url);
+  }
 }
