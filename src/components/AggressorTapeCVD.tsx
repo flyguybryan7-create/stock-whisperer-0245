@@ -552,7 +552,7 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
           </ResponsiveContainer>
 
           <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "4px 0 0" }}>
-            Lee–Ready tick rule · B/S marks = CVD slope + flow imbalance + momentum + absorption divergence · polls every 2s · not financial advice
+            Lee–Ready tick rule · dots = heaviest prints only · B/S marks fire only on high-conviction reads (≥72%) confirmed on two polls · polls every 2s · not financial advice
           </div>
         </>
       )}
