@@ -158,6 +158,9 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
   const sharedFailRef = useRef(0);
   const [signals, setSignals] = useState<Signal[]>([]);
   const lastSignalRef = useRef<{ t: number; action: "B" | "S" } | null>(null);
+  // Previous poll's candidate action — a signal only fires when the same
+  // read repeats, which filters out one-tick flickers.
+  const pendingRef = useRef<"B" | "S" | null>(null);
 
   // Reset the tape when the user switches tickers so buy/sell/CVD reflect
   // only the currently displayed symbol.
