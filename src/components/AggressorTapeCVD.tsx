@@ -89,7 +89,10 @@ const SIGNAL_LOOKBACK = 24;      // prints used for slope / imbalance
 const SIGNAL_MIN_GAP_MS = 180_000;      // same-direction repeat
 const SIGNAL_FLIP_GAP_MS = 60_000;      // direction change
 const SIGNAL_THRESHOLD = 0.72;
-const MAX_VISIBLE_SIGNALS = 4;
+const MAX_VISIBLE_SIGNALS = 3;
+// Minimum on-screen separation between two stamped marks so letters never
+// overlap each other on the price line.
+const MARKER_SPACING_MS = 45_000;
 
 function linSlope(vals: number[]): number {
   const n = vals.length;
@@ -369,7 +372,16 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
 
   const visibleSignals = useMemo(() => {
     const inWindow = signals.filter((s) => s.t >= nowTick - WINDOW_MS);
-    return inWindow.slice(-MAX_VISIBLE_SIGNALS);
+    // Walk newest → oldest and drop any mark that would render on top of a
+    // more recent one, then keep only the last few.
+    const spaced: typeof inWindow = [];
+    for (let i = inWindow.length - 1; i >= 0; i--) {
+      const s = inWindow[i]!;
+      const last = spaced[spaced.length - 1];
+      if (!last || last.t - s.t >= MARKER_SPACING_MS) spaced.push(s);
+    }
+    spaced.reverse();
+    return spaced.slice(-MAX_VISIBLE_SIGNALS);
   }, [signals, nowTick]);
   const buyMarks = useMemo(() => visibleSignals.filter((s) => s.action === "B"), [visibleSignals]);
   const sellMarks = useMemo(() => visibleSignals.filter((s) => s.action === "S"), [visibleSignals]);
@@ -479,7 +491,7 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
         <>
           {/* Top pane: price line + colored buy/sell prints sized by trade volume */}
           <div style={{ fontSize: 9, color: "#8b949e", fontFamily: mono, padding: "0 4px 2px" }}>PRICE · aggressor prints</div>
-          <ResponsiveContainer width="100%" height={180}>
+          <ResponsiveContainer width="100%" height={210}>
             <ComposedChart data={chartData} margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
               <XAxis dataKey="t" type="number" scale="time"
@@ -514,17 +526,23 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
               <Scatter yAxisId="p" dataKey="price" data={buyMarks} isAnimationActive={false}
                 shape={(props: { cx?: number; cy?: number }) => (
                   <g>
-                    <circle cx={props.cx} cy={(props.cy ?? 0) + 14} r={7} fill="#39d353" fillOpacity={0.9} />
-                    <text x={props.cx} y={(props.cy ?? 0) + 14} textAnchor="middle" dominantBaseline="central"
-                      fontSize={9} fontWeight={900} fontFamily={mono} fill="#010409">B</text>
+                    <line x1={props.cx} y1={(props.cy ?? 0) + 4} x2={props.cx} y2={(props.cy ?? 0) + 20}
+                      stroke="#39d353" strokeWidth={1} strokeOpacity={0.6} />
+                    <circle cx={props.cx} cy={(props.cy ?? 0) + 28} r={9} fill="#39d353" fillOpacity={0.95}
+                      stroke="#010409" strokeWidth={1.5} />
+                    <text x={props.cx} y={(props.cy ?? 0) + 28} textAnchor="middle" dominantBaseline="central"
+                      fontSize={11} fontWeight={900} fontFamily={mono} fill="#010409">B</text>
                   </g>
                 )} />
               <Scatter yAxisId="p" dataKey="price" data={sellMarks} isAnimationActive={false}
                 shape={(props: { cx?: number; cy?: number }) => (
                   <g>
-                    <circle cx={props.cx} cy={(props.cy ?? 0) - 14} r={7} fill="#f85149" fillOpacity={0.9} />
-                    <text x={props.cx} y={(props.cy ?? 0) - 14} textAnchor="middle" dominantBaseline="central"
-                      fontSize={9} fontWeight={900} fontFamily={mono} fill="#010409">S</text>
+                    <line x1={props.cx} y1={(props.cy ?? 0) - 4} x2={props.cx} y2={(props.cy ?? 0) - 20}
+                      stroke="#f85149" strokeWidth={1} strokeOpacity={0.6} />
+                    <circle cx={props.cx} cy={(props.cy ?? 0) - 28} r={9} fill="#f85149" fillOpacity={0.95}
+                      stroke="#010409" strokeWidth={1.5} />
+                    <text x={props.cx} y={(props.cy ?? 0) - 28} textAnchor="middle" dominantBaseline="central"
+                      fontSize={11} fontWeight={900} fontFamily={mono} fill="#010409">S</text>
                   </g>
                 )} />
             </ComposedChart>
