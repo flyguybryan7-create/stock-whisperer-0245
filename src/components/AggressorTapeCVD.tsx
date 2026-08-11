@@ -170,6 +170,7 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
       setPrints([]);
       setSignals([]);
       lastSignalRef.current = null;
+      pendingRef.current = null;
       cvdRef.current = 0;
       lastVolRef.current = null;
       lastPriceRef.current = null;
