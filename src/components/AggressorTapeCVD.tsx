@@ -82,9 +82,14 @@ function isDeadRefresh(msg: string): boolean {
 // ---------------------------------------------------------------------------
 type Signal = { t: number; price: number; action: "B" | "S"; score: number; reason: string };
 
-const SIGNAL_LOOKBACK = 20;     // prints used for slope / imbalance
-const SIGNAL_MIN_GAP_MS = 20_000;
-const SIGNAL_THRESHOLD = 0.45;
+const SIGNAL_LOOKBACK = 24;      // prints used for slope / imbalance
+// A "true" signal is rare on purpose: high conviction, sustained for two
+// consecutive polls, and spaced far enough apart that the tape shows a
+// handful of calls per session instead of a blob of letters.
+const SIGNAL_MIN_GAP_MS = 180_000;      // same-direction repeat
+const SIGNAL_FLIP_GAP_MS = 60_000;      // direction change
+const SIGNAL_THRESHOLD = 0.72;
+const MAX_VISIBLE_SIGNALS = 4;
 
 function linSlope(vals: number[]): number {
   const n = vals.length;
