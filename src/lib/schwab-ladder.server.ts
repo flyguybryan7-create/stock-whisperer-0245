@@ -60,7 +60,7 @@ export function buildLadderFromChain(sym: string, json: any, expiryIndex = 0, _s
   const d = new Date(expiry + "T00:00:00");
   const label = Number.isNaN(d.getTime()) ? expiry
     : `${d.toLocaleString("en-US", { month: "short" })} ${d.getDate()}`;
-  const alternateExpiries = futureKeys.slice(0, 8).map(({ key, dte: kd }) => {
+  const alternateExpiries = futureKeys.slice(0, 12).map(({ key, dte: kd }) => {
     const exp = key.split(":")[0];
     const dd = new Date(exp + "T00:00:00");
     // Sum same-day volume across every strike so the dropdown can show

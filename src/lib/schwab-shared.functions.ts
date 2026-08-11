@@ -455,7 +455,7 @@ export const getPolygonOptionsLadder = createServerFn({ method: "POST" })
     const pIdx = Math.min(Math.max(0, data.expiryIndex ?? 0), futureExpiries.length - 1);
     const nearest = futureExpiries[pIdx];
     const dte = Math.round((new Date(nearest + "T00:00:00Z").getTime() - today.getTime()) / 86400000);
-    const alternateExpiries = futureExpiries.slice(0, 8).map((e) => {
+    const alternateExpiries = futureExpiries.slice(0, 12).map((e) => {
       const dObj = new Date(e + "T00:00:00Z");
       const d = Math.round((dObj.getTime() - today.getTime()) / 86400000);
       let vol = 0;
@@ -607,7 +607,7 @@ export const getCboeOptionsLadder = createServerFn({ method: "POST" })
     const nearest = expiries[cIdx];
     const chosenRows = parsed.filter((p) => p.expiry === nearest);
     const dte = chosenRows[0]?.dte ?? null;
-    const alternateExpiries = expiries.slice(0, 8).map((e) => {
+    const alternateExpiries = expiries.slice(0, 12).map((e) => {
       const dObj = new Date(e + "T00:00:00");
       const rows = parsed.filter((p) => p.expiry === e);
       const vol = rows.reduce((s, r) => s + (Number.isFinite(r.volume) ? r.volume : 0), 0);
@@ -775,7 +775,7 @@ export const getNasdaqOptionsLadder = createServerFn({ method: "POST" })
     if (!sortedBuckets.length) return null;
     const nIdx = Math.min(Math.max(0, data.expiryIndex ?? 0), sortedBuckets.length - 1);
     const chosen = sortedBuckets[nIdx];
-    const alternateExpiries = sortedBuckets.slice(0, 8).map((b) => {
+    const alternateExpiries = sortedBuckets.slice(0, 12).map((b) => {
       let vol = 0;
       for (const r of b.rows) vol += num(r?.c_Volume) + num(r?.p_Volume);
       return {
