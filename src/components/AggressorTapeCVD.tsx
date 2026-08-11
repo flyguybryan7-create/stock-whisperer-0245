@@ -82,9 +82,14 @@ function isDeadRefresh(msg: string): boolean {
 // ---------------------------------------------------------------------------
 type Signal = { t: number; price: number; action: "B" | "S"; score: number; reason: string };
 
-const SIGNAL_LOOKBACK = 20;     // prints used for slope / imbalance
-const SIGNAL_MIN_GAP_MS = 20_000;
-const SIGNAL_THRESHOLD = 0.45;
+const SIGNAL_LOOKBACK = 24;      // prints used for slope / imbalance
+// A "true" signal is rare on purpose: high conviction, sustained for two
+// consecutive polls, and spaced far enough apart that the tape shows a
+// handful of calls per session instead of a blob of letters.
+const SIGNAL_MIN_GAP_MS = 180_000;      // same-direction repeat
+const SIGNAL_FLIP_GAP_MS = 60_000;      // direction change
+const SIGNAL_THRESHOLD = 0.72;
+const MAX_VISIBLE_SIGNALS = 4;
 
 function linSlope(vals: number[]): number {
   const n = vals.length;
@@ -153,6 +158,9 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
   const sharedFailRef = useRef(0);
   const [signals, setSignals] = useState<Signal[]>([]);
   const lastSignalRef = useRef<{ t: number; action: "B" | "S" } | null>(null);
+  // Previous poll's candidate action — a signal only fires when the same
+  // read repeats, which filters out one-tick flickers.
+  const pendingRef = useRef<"B" | "S" | null>(null);
 
   // Reset the tape when the user switches tickers so buy/sell/CVD reflect
   // only the currently displayed symbol.
@@ -162,6 +170,7 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
       setPrints([]);
       setSignals([]);
       lastSignalRef.current = null;
+      pendingRef.current = null;
       cvdRef.current = 0;
       lastVolRef.current = null;
       lastPriceRef.current = null;
@@ -286,11 +295,14 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
   // Volume threshold: hide dust prints so only meaningful aggressor
   // trades are dotted on the price line. Threshold scales with the
   // largest recent print so it adapts per-ticker.
+  // Only the heaviest prints get dotted — everything else is noise on a
+  // 2s poll and just fills the pane with overlapping circles.
   const dotThreshold = useMemo(() => {
     if (visiblePrints.length === 0) return 0;
-    let max = 0;
-    for (const p of visiblePrints) if (p.size > max) max = p.size;
-    return Math.max(max * 0.15, 100);
+    const sizes = visiblePrints.map((p) => p.size).sort((a, b) => b - a);
+    // Keep roughly the top 20% of prints, and never fewer than the top 12.
+    const cutIdx = Math.min(sizes.length - 1, Math.max(11, Math.floor(sizes.length * 0.2)));
+    return Math.max(sizes[cutIdx] ?? 0, 100);
   }, [visiblePrints]);
 
   const chartData = useMemo(() => visiblePrints.map((p) => ({
@@ -332,21 +344,33 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
   // Commit a marker onto the tape when conviction crosses the threshold,
   // throttled so we don't stamp the same call every 2s.
   useEffect(() => {
-    if (!live || live.action === "WAIT" || live.price == null) return;
+    if (!live || live.action === "WAIT" || live.price == null) {
+      pendingRef.current = null;
+      return;
+    }
+    const action = live.action as "B" | "S";
+    // Require two consecutive polls agreeing before stamping the tape.
+    if (pendingRef.current !== action) {
+      pendingRef.current = action;
+      return;
+    }
     const now = Date.now();
     const prev = lastSignalRef.current;
-    if (prev && prev.action === live.action && now - prev.t < SIGNAL_MIN_GAP_MS) return;
-    lastSignalRef.current = { t: now, action: live.action };
+    if (prev) {
+      const gap = prev.action === action ? SIGNAL_MIN_GAP_MS : SIGNAL_FLIP_GAP_MS;
+      if (now - prev.t < gap) return;
+    }
+    lastSignalRef.current = { t: now, action };
     setSignals((s) => {
-      const next = [...s, { t: now, price: live.price!, action: live.action as "B" | "S", score: live.score, reason: live.reason }];
-      return next.length > 60 ? next.slice(next.length - 60) : next;
+      const next = [...s, { t: now, price: live.price!, action, score: live.score, reason: live.reason }];
+      return next.length > 20 ? next.slice(next.length - 20) : next;
     });
   }, [live]);
 
-  const visibleSignals = useMemo(
-    () => signals.filter((s) => s.t >= nowTick - WINDOW_MS),
-    [signals, nowTick],
-  );
+  const visibleSignals = useMemo(() => {
+    const inWindow = signals.filter((s) => s.t >= nowTick - WINDOW_MS);
+    return inWindow.slice(-MAX_VISIBLE_SIGNALS);
+  }, [signals, nowTick]);
   const buyMarks = useMemo(() => visibleSignals.filter((s) => s.action === "B"), [visibleSignals]);
   const sellMarks = useMemo(() => visibleSignals.filter((s) => s.action === "S"), [visibleSignals]);
 
@@ -528,7 +552,7 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
           </ResponsiveContainer>
 
           <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "4px 0 0" }}>
-            Lee–Ready tick rule · B/S marks = CVD slope + flow imbalance + momentum + absorption divergence · polls every 2s · not financial advice
+            Lee–Ready tick rule · dots = heaviest prints only · B/S marks fire only on high-conviction reads (≥72%) confirmed on two polls · polls every 2s · not financial advice
           </div>
         </>
       )}

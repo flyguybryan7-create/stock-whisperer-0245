@@ -227,7 +227,7 @@ async function fetchCboe(symbol: string, expiryIndex: number): Promise<SchwabOpt
     dte: bucket.dte,
     spot: Number.isFinite(json?.data?.current_price) ? Number(json.data.current_price) : null,
     rungs: Array.from(bucket.rungs.values()),
-    alternateExpiries: expiries.slice(0, 8).map(([e, b]) => {
+    alternateExpiries: expiries.slice(0, 12).map(([e, b]) => {
       let vol = 0;
       for (const r of b.rungs.values()) vol += r.callVol + r.putVol;
       return { expiry: e, dte: b.dte, label: labelForExpiry(e), volume: vol };
@@ -306,7 +306,7 @@ async function fetchNasdaq(symbol: string, expiryIndex: number): Promise<SchwabO
     dte: bucket.dte,
     spot: null,
     rungs: Array.from(bucket.rungs.values()),
-    alternateExpiries: expiries.slice(0, 8).map(([e, b]) => {
+    alternateExpiries: expiries.slice(0, 12).map(([e, b]) => {
       let vol = 0;
       for (const r of b.rungs.values()) vol += r.callVol + r.putVol;
       return { expiry: e, dte: b.dte, label: labelForExpiry(e), volume: vol };
