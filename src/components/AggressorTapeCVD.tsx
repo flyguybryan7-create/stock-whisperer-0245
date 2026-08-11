@@ -491,7 +491,7 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
         <>
           {/* Top pane: price line + colored buy/sell prints sized by trade volume */}
           <div style={{ fontSize: 9, color: "#8b949e", fontFamily: mono, padding: "0 4px 2px" }}>PRICE · aggressor prints</div>
-          <ResponsiveContainer width="100%" height={180}>
+          <ResponsiveContainer width="100%" height={210}>
             <ComposedChart data={chartData} margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
               <XAxis dataKey="t" type="number" scale="time"
