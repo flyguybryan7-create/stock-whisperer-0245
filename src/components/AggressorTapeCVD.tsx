@@ -344,21 +344,33 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
   // Commit a marker onto the tape when conviction crosses the threshold,
   // throttled so we don't stamp the same call every 2s.
   useEffect(() => {
-    if (!live || live.action === "WAIT" || live.price == null) return;
+    if (!live || live.action === "WAIT" || live.price == null) {
+      pendingRef.current = null;
+      return;
+    }
+    const action = live.action as "B" | "S";
+    // Require two consecutive polls agreeing before stamping the tape.
+    if (pendingRef.current !== action) {
+      pendingRef.current = action;
+      return;
+    }
     const now = Date.now();
     const prev = lastSignalRef.current;
-    if (prev && prev.action === live.action && now - prev.t < SIGNAL_MIN_GAP_MS) return;
-    lastSignalRef.current = { t: now, action: live.action };
+    if (prev) {
+      const gap = prev.action === action ? SIGNAL_MIN_GAP_MS : SIGNAL_FLIP_GAP_MS;
+      if (now - prev.t < gap) return;
+    }
+    lastSignalRef.current = { t: now, action };
     setSignals((s) => {
-      const next = [...s, { t: now, price: live.price!, action: live.action as "B" | "S", score: live.score, reason: live.reason }];
-      return next.length > 60 ? next.slice(next.length - 60) : next;
+      const next = [...s, { t: now, price: live.price!, action, score: live.score, reason: live.reason }];
+      return next.length > 20 ? next.slice(next.length - 20) : next;
     });
   }, [live]);
 
-  const visibleSignals = useMemo(
-    () => signals.filter((s) => s.t >= nowTick - WINDOW_MS),
-    [signals, nowTick],
-  );
+  const visibleSignals = useMemo(() => {
+    const inWindow = signals.filter((s) => s.t >= nowTick - WINDOW_MS);
+    return inWindow.slice(-MAX_VISIBLE_SIGNALS);
+  }, [signals, nowTick]);
   const buyMarks = useMemo(() => visibleSignals.filter((s) => s.action === "B"), [visibleSignals]);
   const sellMarks = useMemo(() => visibleSignals.filter((s) => s.action === "S"), [visibleSignals]);
 
