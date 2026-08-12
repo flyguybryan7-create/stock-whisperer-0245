@@ -86,13 +86,18 @@ const SIGNAL_LOOKBACK = 24;      // prints used for slope / imbalance
 // A "true" signal is rare on purpose: high conviction, sustained for two
 // consecutive polls, and spaced far enough apart that the tape shows a
 // handful of calls per session instead of a blob of letters.
-const SIGNAL_MIN_GAP_MS = 180_000;      // same-direction repeat
-const SIGNAL_FLIP_GAP_MS = 60_000;      // direction change
-const SIGNAL_THRESHOLD = 0.72;
-const MAX_VISIBLE_SIGNALS = 3;
+const SIGNAL_MIN_GAP_MS = 300_000;      // same-direction repeat
+const SIGNAL_FLIP_GAP_MS = 150_000;     // direction change
+const SIGNAL_THRESHOLD = 0.82;
+const MAX_VISIBLE_SIGNALS = 2;
+// Consecutive polls that must agree before a mark is stamped.
+const SIGNAL_CONFIRM_POLLS = 3;
 // Minimum on-screen separation between two stamped marks so letters never
 // overlap each other on the price line.
-const MARKER_SPACING_MS = 45_000;
+const MARKER_SPACING_MS = 90_000;
+// Empty gutter kept on the right of the time axis so the newest prints and
+// B/S marks never render flush against the panel edge.
+const RIGHT_GUTTER_MS = 45_000;
 
 function linSlope(vals: number[]): number {
   const n = vals.length;
@@ -352,11 +357,13 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
       return;
     }
     const action = live.action as "B" | "S";
-    // Require two consecutive polls agreeing before stamping the tape.
-    if (pendingRef.current !== action) {
-      pendingRef.current = action;
+    // Require several consecutive polls agreeing before stamping the tape.
+    if (pendingRef.current?.action !== action) {
+      pendingRef.current = { action, count: 1 };
       return;
     }
+    pendingRef.current.count += 1;
+    if (pendingRef.current.count < SIGNAL_CONFIRM_POLLS) return;
     const now = Date.now();
     const prev = lastSignalRef.current;
     if (prev) {
