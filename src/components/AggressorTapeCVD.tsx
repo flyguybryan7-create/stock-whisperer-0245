@@ -86,13 +86,18 @@ const SIGNAL_LOOKBACK = 24;      // prints used for slope / imbalance
 // A "true" signal is rare on purpose: high conviction, sustained for two
 // consecutive polls, and spaced far enough apart that the tape shows a
 // handful of calls per session instead of a blob of letters.
-const SIGNAL_MIN_GAP_MS = 180_000;      // same-direction repeat
-const SIGNAL_FLIP_GAP_MS = 60_000;      // direction change
-const SIGNAL_THRESHOLD = 0.72;
-const MAX_VISIBLE_SIGNALS = 3;
+const SIGNAL_MIN_GAP_MS = 300_000;      // same-direction repeat
+const SIGNAL_FLIP_GAP_MS = 150_000;     // direction change
+const SIGNAL_THRESHOLD = 0.82;
+const MAX_VISIBLE_SIGNALS = 2;
+// Consecutive polls that must agree before a mark is stamped.
+const SIGNAL_CONFIRM_POLLS = 3;
 // Minimum on-screen separation between two stamped marks so letters never
 // overlap each other on the price line.
-const MARKER_SPACING_MS = 45_000;
+const MARKER_SPACING_MS = 90_000;
+// Empty gutter kept on the right of the time axis so the newest prints and
+// B/S marks never render flush against the panel edge.
+const RIGHT_GUTTER_MS = 45_000;
 
 function linSlope(vals: number[]): number {
   const n = vals.length;
@@ -163,7 +168,7 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
   const lastSignalRef = useRef<{ t: number; action: "B" | "S" } | null>(null);
   // Previous poll's candidate action — a signal only fires when the same
   // read repeats, which filters out one-tick flickers.
-  const pendingRef = useRef<"B" | "S" | null>(null);
+  const pendingRef = useRef<{ action: "B" | "S"; count: number } | null>(null);
 
   // Reset the tape when the user switches tickers so buy/sell/CVD reflect
   // only the currently displayed symbol.
@@ -352,11 +357,13 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
       return;
     }
     const action = live.action as "B" | "S";
-    // Require two consecutive polls agreeing before stamping the tape.
-    if (pendingRef.current !== action) {
-      pendingRef.current = action;
+    // Require several consecutive polls agreeing before stamping the tape.
+    if (pendingRef.current?.action !== action) {
+      pendingRef.current = { action, count: 1 };
       return;
     }
+    pendingRef.current.count += 1;
+    if (pendingRef.current.count < SIGNAL_CONFIRM_POLLS) return;
     const now = Date.now();
     const prev = lastSignalRef.current;
     if (prev) {
@@ -492,10 +499,10 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
           {/* Top pane: price line + colored buy/sell prints sized by trade volume */}
           <div style={{ fontSize: 9, color: "#8b949e", fontFamily: mono, padding: "0 4px 2px" }}>PRICE · aggressor prints</div>
           <ResponsiveContainer width="100%" height={210}>
-            <ComposedChart data={chartData} margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
+            <ComposedChart data={chartData} margin={{ top: 4, right: 44, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
               <XAxis dataKey="t" type="number" scale="time"
-                domain={[nowTick - WINDOW_MS, nowTick]} tickFormatter={fmtTime}
+                domain={[nowTick - WINDOW_MS, nowTick + RIGHT_GUTTER_MS]} tickFormatter={fmtTime}
                 stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} allowDataOverflow />
               <YAxis yAxisId="p" domain={priceDomain} stroke="#8b949e" fontSize={9} width={54}
                 tick={{ fontFamily: mono }} tickFormatter={(v: number) => `$${v.toFixed(2)}`} />
@@ -551,10 +558,10 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
           {/* Bottom pane: Cumulative Volume Delta line — where flow is pushing */}
           <div style={{ fontSize: 9, color: "#8b949e", fontFamily: mono, padding: "4px 4px 2px" }}>CUMULATIVE VOLUME DELTA</div>
           <ResponsiveContainer width="100%" height={110}>
-            <ComposedChart data={chartData} margin={{ top: 4, right: 12, left: 0, bottom: 8 }}>
+            <ComposedChart data={chartData} margin={{ top: 4, right: 44, left: 0, bottom: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
               <XAxis dataKey="t" type="number" scale="time"
-                domain={[nowTick - WINDOW_MS, nowTick]} tickFormatter={fmtTime}
+                domain={[nowTick - WINDOW_MS, nowTick + RIGHT_GUTTER_MS]} tickFormatter={fmtTime}
                 stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} allowDataOverflow />
               <YAxis domain={cvdDomain} stroke="#8b949e" fontSize={9} width={54}
                 tick={{ fontFamily: mono }} tickFormatter={(v: number) => fmtVol(v)} />
