@@ -168,7 +168,7 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
   const lastSignalRef = useRef<{ t: number; action: "B" | "S" } | null>(null);
   // Previous poll's candidate action — a signal only fires when the same
   // read repeats, which filters out one-tick flickers.
-  const pendingRef = useRef<"B" | "S" | null>(null);
+  const pendingRef = useRef<{ action: "B" | "S"; count: number } | null>(null);
 
   // Reset the tape when the user switches tickers so buy/sell/CVD reflect
   // only the currently displayed symbol.
@@ -499,10 +499,10 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
           {/* Top pane: price line + colored buy/sell prints sized by trade volume */}
           <div style={{ fontSize: 9, color: "#8b949e", fontFamily: mono, padding: "0 4px 2px" }}>PRICE · aggressor prints</div>
           <ResponsiveContainer width="100%" height={210}>
-            <ComposedChart data={chartData} margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
+            <ComposedChart data={chartData} margin={{ top: 4, right: 44, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
               <XAxis dataKey="t" type="number" scale="time"
-                domain={[nowTick - WINDOW_MS, nowTick]} tickFormatter={fmtTime}
+                domain={[nowTick - WINDOW_MS, nowTick + RIGHT_GUTTER_MS]} tickFormatter={fmtTime}
                 stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} allowDataOverflow />
               <YAxis yAxisId="p" domain={priceDomain} stroke="#8b949e" fontSize={9} width={54}
                 tick={{ fontFamily: mono }} tickFormatter={(v: number) => `$${v.toFixed(2)}`} />
