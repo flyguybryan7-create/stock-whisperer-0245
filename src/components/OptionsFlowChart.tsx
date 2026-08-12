@@ -132,10 +132,11 @@ export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpi
   const magnet = useMemo(() => {
     if (!data.length) return null;
     // The "target strike" must be a plausible price magnet, not a deep OTM
-    // hedge/spread leg. Restrict candidates to a DTE-scaled expected-move
-    // window around spot (≈±8% for weeklies, up to ±20% for far-dated).
+    // hedge/spread leg — but the band was so tight it hid the true heaviest
+    // strike just outside it (e.g. $100 on an $88 spot). Widen to a realistic
+    // expected-move window: ≈±15% for weeklies, up to ±30% for far-dated.
     const dte = Math.max(0, ladder?.dte ?? 0);
-    const band = Math.min(0.2, Math.max(0.08, 0.06 + 0.012 * Math.sqrt(dte)));
+    const band = Math.min(0.3, Math.max(0.15, 0.12 + 0.02 * Math.sqrt(dte)));
     const inBand = spot && spot > 0
       ? data.filter((d) => Math.abs(d.strike - spot) / spot <= band)
       : data;
