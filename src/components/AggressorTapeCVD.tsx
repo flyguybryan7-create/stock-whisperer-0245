@@ -173,6 +173,10 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
   // Previous poll's candidate action — a signal only fires when the same
   // read repeats, which filters out one-tick flickers.
   const pendingRef = useRef<{ action: "B" | "S"; count: number } | null>(null);
+  // Current regime: the direction of the last stamped mark. A mark of the same
+  // direction can only repeat after a long gap; the opposite direction is only
+  // allowed once the flow actually flips, so B and S never print together.
+  const regimeRef = useRef<"B" | "S" | null>(null);
 
   // Reset the tape when the user switches tickers so buy/sell/CVD reflect
   // only the currently displayed symbol.
@@ -183,6 +187,7 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
       setSignals([]);
       lastSignalRef.current = null;
       pendingRef.current = null;
+      regimeRef.current = null;
       cvdRef.current = 0;
       lastVolRef.current = null;
       lastPriceRef.current = null;
