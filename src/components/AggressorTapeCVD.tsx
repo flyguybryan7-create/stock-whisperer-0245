@@ -83,15 +83,19 @@ function isDeadRefresh(msg: string): boolean {
 type Signal = { t: number; price: number; action: "B" | "S"; score: number; reason: string };
 
 const SIGNAL_LOOKBACK = 24;      // prints used for slope / imbalance
-// A "true" signal is rare on purpose: high conviction, sustained for two
-// consecutive polls, and spaced far enough apart that the tape shows a
-// handful of calls per session instead of a blob of letters.
+// Breakout model: a mark only fires when price clears the recent range in the
+// SAME direction the flow imbalance is pushing. Only one direction can be
+// active at a time — the opposite letter cannot print until the regime flips.
 const SIGNAL_MIN_GAP_MS = 300_000;      // same-direction repeat
-const SIGNAL_FLIP_GAP_MS = 150_000;     // direction change
+const SIGNAL_FLIP_GAP_MS = 180_000;     // direction change
 const SIGNAL_THRESHOLD = 0.82;
 const MAX_VISIBLE_SIGNALS = 2;
 // Consecutive polls that must agree before a mark is stamped.
 const SIGNAL_CONFIRM_POLLS = 3;
+// Breakout gates.
+const BREAKOUT_LOOKBACK = 60;   // prints forming the reference range
+const BREAKOUT_HOLDOUT = 5;     // most recent prints excluded from the range
+const MIN_IMBALANCE = 0.35;     // required directional flow bias
 // Minimum on-screen separation between two stamped marks so letters never
 // overlap each other on the price line.
 const MARKER_SPACING_MS = 90_000;
