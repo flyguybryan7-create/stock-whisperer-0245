@@ -83,15 +83,19 @@ function isDeadRefresh(msg: string): boolean {
 type Signal = { t: number; price: number; action: "B" | "S"; score: number; reason: string };
 
 const SIGNAL_LOOKBACK = 24;      // prints used for slope / imbalance
-// A "true" signal is rare on purpose: high conviction, sustained for two
-// consecutive polls, and spaced far enough apart that the tape shows a
-// handful of calls per session instead of a blob of letters.
+// Breakout model: a mark only fires when price clears the recent range in the
+// SAME direction the flow imbalance is pushing. Only one direction can be
+// active at a time — the opposite letter cannot print until the regime flips.
 const SIGNAL_MIN_GAP_MS = 300_000;      // same-direction repeat
-const SIGNAL_FLIP_GAP_MS = 150_000;     // direction change
+const SIGNAL_FLIP_GAP_MS = 180_000;     // direction change
 const SIGNAL_THRESHOLD = 0.82;
 const MAX_VISIBLE_SIGNALS = 2;
 // Consecutive polls that must agree before a mark is stamped.
 const SIGNAL_CONFIRM_POLLS = 3;
+// Breakout gates.
+const BREAKOUT_LOOKBACK = 60;   // prints forming the reference range
+const BREAKOUT_HOLDOUT = 5;     // most recent prints excluded from the range
+const MIN_IMBALANCE = 0.35;     // required directional flow bias
 // Minimum on-screen separation between two stamped marks so letters never
 // overlap each other on the price line.
 const MARKER_SPACING_MS = 90_000;
@@ -169,6 +173,10 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
   // Previous poll's candidate action — a signal only fires when the same
   // read repeats, which filters out one-tick flickers.
   const pendingRef = useRef<{ action: "B" | "S"; count: number } | null>(null);
+  // Current regime: the direction of the last stamped mark. A mark of the same
+  // direction can only repeat after a long gap; the opposite direction is only
+  // allowed once the flow actually flips, so B and S never print together.
+  const regimeRef = useRef<"B" | "S" | null>(null);
 
   // Reset the tape when the user switches tickers so buy/sell/CVD reflect
   // only the currently displayed symbol.
@@ -179,6 +187,7 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
       setSignals([]);
       lastSignalRef.current = null;
       pendingRef.current = null;
+      regimeRef.current = null;
       cvdRef.current = 0;
       lastVolRef.current = null;
       lastPriceRef.current = null;
@@ -344,9 +353,36 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
     const win = prints.slice(-SIGNAL_LOOKBACK);
     const s = scoreWindow(win);
     if (!s) return null;
-    const action: "B" | "S" | "WAIT" =
-      s.score >= SIGNAL_THRESHOLD ? "B" : s.score <= -SIGNAL_THRESHOLD ? "S" : "WAIT";
-    return { ...s, action, price: win[win.length - 1]?.price ?? null };
+    const last = win[win.length - 1]?.price ?? null;
+
+    // --- Directional flow bias over the scoring window ---
+    let buy = 0, sell = 0;
+    for (const p of win) {
+      if (p.side === "BUY") buy += p.size;
+      else if (p.side === "SELL") sell += p.size;
+    }
+    const imb = buy + sell > 0 ? (buy - sell) / (buy + sell) : 0;
+
+    // --- Range breakout: price must clear the prior range, excluding the
+    // most recent prints so the breakout bar itself doesn't set the level. ---
+    const range = prints.slice(-BREAKOUT_LOOKBACK, -BREAKOUT_HOLDOUT);
+    let hi = -Infinity, lo = Infinity;
+    for (const p of range) { if (p.price > hi) hi = p.price; if (p.price < lo) lo = p.price; }
+    const hasRange = range.length >= 12 && Number.isFinite(hi) && Number.isFinite(lo) && hi > lo;
+    const brokeUp = hasRange && last != null && last > hi;
+    const brokeDown = hasRange && last != null && last < lo;
+
+    let action: "B" | "S" | "WAIT" = "WAIT";
+    if (s.score >= SIGNAL_THRESHOLD && imb >= MIN_IMBALANCE && brokeUp) action = "B";
+    else if (s.score <= -SIGNAL_THRESHOLD && imb <= -MIN_IMBALANCE && brokeDown) action = "S";
+
+    const reason = action === "B"
+      ? "breakout up · buy imbalance"
+      : action === "S"
+        ? "breakdown · sell imbalance"
+        : s.reason;
+
+    return { ...s, reason, action, price: last };
   }, [prints]);
 
   // Commit a marker onto the tape when conviction crosses the threshold,
@@ -370,6 +406,9 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
       const gap = prev.action === action ? SIGNAL_MIN_GAP_MS : SIGNAL_FLIP_GAP_MS;
       if (now - prev.t < gap) return;
     }
+    // One regime at a time: never stamp the opposite letter right after a mark.
+    if (regimeRef.current && regimeRef.current !== action && prev && now - prev.t < SIGNAL_FLIP_GAP_MS) return;
+    regimeRef.current = action;
     lastSignalRef.current = { t: now, action };
     setSignals((s) => {
       const next = [...s, { t: now, price: live.price!, action, score: live.score, reason: live.reason }];
@@ -388,7 +427,10 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
       if (!last || last.t - s.t >= MARKER_SPACING_MS) spaced.push(s);
     }
     spaced.reverse();
-    return spaced.slice(-MAX_VISIBLE_SIGNALS);
+    const recent = spaced.slice(-MAX_VISIBLE_SIGNALS);
+    // Only one direction on screen at a time: keep the newest call's direction.
+    const dir = recent[recent.length - 1]?.action;
+    return recent.filter((s) => s.action === dir);
   }, [signals, nowTick]);
   const buyMarks = useMemo(() => visibleSignals.filter((s) => s.action === "B"), [visibleSignals]);
   const sellMarks = useMemo(() => visibleSignals.filter((s) => s.action === "S"), [visibleSignals]);
@@ -577,7 +619,7 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
           </ResponsiveContainer>
 
           <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "4px 0 0" }}>
-            Lee–Ready tick rule · dots = heaviest prints only · B/S marks fire only on high-conviction reads (≥72%) confirmed on two polls · polls every 2s · not financial advice
+            Lee–Ready tick rule · dots = heaviest prints only · B/S marks fire only on a range breakout confirmed by flow imbalance in the same direction · one direction on screen at a time · polls every 2s · not financial advice
           </div>
         </>
       )}
