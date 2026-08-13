@@ -743,8 +743,8 @@ export default function TradingPlatform() {
   const [chartRange, setChartRange] = useState(200);
   // When a long horizon (200D / 1Y) is selected, the 15m/30m/60m interval
   // buttons chart that same horizon with intraday candles.
-  const [longHorizon, setLongHorizon] = useState<200 | 252 | null>(200);
-  const [chartMode, setChartMode] = useState<"D" | "INTRADAY">("D");
+  const [longHorizon, setLongHorizon] = useState<200 | 252 | null>(null);
+  const [chartMode, setChartMode] = useState<"D" | "INTRADAY">("INTRADAY");
   const [intradayRange, setIntradayRange] = useState<"1D" | "2D" | "5D" | "24H">("1D");
   const [intradayInterval, setIntradayInterval] = useState<"1m" | "2m" | "5m" | "15m" | "30m" | "60m">("1m");
   // User-tweakable zoom multiplier for chart bar width (pinch / +/- buttons).
