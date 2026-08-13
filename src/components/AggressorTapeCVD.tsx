@@ -353,9 +353,36 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
     const win = prints.slice(-SIGNAL_LOOKBACK);
     const s = scoreWindow(win);
     if (!s) return null;
-    const action: "B" | "S" | "WAIT" =
-      s.score >= SIGNAL_THRESHOLD ? "B" : s.score <= -SIGNAL_THRESHOLD ? "S" : "WAIT";
-    return { ...s, action, price: win[win.length - 1]?.price ?? null };
+    const last = win[win.length - 1]?.price ?? null;
+
+    // --- Directional flow bias over the scoring window ---
+    let buy = 0, sell = 0;
+    for (const p of win) {
+      if (p.side === "BUY") buy += p.size;
+      else if (p.side === "SELL") sell += p.size;
+    }
+    const imb = buy + sell > 0 ? (buy - sell) / (buy + sell) : 0;
+
+    // --- Range breakout: price must clear the prior range, excluding the
+    // most recent prints so the breakout bar itself doesn't set the level. ---
+    const range = prints.slice(-BREAKOUT_LOOKBACK, -BREAKOUT_HOLDOUT);
+    let hi = -Infinity, lo = Infinity;
+    for (const p of range) { if (p.price > hi) hi = p.price; if (p.price < lo) lo = p.price; }
+    const hasRange = range.length >= 12 && Number.isFinite(hi) && Number.isFinite(lo) && hi > lo;
+    const brokeUp = hasRange && last != null && last > hi;
+    const brokeDown = hasRange && last != null && last < lo;
+
+    let action: "B" | "S" | "WAIT" = "WAIT";
+    if (s.score >= SIGNAL_THRESHOLD && imb >= MIN_IMBALANCE && brokeUp) action = "B";
+    else if (s.score <= -SIGNAL_THRESHOLD && imb <= -MIN_IMBALANCE && brokeDown) action = "S";
+
+    const reason = action === "B"
+      ? "breakout up · buy imbalance"
+      : action === "S"
+        ? "breakdown · sell imbalance"
+        : s.reason;
+
+    return { ...s, reason, action, price: last };
   }, [prints]);
 
   // Commit a marker onto the tape when conviction crosses the threshold,
@@ -379,6 +406,9 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
       const gap = prev.action === action ? SIGNAL_MIN_GAP_MS : SIGNAL_FLIP_GAP_MS;
       if (now - prev.t < gap) return;
     }
+    // One regime at a time: never stamp the opposite letter right after a mark.
+    if (regimeRef.current && regimeRef.current !== action && prev && now - prev.t < SIGNAL_FLIP_GAP_MS) return;
+    regimeRef.current = action;
     lastSignalRef.current = { t: now, action };
     setSignals((s) => {
       const next = [...s, { t: now, price: live.price!, action, score: live.score, reason: live.reason }];
