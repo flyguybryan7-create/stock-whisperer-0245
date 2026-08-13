@@ -427,7 +427,10 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
       if (!last || last.t - s.t >= MARKER_SPACING_MS) spaced.push(s);
     }
     spaced.reverse();
-    return spaced.slice(-MAX_VISIBLE_SIGNALS);
+    const recent = spaced.slice(-MAX_VISIBLE_SIGNALS);
+    // Only one direction on screen at a time: keep the newest call's direction.
+    const dir = recent[recent.length - 1]?.action;
+    return recent.filter((s) => s.action === dir);
   }, [signals, nowTick]);
   const buyMarks = useMemo(() => visibleSignals.filter((s) => s.action === "B"), [visibleSignals]);
   const sellMarks = useMemo(() => visibleSignals.filter((s) => s.action === "S"), [visibleSignals]);
