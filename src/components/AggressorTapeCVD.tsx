@@ -93,13 +93,10 @@ const TREND_RUN_REQUIRED = 3;
 // active at a time — the opposite letter cannot print until the regime flips.
 const SIGNAL_MIN_GAP_MS = 300_000;      // same-direction repeat
 const SIGNAL_FLIP_GAP_MS = 180_000;     // direction change
-const SIGNAL_THRESHOLD = 0.82;
 const MAX_VISIBLE_SIGNALS = 1;
 // Consecutive polls that must agree before a mark is stamped.
-const SIGNAL_CONFIRM_POLLS = 3;
+const SIGNAL_CONFIRM_POLLS = 2;
 // Breakout gates.
-const BREAKOUT_LOOKBACK = 60;   // prints forming the reference range
-const BREAKOUT_HOLDOUT = 5;     // most recent prints excluded from the range
 const MIN_IMBALANCE = 0.35;     // required directional flow bias
 // Minimum on-screen separation between two stamped marks so letters never
 // overlap each other on the price line.
@@ -662,7 +659,7 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
           </ResponsiveContainer>
 
           <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "4px 0 0" }}>
-            Lee–Ready tick rule · dots = heaviest prints only · B/S marks fire only on a range breakout confirmed by flow imbalance in the same direction · one direction on screen at a time · polls every 2s · not financial advice
+            Lee–Ready tick rule · dots = heaviest prints only · B/S marks fire only after 3 consecutive 30s trend buckets in the same direction (net delta + price agreeing) confirmed by flow imbalance · one mark on screen at a time · polls every 2s · not financial advice
           </div>
         </>
       )}
