@@ -83,22 +83,64 @@ function isDeadRefresh(msg: string): boolean {
 type Signal = { t: number; price: number; action: "B" | "S"; score: number; reason: string };
 
 const SIGNAL_LOOKBACK = 24;      // prints used for slope / imbalance
+// Trend-run model: the tape is chopped into fixed time buckets. A bucket is
+// "positive" when net aggressor delta AND price both move up over it (and the
+// mirror for negative). Three consecutive same-sign buckets = conviction.
+const TREND_BUCKET_MS = 30_000;
+const TREND_RUN_REQUIRED = 3;
 // Breakout model: a mark only fires when price clears the recent range in the
 // SAME direction the flow imbalance is pushing. Only one direction can be
 // active at a time — the opposite letter cannot print until the regime flips.
 const SIGNAL_MIN_GAP_MS = 300_000;      // same-direction repeat
 const SIGNAL_FLIP_GAP_MS = 180_000;     // direction change
-const SIGNAL_THRESHOLD = 0.82;
-const MAX_VISIBLE_SIGNALS = 2;
+const MAX_VISIBLE_SIGNALS = 1;
 // Consecutive polls that must agree before a mark is stamped.
-const SIGNAL_CONFIRM_POLLS = 3;
+const SIGNAL_CONFIRM_POLLS = 2;
 // Breakout gates.
-const BREAKOUT_LOOKBACK = 60;   // prints forming the reference range
-const BREAKOUT_HOLDOUT = 5;     // most recent prints excluded from the range
 const MIN_IMBALANCE = 0.35;     // required directional flow bias
 // Minimum on-screen separation between two stamped marks so letters never
 // overlap each other on the price line.
-const MARKER_SPACING_MS = 90_000;
+const MARKER_SPACING_MS = 120_000;
+
+type Bucket = { t: number; delta: number; priceChange: number; dir: 1 | -1 | 0 };
+
+// Build completed trend buckets (the in-progress bucket is dropped so a run is
+// only counted from finished trends).
+function buildBuckets(prints: Print[]): Bucket[] {
+  if (prints.length === 0) return [];
+  const groups = new Map<number, Print[]>();
+  for (const p of prints) {
+    const k = Math.floor(p.t / TREND_BUCKET_MS) * TREND_BUCKET_MS;
+    const arr = groups.get(k);
+    if (arr) arr.push(p); else groups.set(k, [p]);
+  }
+  const keys = [...groups.keys()].sort((a, b) => a - b);
+  keys.pop(); // drop the still-forming bucket
+  const out: Bucket[] = [];
+  for (const k of keys) {
+    const g = groups.get(k)!;
+    let delta = 0;
+    for (const p of g) delta += p.side === "BUY" ? p.size : p.side === "SELL" ? -p.size : 0;
+    const priceChange = (g[g.length - 1]!.price) - (g[0]!.price);
+    const dir: 1 | -1 | 0 =
+      delta > 0 && priceChange >= 0 ? 1 : delta < 0 && priceChange <= 0 ? -1 : 0;
+    out.push({ t: k, delta, priceChange, dir });
+  }
+  return out;
+}
+
+// Length of the current run of same-direction buckets at the end of the series.
+function trendRun(buckets: Bucket[]): { dir: 1 | -1 | 0; run: number } {
+  if (buckets.length === 0) return { dir: 0, run: 0 };
+  const dir = buckets[buckets.length - 1]!.dir;
+  if (dir === 0) return { dir: 0, run: 0 };
+  let run = 0;
+  for (let i = buckets.length - 1; i >= 0; i--) {
+    if (buckets[i]!.dir !== dir) break;
+    run++;
+  }
+  return { dir, run };
+}
 // Empty gutter kept on the right of the time axis so the newest prints and
 // B/S marks never render flush against the panel edge.
 const RIGHT_GUTTER_MS = 45_000;
@@ -363,24 +405,22 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
     }
     const imb = buy + sell > 0 ? (buy - sell) / (buy + sell) : 0;
 
-    // --- Range breakout: price must clear the prior range, excluding the
-    // most recent prints so the breakout bar itself doesn't set the level. ---
-    const range = prints.slice(-BREAKOUT_LOOKBACK, -BREAKOUT_HOLDOUT);
-    let hi = -Infinity, lo = Infinity;
-    for (const p of range) { if (p.price > hi) hi = p.price; if (p.price < lo) lo = p.price; }
-    const hasRange = range.length >= 12 && Number.isFinite(hi) && Number.isFinite(lo) && hi > lo;
-    const brokeUp = hasRange && last != null && last > hi;
-    const brokeDown = hasRange && last != null && last < lo;
+    // --- Conviction gate: three consecutive same-direction trend buckets ---
+    const buckets = buildBuckets(prints);
+    const { dir, run } = trendRun(buckets);
+    const convicted = run >= TREND_RUN_REQUIRED;
 
     let action: "B" | "S" | "WAIT" = "WAIT";
-    if (s.score >= SIGNAL_THRESHOLD && imb >= MIN_IMBALANCE && brokeUp) action = "B";
-    else if (s.score <= -SIGNAL_THRESHOLD && imb <= -MIN_IMBALANCE && brokeDown) action = "S";
+    if (convicted && dir === 1 && imb >= MIN_IMBALANCE) action = "B";
+    else if (convicted && dir === -1 && imb <= -MIN_IMBALANCE) action = "S";
 
     const reason = action === "B"
-      ? "breakout up · buy imbalance"
+      ? `${run} straight up trends · buy flow`
       : action === "S"
-        ? "breakdown · sell imbalance"
-        : s.reason;
+        ? `${run} straight down trends · sell flow`
+        : dir !== 0 && run > 0
+          ? `${run}/${TREND_RUN_REQUIRED} ${dir === 1 ? "up" : "down"} trends — needs ${TREND_RUN_REQUIRED}`
+          : s.reason;
 
     return { ...s, reason, action, price: last };
   }, [prints]);
@@ -619,7 +659,7 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
           </ResponsiveContainer>
 
           <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "4px 0 0" }}>
-            Lee–Ready tick rule · dots = heaviest prints only · B/S marks fire only on a range breakout confirmed by flow imbalance in the same direction · one direction on screen at a time · polls every 2s · not financial advice
+            Lee–Ready tick rule · dots = heaviest prints only · B/S marks fire only after 3 consecutive 30s trend buckets in the same direction (net delta + price agreeing) confirmed by flow imbalance · one mark on screen at a time · polls every 2s · not financial advice
           </div>
         </>
       )}
