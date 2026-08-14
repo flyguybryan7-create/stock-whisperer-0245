@@ -91,18 +91,19 @@ const TREND_RUN_REQUIRED = 3;
 // Breakout model: a mark only fires when price clears the recent range in the
 // SAME direction the flow imbalance is pushing. Only one direction can be
 // active at a time — the opposite letter cannot print until the regime flips.
-const SIGNAL_MIN_GAP_MS = 300_000;      // same-direction repeat
-const SIGNAL_FLIP_GAP_MS = 180_000;     // direction change
+const SIGNAL_MIN_GAP_MS = 600_000;      // at most one mark every 10 minutes
+const SIGNAL_FLIP_GAP_MS = 600_000;     // keep the opposite call off-screen
 const MAX_VISIBLE_SIGNALS = 1;
 // Consecutive polls that must agree before a mark is stamped.
-const SIGNAL_CONFIRM_POLLS = 2;
+const SIGNAL_CONFIRM_POLLS = 3;
 // Breakout gates.
 const MIN_IMBALANCE = 0.35;     // required directional flow bias
 // Minimum on-screen separation between two stamped marks so letters never
 // overlap each other on the price line.
-const MARKER_SPACING_MS = 120_000;
+const MARKER_SPACING_MS = 600_000;
+const MIN_RUN_PRICE_MOVE = 0.0015; // require a real 0.15% move, not tape noise
 
-type Bucket = { t: number; delta: number; priceChange: number; dir: 1 | -1 | 0 };
+type Bucket = { t: number; delta: number; open: number; close: number; priceChange: number; dir: 1 | -1 | 0 };
 
 // Build completed trend buckets (the in-progress bucket is dropped so a run is
 // only counted from finished trends).
@@ -118,13 +119,19 @@ function buildBuckets(prints: Print[]): Bucket[] {
   keys.pop(); // drop the still-forming bucket
   const out: Bucket[] = [];
   for (const k of keys) {
-    const g = groups.get(k)!;
+    const g = groups.get(k);
+    if (!g || g.length === 0) continue;
     let delta = 0;
     for (const p of g) delta += p.side === "BUY" ? p.size : p.side === "SELL" ? -p.size : 0;
-    const priceChange = (g[g.length - 1]!.price) - (g[0]!.price);
+    const firstPrint = g[0];
+    const lastPrint = g[g.length - 1];
+    if (!firstPrint || !lastPrint) continue;
+    const open = firstPrint.price;
+    const close = lastPrint.price;
+    const priceChange = close - open;
     const dir: 1 | -1 | 0 =
       delta > 0 && priceChange >= 0 ? 1 : delta < 0 && priceChange <= 0 ? -1 : 0;
-    out.push({ t: k, delta, priceChange, dir });
+    out.push({ t: k, delta, open, close, priceChange, dir });
   }
   return out;
 }
@@ -140,6 +147,27 @@ function trendRun(buckets: Bucket[]): { dir: 1 | -1 | 0; run: number } {
     run++;
   }
   return { dir, run };
+}
+
+function confirmedMovement(buckets: Bucket[], dir: 1 | -1): { confirmed: boolean; movePct: number } {
+  const runBuckets = buckets.slice(-TREND_RUN_REQUIRED);
+  if (runBuckets.length < TREND_RUN_REQUIRED || runBuckets.some((bucket) => bucket.dir !== dir)) {
+    return { confirmed: false, movePct: 0 };
+  }
+  const first = runBuckets[0];
+  const last = runBuckets[runBuckets.length - 1];
+  if (!first || !last || first.open <= 0) return { confirmed: false, movePct: 0 };
+  const movePct = (last.close - first.open) / first.open;
+
+  // The three-bucket trend must also clear the range immediately preceding it.
+  // This prevents alternating B/S calls inside the same sideways price chop.
+  const reference = buckets.slice(-(TREND_RUN_REQUIRED + 6), -TREND_RUN_REQUIRED);
+  if (reference.length === 0) return { confirmed: false, movePct };
+  const priorHigh = Math.max(...reference.map((bucket) => Math.max(bucket.open, bucket.close)));
+  const priorLow = Math.min(...reference.map((bucket) => Math.min(bucket.open, bucket.close)));
+  const displaced = dir === 1 ? movePct >= MIN_RUN_PRICE_MOVE : movePct <= -MIN_RUN_PRICE_MOVE;
+  const brokeRange = dir === 1 ? last.close > priorHigh : last.close < priorLow;
+  return { confirmed: displaced && brokeRange, movePct };
 }
 // Empty gutter kept on the right of the time axis so the newest prints and
 // B/S marks never render flush against the panel edge.
@@ -408,18 +436,35 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
     // --- Conviction gate: three consecutive same-direction trend buckets ---
     const buckets = buildBuckets(prints);
     const { dir, run } = trendRun(buckets);
-    const convicted = run >= TREND_RUN_REQUIRED;
+    const movement = dir === 0 ? { confirmed: false, movePct: 0 } : confirmedMovement(buckets, dir);
+    const convicted = run >= TREND_RUN_REQUIRED && movement.confirmed;
 
     let action: "B" | "S" | "WAIT" = "WAIT";
     if (convicted && dir === 1 && imb >= MIN_IMBALANCE) action = "B";
     else if (convicted && dir === -1 && imb <= -MIN_IMBALANCE) action = "S";
 
+    // Once a direction prints, do not show the opposite direction in LIVE READ
+    // while that marker remains relevant. This prevents an old B marker and a
+    // new S read (or vice versa) from appearing together during ordinary chop.
+    const previousSignal = lastSignalRef.current;
+    if (
+      action !== "WAIT" &&
+      regimeRef.current &&
+      regimeRef.current !== action &&
+      previousSignal &&
+      Date.now() - previousSignal.t < SIGNAL_FLIP_GAP_MS
+    ) {
+      action = "WAIT";
+    }
+
     const reason = action === "B"
-      ? `${run} straight up trends · buy flow`
+      ? `${run} straight up trends · breakout +${(movement.movePct * 100).toFixed(2)}%`
       : action === "S"
-        ? `${run} straight down trends · sell flow`
+        ? `${run} straight down trends · breakdown ${(movement.movePct * 100).toFixed(2)}%`
+        : convicted && regimeRef.current
+          ? `${regimeRef.current === "B" ? "buy" : "sell"} regime held — opposite blocked`
         : dir !== 0 && run > 0
-          ? `${run}/${TREND_RUN_REQUIRED} ${dir === 1 ? "up" : "down"} trends — needs ${TREND_RUN_REQUIRED}`
+          ? `${Math.min(run, TREND_RUN_REQUIRED)}/${TREND_RUN_REQUIRED} ${dir === 1 ? "up" : "down"} trends — waiting for breakout`
           : s.reason;
 
     return { ...s, reason, action, price: last };
@@ -659,7 +704,7 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
           </ResponsiveContainer>
 
           <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "4px 0 0" }}>
-            Lee–Ready tick rule · dots = heaviest prints only · B/S marks fire only after 3 consecutive 30s trend buckets in the same direction (net delta + price agreeing) confirmed by flow imbalance · one mark on screen at a time · polls every 2s · not financial advice
+             Lee–Ready tick rule · dots = heaviest prints only · B/S requires 3 consecutive 30s trends, matching imbalance, a 0.15% price move, and a break of the prior range · opposite calls are locked out for 10 minutes · one mark on screen · polls every 2s · not financial advice
           </div>
         </>
       )}
