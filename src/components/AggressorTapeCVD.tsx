@@ -408,24 +408,22 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
     }
     const imb = buy + sell > 0 ? (buy - sell) / (buy + sell) : 0;
 
-    // --- Range breakout: price must clear the prior range, excluding the
-    // most recent prints so the breakout bar itself doesn't set the level. ---
-    const range = prints.slice(-BREAKOUT_LOOKBACK, -BREAKOUT_HOLDOUT);
-    let hi = -Infinity, lo = Infinity;
-    for (const p of range) { if (p.price > hi) hi = p.price; if (p.price < lo) lo = p.price; }
-    const hasRange = range.length >= 12 && Number.isFinite(hi) && Number.isFinite(lo) && hi > lo;
-    const brokeUp = hasRange && last != null && last > hi;
-    const brokeDown = hasRange && last != null && last < lo;
+    // --- Conviction gate: three consecutive same-direction trend buckets ---
+    const buckets = buildBuckets(prints);
+    const { dir, run } = trendRun(buckets);
+    const convicted = run >= TREND_RUN_REQUIRED;
 
     let action: "B" | "S" | "WAIT" = "WAIT";
-    if (s.score >= SIGNAL_THRESHOLD && imb >= MIN_IMBALANCE && brokeUp) action = "B";
-    else if (s.score <= -SIGNAL_THRESHOLD && imb <= -MIN_IMBALANCE && brokeDown) action = "S";
+    if (convicted && dir === 1 && imb >= MIN_IMBALANCE) action = "B";
+    else if (convicted && dir === -1 && imb <= -MIN_IMBALANCE) action = "S";
 
     const reason = action === "B"
-      ? "breakout up · buy imbalance"
+      ? `${run} straight up trends · buy flow`
       : action === "S"
-        ? "breakdown · sell imbalance"
-        : s.reason;
+        ? `${run} straight down trends · sell flow`
+        : dir !== 0 && run > 0
+          ? `${run}/${TREND_RUN_REQUIRED} ${dir === 1 ? "up" : "down"} trends — needs ${TREND_RUN_REQUIRED}`
+          : s.reason;
 
     return { ...s, reason, action, price: last };
   }, [prints]);
