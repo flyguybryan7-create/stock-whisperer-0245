@@ -93,14 +93,10 @@ const TREND_RUN_REQUIRED = 3;
 // active at a time — the opposite letter cannot print until the regime flips.
 const SIGNAL_MIN_GAP_MS = 600_000;      // at most one mark every 10 minutes
 const SIGNAL_FLIP_GAP_MS = 600_000;     // keep the opposite call off-screen
-const MAX_VISIBLE_SIGNALS = 1;
 // Consecutive polls that must agree before a mark is stamped.
 const SIGNAL_CONFIRM_POLLS = 3;
 // Breakout gates.
 const MIN_IMBALANCE = 0.35;     // required directional flow bias
-// Minimum on-screen separation between two stamped marks so letters never
-// overlap each other on the price line.
-const MARKER_SPACING_MS = 600_000;
 const MIN_RUN_PRICE_MOVE = 0.0015; // require a real 0.15% move, not tape noise
 
 type Bucket = { t: number; delta: number; open: number; close: number; priceChange: number; dir: 1 | -1 | 0 };
@@ -502,21 +498,24 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
   }, [live]);
 
   const visibleSignals = useMemo(() => {
-    const inWindow = signals.filter((s) => s.t >= nowTick - WINDOW_MS);
-    // Walk newest → oldest and drop any mark that would render on top of a
-    // more recent one, then keep only the last few.
-    const spaced: typeof inWindow = [];
-    for (let i = inWindow.length - 1; i >= 0; i--) {
-      const s = inWindow[i]!;
-      const last = spaced[spaced.length - 1];
-      if (!last || last.t - s.t >= MARKER_SPACING_MS) spaced.push(s);
-    }
-    spaced.reverse();
-    const recent = spaced.slice(-MAX_VISIBLE_SIGNALS);
-    // Only one direction on screen at a time: keep the newest call's direction.
-    const dir = recent[recent.length - 1]?.action;
-    return recent.filter((s) => s.action === dir);
-  }, [signals, nowTick]);
+    const active = signals[signals.length - 1];
+    if (!active) return [];
+
+    const cutoff = nowTick - WINDOW_MS;
+    if (active.t >= cutoff) return [active];
+
+    // A signal represents the active directional regime, not a short-lived
+    // event. Once its original point scrolls out of the four-minute tape,
+    // pin it inside the left edge at the latest price until a confirmed
+    // reversal replaces it. This prevents an empty chart during the longer
+    // reversal lockout without ever showing B and S together.
+    const latestPrint = visiblePrints[visiblePrints.length - 1];
+    return [{
+      ...active,
+      t: cutoff + 15_000,
+      price: latestPrint?.price ?? active.price,
+    }];
+  }, [signals, visiblePrints, nowTick]);
   const buyMarks = useMemo(() => visibleSignals.filter((s) => s.action === "B"), [visibleSignals]);
   const sellMarks = useMemo(() => visibleSignals.filter((s) => s.action === "S"), [visibleSignals]);
 
@@ -704,7 +703,7 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
           </ResponsiveContainer>
 
           <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "4px 0 0" }}>
-             Lee–Ready tick rule · dots = heaviest prints only · B/S requires 3 consecutive 30s trends, matching imbalance, a 0.15% price move, and a break of the prior range · opposite calls are locked out for 10 minutes · one mark on screen · polls every 2s · not financial advice
+             Lee–Ready tick rule · dots = heaviest prints only · B/S requires 3 consecutive 30s trends, matching imbalance, a 0.15% price move, and a break of the prior range · the active call stays visible until a confirmed reversal · one mark on screen · polls every 2s · not financial advice
           </div>
         </>
       )}
