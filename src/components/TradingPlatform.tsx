@@ -51,6 +51,7 @@ import {
 import { detectTrap, type TrapResult } from "@/lib/trap-indicator";
 import { OptionsFlowChart } from "./OptionsFlowChart";
 import { AggressorTapeCVD } from "./AggressorTapeCVD";
+import { QuotePressureChart } from "./QuotePressureChart";
 import { IndexChartModal } from "./IndexChartModal";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { useSubscription } from "@/hooks/useSubscription";
@@ -3339,6 +3340,17 @@ export default function TradingPlatform() {
               running Cumulative Volume Delta so you can see where net flow
               is pushing price. Requires connected Schwab. */}
           <AggressorTapeCVD
+            symbol={selectedStock}
+            tokens={schwabTokens}
+            onTokens={persistTokens}
+            sharedAvailable={sharedSchwabConnected}
+            onTokensInvalid={clearDeadTokens}
+          />
+
+          {/* Bid/ask microstructure predictor — order-book imbalance +
+              microprice skew on a 5s Schwab quote poll, with a live-graded
+              next-15s direction call. */}
+          <QuotePressureChart
             symbol={selectedStock}
             tokens={schwabTokens}
             onTokens={persistTokens}
