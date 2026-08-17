@@ -3346,6 +3346,17 @@ export default function TradingPlatform() {
             onTokensInvalid={clearDeadTokens}
           />
 
+          {/* Bid/ask microstructure predictor — order-book imbalance +
+              microprice skew on a 5s Schwab quote poll, with a live-graded
+              next-15s direction call. */}
+          <QuotePressureChart
+            symbol={selectedStock}
+            tokens={schwabTokens}
+            onTokens={persistTokens}
+            sharedAvailable={sharedSchwabConnected}
+            onTokensInvalid={clearDeadTokens}
+          />
+
           {/* Company-specific news + AI sentiment (shown first) */}
           <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 12, marginBottom: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
