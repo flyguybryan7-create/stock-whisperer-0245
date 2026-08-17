@@ -51,6 +51,7 @@ import {
 import { detectTrap, type TrapResult } from "@/lib/trap-indicator";
 import { OptionsFlowChart } from "./OptionsFlowChart";
 import { AggressorTapeCVD } from "./AggressorTapeCVD";
+import { QuotePressureChart } from "./QuotePressureChart";
 import { IndexChartModal } from "./IndexChartModal";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { useSubscription } from "@/hooks/useSubscription";
