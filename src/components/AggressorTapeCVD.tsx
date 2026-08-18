@@ -1,8 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import {
-  ComposedChart, Line, Scatter, XAxis, YAxis, CartesianGrid, ReferenceLine,
-  ResponsiveContainer, Tooltip,
+  ComposedChart,
+  Line,
+  Scatter,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
 } from "recharts";
 import { getSchwabQuotes, refreshSchwabToken, type SchwabTokens } from "@/lib/schwab.functions";
 import { getSharedSchwabQuotes } from "@/lib/schwab-shared.functions";
@@ -10,11 +17,11 @@ import { getSharedSchwabQuotes } from "@/lib/schwab-shared.functions";
 const mono = "SF Mono, Menlo, monospace";
 
 type Print = {
-  t: number;         // unix ms
+  t: number; // unix ms
   price: number;
-  size: number;      // shares traded since last poll (delta of totalVolume)
+  size: number; // shares traded since last poll (delta of totalVolume)
   side: "BUY" | "SELL" | "MID";
-  cvd: number;       // running cumulative volume delta after this print
+  cvd: number; // running cumulative volume delta after this print
 };
 
 type Props = {
@@ -40,7 +47,10 @@ function fmtVol(v: number): string {
 function fmtTime(ms: number): string {
   return new Date(ms).toLocaleTimeString("en-US", {
     timeZone: "America/New_York",
-    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
   });
 }
 
@@ -48,7 +58,12 @@ function fmtTime(ms: number): string {
 // the last-trade price relative to the NBBO, with an uptick/downtick fallback
 // when the trade lands mid-spread. This is what desks use to build CVD when
 // full Level 2 book depth isn't available (Schwab REST doesn't expose L2).
-function classify(last: number, bid: number | null, ask: number | null, prevLast: number | null): "BUY" | "SELL" | "MID" {
+function classify(
+  last: number,
+  bid: number | null,
+  ask: number | null,
+  prevLast: number | null,
+): "BUY" | "SELL" | "MID" {
   if (ask != null && last >= ask) return "BUY";
   if (bid != null && last <= bid) return "SELL";
   if (prevLast != null) {
@@ -63,7 +78,11 @@ function classify(last: number, bid: number | null, ask: number | null, prevLast
 // token has to be dropped.
 function isDeadRefresh(msg: string): boolean {
   const m = msg.toLowerCase();
-  return m.includes("invalid_grant") || m.includes("unsupported_token_type") || m.includes("expired or revoked");
+  return (
+    m.includes("invalid_grant") ||
+    m.includes("unsupported_token_type") ||
+    m.includes("expired or revoked")
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -82,7 +101,7 @@ function isDeadRefresh(msg: string): boolean {
 // ---------------------------------------------------------------------------
 type Signal = { t: number; price: number; action: "B" | "S"; score: number; reason: string };
 
-const SIGNAL_LOOKBACK = 24;      // prints used for slope / imbalance
+const SIGNAL_LOOKBACK = 24; // prints used for slope / imbalance
 // Trend-run model: the tape is chopped into fixed time buckets. A bucket is
 // "positive" when net aggressor delta AND price both move up over it (and the
 // mirror for negative). Three consecutive same-sign buckets = conviction.
@@ -94,7 +113,7 @@ const TREND_RUN_REQUIRED = 3;
 // Consecutive polls that must agree before a mark is stamped.
 const SIGNAL_CONFIRM_POLLS = 3;
 // Breakout gates.
-const MIN_IMBALANCE = 0.35;     // required directional flow bias
+const MIN_IMBALANCE = 0.35; // required directional flow bias
 const MIN_RUN_PRICE_MOVE = 0.0015; // require a real 0.15% move, not tape noise
 // A live regime only flips on materially stronger evidence than the evidence
 // needed to establish it. This keeps ordinary counter-trend noise from
@@ -102,7 +121,14 @@ const MIN_RUN_PRICE_MOVE = 0.0015; // require a real 0.15% move, not tape noise
 const REVERSAL_IMBALANCE = 0.55;
 const REVERSAL_PRICE_MOVE = 0.0025;
 
-type Bucket = { t: number; delta: number; open: number; close: number; priceChange: number; dir: 1 | -1 | 0 };
+type Bucket = {
+  t: number;
+  delta: number;
+  open: number;
+  close: number;
+  priceChange: number;
+  dir: 1 | -1 | 0;
+};
 
 // Build completed trend buckets (the in-progress bucket is dropped so a run is
 // only counted from finished trends).
@@ -112,7 +138,8 @@ function buildBuckets(prints: Print[]): Bucket[] {
   for (const p of prints) {
     const k = Math.floor(p.t / TREND_BUCKET_MS) * TREND_BUCKET_MS;
     const arr = groups.get(k);
-    if (arr) arr.push(p); else groups.set(k, [p]);
+    if (arr) arr.push(p);
+    else groups.set(k, [p]);
   }
   const keys = [...groups.keys()].sort((a, b) => a - b);
   keys.pop(); // drop the still-forming bucket
@@ -179,21 +206,32 @@ const RIGHT_GUTTER_MS = 45_000;
 function linSlope(vals: number[]): number {
   const n = vals.length;
   if (n < 2) return 0;
-  let sx = 0, sy = 0, sxy = 0, sxx = 0;
-  for (let i = 0; i < n; i++) { sx += i; sy += vals[i]!; sxy += i * vals[i]!; sxx += i * i; }
+  let sx = 0,
+    sy = 0,
+    sxy = 0,
+    sxx = 0;
+  for (let i = 0; i < n; i++) {
+    sx += i;
+    sy += vals[i]!;
+    sxy += i * vals[i]!;
+    sxx += i * i;
+  }
   const denom = n * sxx - sx * sx;
   if (denom === 0) return 0;
   return (n * sxy - sx * sy) / denom;
 }
 
-function clamp(v: number): number { return Math.max(-1, Math.min(1, v)); }
+function clamp(v: number): number {
+  return Math.max(-1, Math.min(1, v));
+}
 
 function scoreWindow(win: Print[]): { score: number; reason: string } | null {
   if (win.length < 6) return null;
   const cvds = win.map((p) => p.cvd);
   const prices = win.map((p) => p.price);
 
-  let buy = 0, sell = 0;
+  let buy = 0,
+    sell = 0;
   for (const p of win) {
     if (p.side === "BUY") buy += p.size;
     else if (p.side === "SELL") sell += p.size;
@@ -214,21 +252,30 @@ function scoreWindow(win: Print[]): { score: number; reason: string } | null {
 
   // Divergence: strong flow one way, price flat or against it => absorption.
   const flow = (cvdSlope + imbalance) / 2;
-  const divergence = Math.abs(flow) > 0.4 && Math.sign(momentum || 0) !== Math.sign(flow)
-    ? -clamp(flow) // fade the aggressors being absorbed
-    : 0;
+  const divergence =
+    Math.abs(flow) > 0.4 && Math.sign(momentum || 0) !== Math.sign(flow)
+      ? -clamp(flow) // fade the aggressors being absorbed
+      : 0;
 
   const score = clamp(0.35 * cvdSlope + 0.3 * imbalance + 0.2 * momentum + 0.15 * divergence * 2);
 
   let reason: string;
-  if (divergence !== 0) reason = flow > 0 ? "buy flow absorbed at highs" : "sell flow absorbed at lows";
-  else if (Math.abs(imbalance) > 0.5) reason = imbalance > 0 ? "offers lifted, CVD rising" : "bids hit, CVD falling";
+  if (divergence !== 0)
+    reason = flow > 0 ? "buy flow absorbed at highs" : "sell flow absorbed at lows";
+  else if (Math.abs(imbalance) > 0.5)
+    reason = imbalance > 0 ? "offers lifted, CVD rising" : "bids hit, CVD falling";
   else reason = score > 0 ? "flow + price confirming up" : "flow + price confirming down";
 
   return { score, reason };
 }
 
-export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = false, onTokensInvalid }: Props) {
+export function AggressorTapeCVD({
+  symbol,
+  tokens,
+  onTokens,
+  sharedAvailable = false,
+  onTokensInvalid,
+}: Props) {
   const fetchQuotes = useServerFn(getSchwabQuotes);
   const refresh = useServerFn(refreshSchwabToken);
   const fetchSharedQuotes = useServerFn(getSharedSchwabQuotes);
@@ -276,7 +323,15 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
     async function tick() {
       if (cancelled) return;
       try {
-        let quotes: Record<string, { last: number | null; bid: number | null; ask: number | null; totalVolume: number | null }> | null;
+        let quotes: Record<
+          string,
+          {
+            last: number | null;
+            bid: number | null;
+            ask: number | null;
+            totalVolume: number | null;
+          }
+        > | null;
         if (useShared) {
           quotes = await fetchSharedQuotes({ data: { symbols: [symbol] } });
           if (!quotes) {
@@ -362,8 +417,20 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
 
     tick();
     const id = setInterval(tick, 2000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [tokens, symbol, sharedAvailable, fetchQuotes, fetchSharedQuotes, refresh, onTokens, onTokensInvalid]);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [
+    tokens,
+    symbol,
+    sharedAvailable,
+    fetchQuotes,
+    fetchSharedQuotes,
+    refresh,
+    onTokens,
+    onTokensInvalid,
+  ]);
 
   // Rolling window: only show the last WINDOW_MS of tape so the chart
   // "flows" with the market as new prints arrive instead of piling up
@@ -393,18 +460,24 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
     return Math.max(sizes[cutIdx] ?? 0, 100);
   }, [visiblePrints]);
 
-  const chartData = useMemo(() => visiblePrints.map((p) => ({
-    t: p.t,
-    price: p.price,
-    cvd: p.cvd,
-    buySize: p.side === "BUY" && p.size >= dotThreshold ? p.size : null,
-    sellSize: p.side === "SELL" && p.size >= dotThreshold ? p.size : null,
-  })), [visiblePrints, dotThreshold]);
+  const chartData = useMemo(
+    () =>
+      visiblePrints.map((p) => ({
+        t: p.t,
+        price: p.price,
+        cvd: p.cvd,
+        buySize: p.side === "BUY" && p.size >= dotThreshold ? p.size : null,
+        sellSize: p.side === "SELL" && p.size >= dotThreshold ? p.size : null,
+      })),
+    [visiblePrints, dotThreshold],
+  );
 
   // Summary strip reflects the same rolling window as the chart so the
   // BUY / SELL / NET numbers describe what the trader is looking at.
   const totals = useMemo(() => {
-    let buy = 0, sell = 0, mid = 0;
+    let buy = 0,
+      sell = 0,
+      mid = 0;
     let cvd = 0;
     for (const p of visiblePrints) {
       if (p.side === "BUY") buy += p.size;
@@ -415,9 +488,8 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
     return { buy, sell, mid, cvd, delta: buy - sell };
   }, [visiblePrints]);
 
-  const imbalancePct = totals.buy + totals.sell > 0
-    ? (totals.buy - totals.sell) / (totals.buy + totals.sell)
-    : 0;
+  const imbalancePct =
+    totals.buy + totals.sell > 0 ? (totals.buy - totals.sell) / (totals.buy + totals.sell) : 0;
 
   // Live recommendation: recomputed on every new print from the trailing window.
   const live = useMemo(() => {
@@ -427,7 +499,8 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
     const last = win[win.length - 1]?.price ?? null;
 
     // --- Directional flow bias over the scoring window ---
-    let buy = 0, sell = 0;
+    let buy = 0,
+      sell = 0;
     for (const p of win) {
       if (p.side === "BUY") buy += p.size;
       else if (p.side === "SELL") sell += p.size;
@@ -437,11 +510,13 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
     // --- Conviction gate: three consecutive same-direction trend buckets ---
     const buckets = buildBuckets(prints);
     const { dir, run } = trendRun(buckets);
-    const isReversal = regimeRef.current != null &&
+    const isReversal =
+      regimeRef.current != null &&
       ((dir === 1 && regimeRef.current === "S") || (dir === -1 && regimeRef.current === "B"));
-    const movement = dir === 0
-      ? { confirmed: false, movePct: 0 }
-      : confirmedMovement(buckets, dir, isReversal ? REVERSAL_PRICE_MOVE : MIN_RUN_PRICE_MOVE);
+    const movement =
+      dir === 0
+        ? { confirmed: false, movePct: 0 }
+        : confirmedMovement(buckets, dir, isReversal ? REVERSAL_PRICE_MOVE : MIN_RUN_PRICE_MOVE);
     const convicted = run >= TREND_RUN_REQUIRED && movement.confirmed;
     const requiredImbalance = isReversal ? REVERSAL_IMBALANCE : MIN_IMBALANCE;
 
@@ -449,15 +524,16 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
     if (convicted && dir === 1 && imb >= requiredImbalance) action = "B";
     else if (convicted && dir === -1 && imb <= -requiredImbalance) action = "S";
 
-    const reason = action === "B"
-      ? `${run} straight up trends · breakout +${(movement.movePct * 100).toFixed(2)}%`
-      : action === "S"
-        ? `${run} straight down trends · breakdown ${(movement.movePct * 100).toFixed(2)}%`
-        : regimeRef.current
-          ? `${regimeRef.current === "B" ? "buy" : "sell"} held · waiting for massive confirmed reversal`
-        : dir !== 0 && run > 0
-          ? `${Math.min(run, TREND_RUN_REQUIRED)}/${TREND_RUN_REQUIRED} ${dir === 1 ? "up" : "down"} trends — waiting for breakout`
-          : s.reason;
+    const reason =
+      action === "B"
+        ? `${run} straight up trends · breakout +${(movement.movePct * 100).toFixed(2)}%`
+        : action === "S"
+          ? `${run} straight down trends · breakdown ${(movement.movePct * 100).toFixed(2)}%`
+          : regimeRef.current
+            ? `${regimeRef.current === "B" ? "buy" : "sell"} held · waiting for massive confirmed reversal`
+            : dir !== 0 && run > 0
+              ? `${Math.min(run, TREND_RUN_REQUIRED)}/${TREND_RUN_REQUIRED} ${dir === 1 ? "up" : "down"} trends — waiting for breakout`
+              : s.reason;
 
     return { ...s, reason, action, price: last };
   }, [prints]);
@@ -488,17 +564,23 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
   const activeMark = useMemo(() => {
     if (!activeSignal) return [];
     const latestPrint = visiblePrints[visiblePrints.length - 1];
-    return [{
-      ...activeSignal,
-      t: nowTick - WINDOW_MS + 30_000,
-      price: latestPrint?.price ?? activeSignal.price,
-    }];
+    return [
+      {
+        ...activeSignal,
+        t: nowTick - WINDOW_MS + 30_000,
+        price: latestPrint?.price ?? activeSignal.price,
+      },
+    ];
   }, [activeSignal, visiblePrints, nowTick]);
 
   const priceDomain = useMemo<[number, number] | ["auto", "auto"]>(() => {
     if (chartData.length === 0) return ["auto", "auto"];
-    let min = Infinity, max = -Infinity;
-    for (const d of chartData) { if (d.price < min) min = d.price; if (d.price > max) max = d.price; }
+    let min = Infinity,
+      max = -Infinity;
+    for (const d of chartData) {
+      if (d.price < min) min = d.price;
+      if (d.price > max) max = d.price;
+    }
     if (!Number.isFinite(min) || !Number.isFinite(max)) return ["auto", "auto"];
     const pad = Math.max((max - min) * 0.1, 0.05);
     return [min - pad, max + pad];
@@ -506,89 +588,225 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
 
   const cvdDomain = useMemo<[number, number] | ["auto", "auto"]>(() => {
     if (chartData.length === 0) return ["auto", "auto"];
-    let min = 0, max = 0;
-    for (const d of chartData) { if (d.cvd < min) min = d.cvd; if (d.cvd > max) max = d.cvd; }
+    let min = 0,
+      max = 0;
+    for (const d of chartData) {
+      if (d.cvd < min) min = d.cvd;
+      if (d.cvd > max) max = d.cvd;
+    }
     const span = Math.max(Math.abs(min), Math.abs(max), 100);
     return [-span * 1.1, span * 1.1];
   }, [chartData]);
 
   if (!tokens?.access_token && !sharedAvailable) {
     return (
-      <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 12, marginBottom: 12 }}>
-        <div style={{ fontSize: 10, color: "#d2a8ff", letterSpacing: 1.5, fontWeight: 700, marginBottom: 6 }}>
+      <div
+        style={{
+          background: "#0d1117",
+          border: "1px solid #21262d",
+          borderRadius: 8,
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <div
+          style={{
+            fontSize: 10,
+            color: "#d2a8ff",
+            letterSpacing: 1.5,
+            fontWeight: 700,
+            marginBottom: 6,
+          }}
+        >
           🎯 AGGRESSOR TAPE + CVD · {symbol}
         </div>
         <div style={{ fontSize: 11, color: "#8b949e", lineHeight: 1.5 }}>
-          Connect Schwab to stream real-time bid/ask/last and build the Cumulative Volume Delta tape.
-          This chart classifies each print as buy- or sell-initiated via the Lee–Ready rule and tracks
-          where net flow is pushing price.
+          Connect Schwab to stream real-time bid/ask/last and build the Cumulative Volume Delta
+          tape. This chart classifies each print as buy- or sell-initiated via the Lee–Ready rule
+          and tracks where net flow is pushing price.
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: 10, marginBottom: 12 }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+    <div
+      style={{
+        background: "#0d1117",
+        border: "1px solid #21262d",
+        borderRadius: 8,
+        padding: 10,
+        marginBottom: 12,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 8,
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 8,
+        }}
+      >
         <div style={{ fontSize: 10, color: "#d2a8ff", letterSpacing: 1.5, fontWeight: 700 }}>
           🎯 AGGRESSOR TAPE + CVD · {symbol}
         </div>
-        <div style={{ display: "flex", gap: 6, alignItems: "center", fontFamily: mono, fontSize: 10 }}>
-          <span style={{ padding: "2px 6px", background: "#161b22", border: "1px solid #21262d", borderRadius: 4, color: status === "live" ? "#39d353" : "#e3b341" }}>
+        <div
+          style={{ display: "flex", gap: 6, alignItems: "center", fontFamily: mono, fontSize: 10 }}
+        >
+          <span
+            style={{
+              padding: "2px 6px",
+              background: "#161b22",
+              border: "1px solid #21262d",
+              borderRadius: 4,
+              color: status === "live" ? "#39d353" : "#e3b341",
+            }}
+          >
             {status === "live" ? "● LIVE 2s" : status.toUpperCase()}
           </span>
         </div>
       </div>
 
       {/* Summary strip: buy vol, sell vol, net delta, imbalance % */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginBottom: 8 }}>
-        <div style={{ padding: 6, background: "rgba(57,211,83,0.08)", border: "1px solid #39d353", borderRadius: 4 }}>
+      <div
+        style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginBottom: 8 }}
+      >
+        <div
+          style={{
+            padding: 6,
+            background: "rgba(57,211,83,0.08)",
+            border: "1px solid #39d353",
+            borderRadius: 4,
+          }}
+        >
           <div style={{ fontSize: 8, color: "#8b949e", letterSpacing: 1 }}>BUY VOL</div>
-          <div style={{ fontSize: 13, fontWeight: 800, color: "#39d353", fontFamily: mono }}>{fmtVol(totals.buy)}</div>
-        </div>
-        <div style={{ padding: 6, background: "rgba(248,81,73,0.08)", border: "1px solid #f85149", borderRadius: 4 }}>
-          <div style={{ fontSize: 8, color: "#8b949e", letterSpacing: 1 }}>SELL VOL</div>
-          <div style={{ fontSize: 13, fontWeight: 800, color: "#f85149", fontFamily: mono }}>{fmtVol(totals.sell)}</div>
-        </div>
-        <div style={{ padding: 6, background: "#010409", border: `1px solid ${totals.delta >= 0 ? "#39d353" : "#f85149"}`, borderRadius: 4 }}>
-          <div style={{ fontSize: 8, color: "#8b949e", letterSpacing: 1 }}>NET Δ</div>
-          <div style={{ fontSize: 13, fontWeight: 800, color: totals.delta >= 0 ? "#39d353" : "#f85149", fontFamily: mono }}>
-            {totals.delta >= 0 ? "+" : ""}{fmtVol(totals.delta)}
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#39d353", fontFamily: mono }}>
+            {fmtVol(totals.buy)}
           </div>
         </div>
-        <div style={{ padding: 6, background: "#010409", border: "1px solid #30363d", borderRadius: 4 }}>
+        <div
+          style={{
+            padding: 6,
+            background: "rgba(248,81,73,0.08)",
+            border: "1px solid #f85149",
+            borderRadius: 4,
+          }}
+        >
+          <div style={{ fontSize: 8, color: "#8b949e", letterSpacing: 1 }}>SELL VOL</div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#f85149", fontFamily: mono }}>
+            {fmtVol(totals.sell)}
+          </div>
+        </div>
+        <div
+          style={{
+            padding: 6,
+            background: "#010409",
+            border: `1px solid ${totals.delta >= 0 ? "#39d353" : "#f85149"}`,
+            borderRadius: 4,
+          }}
+        >
+          <div style={{ fontSize: 8, color: "#8b949e", letterSpacing: 1 }}>NET Δ</div>
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 800,
+              color: totals.delta >= 0 ? "#39d353" : "#f85149",
+              fontFamily: mono,
+            }}
+          >
+            {totals.delta >= 0 ? "+" : ""}
+            {fmtVol(totals.delta)}
+          </div>
+        </div>
+        <div
+          style={{
+            padding: 6,
+            background: "#010409",
+            border: "1px solid #30363d",
+            borderRadius: 4,
+          }}
+        >
           <div style={{ fontSize: 8, color: "#8b949e", letterSpacing: 1 }}>IMBALANCE</div>
-          <div style={{ fontSize: 13, fontWeight: 800, color: imbalancePct >= 0 ? "#39d353" : "#f85149", fontFamily: mono }}>
-            {imbalancePct >= 0 ? "+" : ""}{(imbalancePct * 100).toFixed(1)}%
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 800,
+              color: imbalancePct >= 0 ? "#39d353" : "#f85149",
+              fontFamily: mono,
+            }}
+          >
+            {imbalancePct >= 0 ? "+" : ""}
+            {(imbalancePct * 100).toFixed(1)}%
           </div>
         </div>
       </div>
 
       {/* One persistent directional regime derived from the tape. */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: 8, marginBottom: 8, padding: "6px 8px",
-        background: "#010409", borderRadius: 4,
-        border: `1px solid ${activeSignal?.action === "B" ? "#39d353" : activeSignal?.action === "S" ? "#f85149" : "#30363d"}`,
-      }}>
-        <div style={{
-          width: 26, height: 26, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center",
-          fontFamily: mono, fontSize: 14, fontWeight: 900,
-          background: activeSignal?.action === "B" ? "#39d353" : activeSignal?.action === "S" ? "#f85149" : "#21262d",
-          color: activeSignal ? "#010409" : "#8b949e",
-        }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          marginBottom: 8,
+          padding: "6px 8px",
+          background: "#010409",
+          borderRadius: 4,
+          border: `1px solid ${activeSignal?.action === "B" ? "#39d353" : activeSignal?.action === "S" ? "#f85149" : "#30363d"}`,
+        }}
+      >
+        <div
+          style={{
+            width: 26,
+            height: 26,
+            borderRadius: 4,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontFamily: mono,
+            fontSize: 14,
+            fontWeight: 900,
+            background:
+              activeSignal?.action === "B"
+                ? "#39d353"
+                : activeSignal?.action === "S"
+                  ? "#f85149"
+                  : "#21262d",
+            color: activeSignal ? "#010409" : "#8b949e",
+          }}
+        >
           {activeSignal?.action ?? "–"}
         </div>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 8, color: "#8b949e", letterSpacing: 1 }}>LIVE READ</div>
-          <div style={{ fontSize: 10, color: "#c9d1d9", fontFamily: mono, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          <div
+            style={{
+              fontSize: 10,
+              color: "#c9d1d9",
+              fontFamily: mono,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
             {activeSignal
               ? `${activeSignal.action === "B" ? "BUY" : "SELL"} ACTIVE · ${live?.reason ?? activeSignal.reason}`
-              : live ? `NO SIGNAL · ${live.reason}` : "building tape…"}
+              : live
+                ? `NO SIGNAL · ${live.reason}`
+                : "building tape…"}
           </div>
         </div>
         <div style={{ marginLeft: "auto", textAlign: "right" }}>
           <div style={{ fontSize: 8, color: "#8b949e", letterSpacing: 1 }}>CONVICTION</div>
-          <div style={{ fontSize: 12, fontWeight: 800, fontFamily: mono, color: activeSignal?.action === "B" ? "#39d353" : "#f85149" }}>
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 800,
+              fontFamily: mono,
+              color: activeSignal?.action === "B" ? "#39d353" : "#f85149",
+            }}
+          >
             {activeSignal ? `${Math.round(Math.abs(activeSignal.score) * 100)}%` : "—"}
           </div>
         </div>
@@ -601,17 +819,39 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
       ) : (
         <>
           {/* Top pane: price line + colored buy/sell prints sized by trade volume */}
-          <div style={{ fontSize: 9, color: "#8b949e", fontFamily: mono, padding: "0 4px 2px" }}>PRICE · aggressor prints</div>
+          <div style={{ fontSize: 9, color: "#8b949e", fontFamily: mono, padding: "0 4px 2px" }}>
+            PRICE · aggressor prints
+          </div>
           <ResponsiveContainer width="100%" height={210}>
             <ComposedChart data={chartData} margin={{ top: 4, right: 44, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-              <XAxis dataKey="t" type="number" scale="time"
-                domain={[nowTick - WINDOW_MS, nowTick + RIGHT_GUTTER_MS]} tickFormatter={fmtTime}
-                stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} allowDataOverflow />
-              <YAxis yAxisId="p" domain={priceDomain} stroke="#8b949e" fontSize={9} width={54}
-                tick={{ fontFamily: mono }} tickFormatter={(v: number) => `$${v.toFixed(2)}`} />
+              <XAxis
+                dataKey="t"
+                type="number"
+                scale="time"
+                domain={[nowTick - WINDOW_MS, nowTick + RIGHT_GUTTER_MS]}
+                tickFormatter={fmtTime}
+                stroke="#8b949e"
+                fontSize={9}
+                tick={{ fontFamily: mono }}
+                allowDataOverflow
+              />
+              <YAxis
+                yAxisId="p"
+                domain={priceDomain}
+                stroke="#8b949e"
+                fontSize={9}
+                width={54}
+                tick={{ fontFamily: mono }}
+                tickFormatter={(v: number) => `$${v.toFixed(2)}`}
+              />
               <Tooltip
-                contentStyle={{ background: "#161b22", border: "1px solid #30363d", fontSize: 11, fontFamily: mono }}
+                contentStyle={{
+                  background: "#161b22",
+                  border: "1px solid #30363d",
+                  fontSize: 11,
+                  fontFamily: mono,
+                }}
                 labelFormatter={(v: number) => fmtTime(v)}
                 formatter={(val: unknown, name: string) => {
                   if (val == null) return ["—", name];
@@ -621,57 +861,154 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
                   return [String(val), name];
                 }}
               />
-              <Line yAxisId="p" type="monotone" dataKey="price" stroke="#58a6ff" strokeWidth={1.5}
-                dot={false} isAnimationActive={false} />
+              <Line
+                yAxisId="p"
+                type="monotone"
+                dataKey="price"
+                stroke="#58a6ff"
+                strokeWidth={1.5}
+                dot={false}
+                isAnimationActive={false}
+              />
               {/* Exactly one active regime marker; it is replaced, never appended. */}
-              <Scatter yAxisId="p" dataKey="price" data={activeSignal?.action === "B" ? activeMark : []} isAnimationActive={false}
+              <Scatter
+                yAxisId="p"
+                dataKey="price"
+                data={activeSignal?.action === "B" ? activeMark : []}
+                isAnimationActive={false}
                 shape={(props: { cx?: number; cy?: number }) => (
                   <g>
-                    <line x1={props.cx} y1={(props.cy ?? 0) + 4} x2={props.cx} y2={(props.cy ?? 0) + 20}
-                      stroke="#39d353" strokeWidth={1} strokeOpacity={0.6} />
-                    <circle cx={props.cx} cy={(props.cy ?? 0) + 28} r={9} fill="#39d353" fillOpacity={0.95}
-                      stroke="#010409" strokeWidth={1.5} />
-                    <text x={props.cx} y={(props.cy ?? 0) + 28} textAnchor="middle" dominantBaseline="central"
-                      fontSize={11} fontWeight={900} fontFamily={mono} fill="#010409">B</text>
+                    <line
+                      x1={props.cx}
+                      y1={(props.cy ?? 0) + 4}
+                      x2={props.cx}
+                      y2={(props.cy ?? 0) + 20}
+                      stroke="#39d353"
+                      strokeWidth={1}
+                      strokeOpacity={0.6}
+                    />
+                    <circle
+                      cx={props.cx}
+                      cy={(props.cy ?? 0) + 28}
+                      r={9}
+                      fill="#39d353"
+                      fillOpacity={0.95}
+                      stroke="#010409"
+                      strokeWidth={1.5}
+                    />
+                    <text
+                      x={props.cx}
+                      y={(props.cy ?? 0) + 28}
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fontSize={11}
+                      fontWeight={900}
+                      fontFamily={mono}
+                      fill="#010409"
+                    >
+                      B
+                    </text>
                   </g>
-                )} />
-              <Scatter yAxisId="p" dataKey="price" data={activeSignal?.action === "S" ? activeMark : []} isAnimationActive={false}
+                )}
+              />
+              <Scatter
+                yAxisId="p"
+                dataKey="price"
+                data={activeSignal?.action === "S" ? activeMark : []}
+                isAnimationActive={false}
                 shape={(props: { cx?: number; cy?: number }) => (
                   <g>
-                    <line x1={props.cx} y1={(props.cy ?? 0) - 4} x2={props.cx} y2={(props.cy ?? 0) - 20}
-                      stroke="#f85149" strokeWidth={1} strokeOpacity={0.6} />
-                    <circle cx={props.cx} cy={(props.cy ?? 0) - 28} r={9} fill="#f85149" fillOpacity={0.95}
-                      stroke="#010409" strokeWidth={1.5} />
-                    <text x={props.cx} y={(props.cy ?? 0) - 28} textAnchor="middle" dominantBaseline="central"
-                      fontSize={11} fontWeight={900} fontFamily={mono} fill="#010409">S</text>
+                    <line
+                      x1={props.cx}
+                      y1={(props.cy ?? 0) - 4}
+                      x2={props.cx}
+                      y2={(props.cy ?? 0) - 20}
+                      stroke="#f85149"
+                      strokeWidth={1}
+                      strokeOpacity={0.6}
+                    />
+                    <circle
+                      cx={props.cx}
+                      cy={(props.cy ?? 0) - 28}
+                      r={9}
+                      fill="#f85149"
+                      fillOpacity={0.95}
+                      stroke="#010409"
+                      strokeWidth={1.5}
+                    />
+                    <text
+                      x={props.cx}
+                      y={(props.cy ?? 0) - 28}
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fontSize={11}
+                      fontWeight={900}
+                      fontFamily={mono}
+                      fill="#010409"
+                    >
+                      S
+                    </text>
                   </g>
-                )} />
+                )}
+              />
             </ComposedChart>
           </ResponsiveContainer>
 
           {/* Bottom pane: Cumulative Volume Delta line — where flow is pushing */}
-          <div style={{ fontSize: 9, color: "#8b949e", fontFamily: mono, padding: "4px 4px 2px" }}>CUMULATIVE VOLUME DELTA</div>
+          <div style={{ fontSize: 9, color: "#8b949e", fontFamily: mono, padding: "4px 4px 2px" }}>
+            CUMULATIVE VOLUME DELTA
+          </div>
           <ResponsiveContainer width="100%" height={110}>
             <ComposedChart data={chartData} margin={{ top: 4, right: 44, left: 0, bottom: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-              <XAxis dataKey="t" type="number" scale="time"
-                domain={[nowTick - WINDOW_MS, nowTick + RIGHT_GUTTER_MS]} tickFormatter={fmtTime}
-                stroke="#8b949e" fontSize={9} tick={{ fontFamily: mono }} allowDataOverflow />
-              <YAxis domain={cvdDomain} stroke="#8b949e" fontSize={9} width={54}
-                tick={{ fontFamily: mono }} tickFormatter={(v: number) => fmtVol(v)} />
+              <XAxis
+                dataKey="t"
+                type="number"
+                scale="time"
+                domain={[nowTick - WINDOW_MS, nowTick + RIGHT_GUTTER_MS]}
+                tickFormatter={fmtTime}
+                stroke="#8b949e"
+                fontSize={9}
+                tick={{ fontFamily: mono }}
+                allowDataOverflow
+              />
+              <YAxis
+                domain={cvdDomain}
+                stroke="#8b949e"
+                fontSize={9}
+                width={54}
+                tick={{ fontFamily: mono }}
+                tickFormatter={(v: number) => fmtVol(v)}
+              />
               <ReferenceLine y={0} stroke="#484f58" />
               <Tooltip
-                contentStyle={{ background: "#161b22", border: "1px solid #30363d", fontSize: 11, fontFamily: mono }}
+                contentStyle={{
+                  background: "#161b22",
+                  border: "1px solid #30363d",
+                  fontSize: 11,
+                  fontFamily: mono,
+                }}
                 labelFormatter={(v: number) => fmtTime(v)}
-                formatter={(val: unknown) => [`${Number(val) >= 0 ? "+" : ""}${fmtVol(Number(val))}`, "CVD"]}
+                formatter={(val: unknown) => [
+                  `${Number(val) >= 0 ? "+" : ""}${fmtVol(Number(val))}`,
+                  "CVD",
+                ]}
               />
-              <Line type="monotone" dataKey="cvd" stroke={totals.cvd >= 0 ? "#39d353" : "#f85149"}
-                strokeWidth={1.75} dot={false} isAnimationActive={false} />
+              <Line
+                type="monotone"
+                dataKey="cvd"
+                stroke={totals.cvd >= 0 ? "#39d353" : "#f85149"}
+                strokeWidth={1.75}
+                dot={false}
+                isAnimationActive={false}
+              />
             </ComposedChart>
           </ResponsiveContainer>
 
           <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "4px 0 0" }}>
-             One active signal only · requires 3 consecutive 30s price-and-flow trends plus a range break · BUY or SELL stays active until an opposite 0.25% breakout with at least 55% imbalance is confirmed · polls every 2s · not financial advice
+            One active signal only · requires 3 consecutive 30s price-and-flow trends plus a range
+            break · BUY or SELL stays active until an opposite 0.25% breakout with at least 55%
+            imbalance is confirmed · polls every 2s · not financial advice
           </div>
         </>
       )}
