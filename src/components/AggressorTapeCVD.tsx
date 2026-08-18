@@ -91,13 +91,16 @@ const TREND_RUN_REQUIRED = 3;
 // Breakout model: a mark only fires when price clears the recent range in the
 // SAME direction the flow imbalance is pushing. Only one direction can be
 // active at a time — the opposite letter cannot print until the regime flips.
-const SIGNAL_MIN_GAP_MS = 600_000;      // at most one mark every 10 minutes
-const SIGNAL_FLIP_GAP_MS = 600_000;     // keep the opposite call off-screen
 // Consecutive polls that must agree before a mark is stamped.
 const SIGNAL_CONFIRM_POLLS = 3;
 // Breakout gates.
 const MIN_IMBALANCE = 0.35;     // required directional flow bias
 const MIN_RUN_PRICE_MOVE = 0.0015; // require a real 0.15% move, not tape noise
+// A live regime only flips on materially stronger evidence than the evidence
+// needed to establish it. This keeps ordinary counter-trend noise from
+// alternating BUY and SELL calls.
+const REVERSAL_IMBALANCE = 0.55;
+const REVERSAL_PRICE_MOVE = 0.0025;
 
 type Bucket = { t: number; delta: number; open: number; close: number; priceChange: number; dir: 1 | -1 | 0 };
 
@@ -145,7 +148,11 @@ function trendRun(buckets: Bucket[]): { dir: 1 | -1 | 0; run: number } {
   return { dir, run };
 }
 
-function confirmedMovement(buckets: Bucket[], dir: 1 | -1): { confirmed: boolean; movePct: number } {
+function confirmedMovement(
+  buckets: Bucket[],
+  dir: 1 | -1,
+  minimumMove = MIN_RUN_PRICE_MOVE,
+): { confirmed: boolean; movePct: number } {
   const runBuckets = buckets.slice(-TREND_RUN_REQUIRED);
   if (runBuckets.length < TREND_RUN_REQUIRED || runBuckets.some((bucket) => bucket.dir !== dir)) {
     return { confirmed: false, movePct: 0 };
@@ -161,7 +168,7 @@ function confirmedMovement(buckets: Bucket[], dir: 1 | -1): { confirmed: boolean
   if (reference.length === 0) return { confirmed: false, movePct };
   const priorHigh = Math.max(...reference.map((bucket) => Math.max(bucket.open, bucket.close)));
   const priorLow = Math.min(...reference.map((bucket) => Math.min(bucket.open, bucket.close)));
-  const displaced = dir === 1 ? movePct >= MIN_RUN_PRICE_MOVE : movePct <= -MIN_RUN_PRICE_MOVE;
+  const displaced = dir === 1 ? movePct >= minimumMove : movePct <= -minimumMove;
   const brokeRange = dir === 1 ? last.close > priorHigh : last.close < priorLow;
   return { confirmed: displaced && brokeRange, movePct };
 }
@@ -234,8 +241,7 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
   // Shared-feed failures are usually transient (rate limit, 5xx, brief blip).
   // Only treat the connection as dead after several consecutive misses.
   const sharedFailRef = useRef(0);
-  const [signals, setSignals] = useState<Signal[]>([]);
-  const lastSignalRef = useRef<{ t: number; action: "B" | "S" } | null>(null);
+  const [activeSignal, setActiveSignal] = useState<Signal | null>(null);
   // Previous poll's candidate action — a signal only fires when the same
   // read repeats, which filters out one-tick flickers.
   const pendingRef = useRef<{ action: "B" | "S"; count: number } | null>(null);
@@ -250,8 +256,7 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
     if (symbolRef.current !== symbol) {
       symbolRef.current = symbol;
       setPrints([]);
-      setSignals([]);
-      lastSignalRef.current = null;
+      setActiveSignal(null);
       pendingRef.current = null;
       regimeRef.current = null;
       cvdRef.current = 0;
@@ -432,33 +437,24 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
     // --- Conviction gate: three consecutive same-direction trend buckets ---
     const buckets = buildBuckets(prints);
     const { dir, run } = trendRun(buckets);
-    const movement = dir === 0 ? { confirmed: false, movePct: 0 } : confirmedMovement(buckets, dir);
+    const isReversal = regimeRef.current != null &&
+      ((dir === 1 && regimeRef.current === "S") || (dir === -1 && regimeRef.current === "B"));
+    const movement = dir === 0
+      ? { confirmed: false, movePct: 0 }
+      : confirmedMovement(buckets, dir, isReversal ? REVERSAL_PRICE_MOVE : MIN_RUN_PRICE_MOVE);
     const convicted = run >= TREND_RUN_REQUIRED && movement.confirmed;
+    const requiredImbalance = isReversal ? REVERSAL_IMBALANCE : MIN_IMBALANCE;
 
     let action: "B" | "S" | "WAIT" = "WAIT";
-    if (convicted && dir === 1 && imb >= MIN_IMBALANCE) action = "B";
-    else if (convicted && dir === -1 && imb <= -MIN_IMBALANCE) action = "S";
-
-    // Once a direction prints, do not show the opposite direction in LIVE READ
-    // while that marker remains relevant. This prevents an old B marker and a
-    // new S read (or vice versa) from appearing together during ordinary chop.
-    const previousSignal = lastSignalRef.current;
-    if (
-      action !== "WAIT" &&
-      regimeRef.current &&
-      regimeRef.current !== action &&
-      previousSignal &&
-      Date.now() - previousSignal.t < SIGNAL_FLIP_GAP_MS
-    ) {
-      action = "WAIT";
-    }
+    if (convicted && dir === 1 && imb >= requiredImbalance) action = "B";
+    else if (convicted && dir === -1 && imb <= -requiredImbalance) action = "S";
 
     const reason = action === "B"
       ? `${run} straight up trends · breakout +${(movement.movePct * 100).toFixed(2)}%`
       : action === "S"
         ? `${run} straight down trends · breakdown ${(movement.movePct * 100).toFixed(2)}%`
-        : convicted && regimeRef.current
-          ? `${regimeRef.current === "B" ? "buy" : "sell"} regime held — opposite blocked`
+        : regimeRef.current
+          ? `${regimeRef.current === "B" ? "buy" : "sell"} held · waiting for massive confirmed reversal`
         : dir !== 0 && run > 0
           ? `${Math.min(run, TREND_RUN_REQUIRED)}/${TREND_RUN_REQUIRED} ${dir === 1 ? "up" : "down"} trends — waiting for breakout`
           : s.reason;
@@ -466,8 +462,9 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
     return { ...s, reason, action, price: last };
   }, [prints]);
 
-  // Commit a marker onto the tape when conviction crosses the threshold,
-  // throttled so we don't stamp the same call every 2s.
+  // Maintain exactly one persistent directional regime. Repeated calls in the
+  // same direction do nothing; a new marker can only replace the active marker
+  // after a materially stronger opposite breakout is confirmed.
   useEffect(() => {
     if (!live || live.action === "WAIT" || live.price == null) {
       pendingRef.current = null;
@@ -481,43 +478,22 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
     }
     pendingRef.current.count += 1;
     if (pendingRef.current.count < SIGNAL_CONFIRM_POLLS) return;
+    if (regimeRef.current === action) return;
     const now = Date.now();
-    const prev = lastSignalRef.current;
-    if (prev) {
-      const gap = prev.action === action ? SIGNAL_MIN_GAP_MS : SIGNAL_FLIP_GAP_MS;
-      if (now - prev.t < gap) return;
-    }
-    // One regime at a time: never stamp the opposite letter right after a mark.
-    if (regimeRef.current && regimeRef.current !== action && prev && now - prev.t < SIGNAL_FLIP_GAP_MS) return;
     regimeRef.current = action;
-    lastSignalRef.current = { t: now, action };
-    setSignals((s) => {
-      const next = [...s, { t: now, price: live.price!, action, score: live.score, reason: live.reason }];
-      return next.length > 20 ? next.slice(next.length - 20) : next;
-    });
+    setActiveSignal({ t: now, price: live.price, action, score: live.score, reason: live.reason });
+    pendingRef.current = null;
   }, [live]);
 
-  const visibleSignals = useMemo(() => {
-    const active = signals[signals.length - 1];
-    if (!active) return [];
-
-    const cutoff = nowTick - WINDOW_MS;
-    if (active.t >= cutoff) return [active];
-
-    // A signal represents the active directional regime, not a short-lived
-    // event. Once its original point scrolls out of the four-minute tape,
-    // pin it inside the left edge at the latest price until a confirmed
-    // reversal replaces it. This prevents an empty chart during the longer
-    // reversal lockout without ever showing B and S together.
+  const activeMark = useMemo(() => {
+    if (!activeSignal) return [];
     const latestPrint = visiblePrints[visiblePrints.length - 1];
     return [{
-      ...active,
-      t: cutoff + 15_000,
-      price: latestPrint?.price ?? active.price,
+      ...activeSignal,
+      t: nowTick - WINDOW_MS + 30_000,
+      price: latestPrint?.price ?? activeSignal.price,
     }];
-  }, [signals, visiblePrints, nowTick]);
-  const buyMarks = useMemo(() => visibleSignals.filter((s) => s.action === "B"), [visibleSignals]);
-  const sellMarks = useMemo(() => visibleSignals.filter((s) => s.action === "S"), [visibleSignals]);
+  }, [activeSignal, visiblePrints, nowTick]);
 
   const priceDomain = useMemo<[number, number] | ["auto", "auto"]>(() => {
     if (chartData.length === 0) return ["auto", "auto"];
@@ -588,30 +564,32 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
         </div>
       </div>
 
-      {/* Live recommendation derived from the same tape the chart draws */}
+      {/* One persistent directional regime derived from the tape. */}
       <div style={{
         display: "flex", alignItems: "center", gap: 8, marginBottom: 8, padding: "6px 8px",
         background: "#010409", borderRadius: 4,
-        border: `1px solid ${live?.action === "B" ? "#39d353" : live?.action === "S" ? "#f85149" : "#30363d"}`,
+        border: `1px solid ${activeSignal?.action === "B" ? "#39d353" : activeSignal?.action === "S" ? "#f85149" : "#30363d"}`,
       }}>
         <div style={{
           width: 26, height: 26, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center",
           fontFamily: mono, fontSize: 14, fontWeight: 900,
-          background: live?.action === "B" ? "#39d353" : live?.action === "S" ? "#f85149" : "#21262d",
-          color: live?.action === "B" || live?.action === "S" ? "#010409" : "#8b949e",
+          background: activeSignal?.action === "B" ? "#39d353" : activeSignal?.action === "S" ? "#f85149" : "#21262d",
+          color: activeSignal ? "#010409" : "#8b949e",
         }}>
-          {live?.action === "B" ? "B" : live?.action === "S" ? "S" : "–"}
+          {activeSignal?.action ?? "–"}
         </div>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 8, color: "#8b949e", letterSpacing: 1 }}>LIVE READ</div>
           <div style={{ fontSize: 10, color: "#c9d1d9", fontFamily: mono, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {live ? `${live.action === "WAIT" ? "NO EDGE" : live.action === "B" ? "BUY" : "SELL"} · ${live.reason}` : "building tape…"}
+            {activeSignal
+              ? `${activeSignal.action === "B" ? "BUY" : "SELL"} ACTIVE · ${live?.reason ?? activeSignal.reason}`
+              : live ? `NO SIGNAL · ${live.reason}` : "building tape…"}
           </div>
         </div>
         <div style={{ marginLeft: "auto", textAlign: "right" }}>
           <div style={{ fontSize: 8, color: "#8b949e", letterSpacing: 1 }}>CONVICTION</div>
-          <div style={{ fontSize: 12, fontWeight: 800, fontFamily: mono, color: live && live.score >= 0 ? "#39d353" : "#f85149" }}>
-            {live ? `${Math.round(Math.abs(live.score) * 100)}%` : "—"}
+          <div style={{ fontSize: 12, fontWeight: 800, fontFamily: mono, color: activeSignal?.action === "B" ? "#39d353" : "#f85149" }}>
+            {activeSignal ? `${Math.round(Math.abs(activeSignal.score) * 100)}%` : "—"}
           </div>
         </div>
       </div>
@@ -645,18 +623,8 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
               />
               <Line yAxisId="p" type="monotone" dataKey="price" stroke="#58a6ff" strokeWidth={1.5}
                 dot={false} isAnimationActive={false} />
-              <Scatter yAxisId="p" dataKey="price" data={chartData.filter((d) => d.buySize)} fill="#39d353"
-                isAnimationActive={false}
-                shape={(props: { cx?: number; cy?: number; fill?: string }) => (
-                  <circle cx={props.cx} cy={props.cy} r={2.5} fill={props.fill} fillOpacity={0.85} />
-                )} />
-              <Scatter yAxisId="p" dataKey="price" data={chartData.filter((d) => d.sellSize)} fill="#f85149"
-                isAnimationActive={false}
-                shape={(props: { cx?: number; cy?: number; fill?: string }) => (
-                  <circle cx={props.cx} cy={props.cy} r={2.5} fill={props.fill} fillOpacity={0.85} />
-                )} />
-              {/* B / S recommendation markers stamped on the price line */}
-              <Scatter yAxisId="p" dataKey="price" data={buyMarks} isAnimationActive={false}
+              {/* Exactly one active regime marker; it is replaced, never appended. */}
+              <Scatter yAxisId="p" dataKey="price" data={activeSignal?.action === "B" ? activeMark : []} isAnimationActive={false}
                 shape={(props: { cx?: number; cy?: number }) => (
                   <g>
                     <line x1={props.cx} y1={(props.cy ?? 0) + 4} x2={props.cx} y2={(props.cy ?? 0) + 20}
@@ -667,7 +635,7 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
                       fontSize={11} fontWeight={900} fontFamily={mono} fill="#010409">B</text>
                   </g>
                 )} />
-              <Scatter yAxisId="p" dataKey="price" data={sellMarks} isAnimationActive={false}
+              <Scatter yAxisId="p" dataKey="price" data={activeSignal?.action === "S" ? activeMark : []} isAnimationActive={false}
                 shape={(props: { cx?: number; cy?: number }) => (
                   <g>
                     <line x1={props.cx} y1={(props.cy ?? 0) - 4} x2={props.cx} y2={(props.cy ?? 0) - 20}
@@ -703,7 +671,7 @@ export function AggressorTapeCVD({ symbol, tokens, onTokens, sharedAvailable = f
           </ResponsiveContainer>
 
           <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "4px 0 0" }}>
-             Lee–Ready tick rule · dots = heaviest prints only · B/S requires 3 consecutive 30s trends, matching imbalance, a 0.15% price move, and a break of the prior range · the active call stays visible until a confirmed reversal · one mark on screen · polls every 2s · not financial advice
+             One active signal only · requires 3 consecutive 30s price-and-flow trends plus a range break · BUY or SELL stays active until an opposite 0.25% breakout with at least 55% imbalance is confirmed · polls every 2s · not financial advice
           </div>
         </>
       )}
