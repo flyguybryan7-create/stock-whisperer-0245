@@ -447,19 +447,6 @@ export function AggressorTapeCVD({
     return prints.filter((p) => p.t >= cutoff);
   }, [prints, nowTick]);
 
-  // Volume threshold: hide dust prints so only meaningful aggressor
-  // trades are dotted on the price line. Threshold scales with the
-  // largest recent print so it adapts per-ticker.
-  // Only the heaviest prints get dotted — everything else is noise on a
-  // 2s poll and just fills the pane with overlapping circles.
-  const dotThreshold = useMemo(() => {
-    if (visiblePrints.length === 0) return 0;
-    const sizes = visiblePrints.map((p) => p.size).sort((a, b) => b - a);
-    // Keep roughly the top 20% of prints, and never fewer than the top 12.
-    const cutIdx = Math.min(sizes.length - 1, Math.max(11, Math.floor(sizes.length * 0.2)));
-    return Math.max(sizes[cutIdx] ?? 0, 100);
-  }, [visiblePrints]);
-
   const chartData = useMemo(
     () =>
       visiblePrints.map((p) => ({
