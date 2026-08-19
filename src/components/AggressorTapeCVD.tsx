@@ -447,29 +447,14 @@ export function AggressorTapeCVD({
     return prints.filter((p) => p.t >= cutoff);
   }, [prints, nowTick]);
 
-  // Volume threshold: hide dust prints so only meaningful aggressor
-  // trades are dotted on the price line. Threshold scales with the
-  // largest recent print so it adapts per-ticker.
-  // Only the heaviest prints get dotted — everything else is noise on a
-  // 2s poll and just fills the pane with overlapping circles.
-  const dotThreshold = useMemo(() => {
-    if (visiblePrints.length === 0) return 0;
-    const sizes = visiblePrints.map((p) => p.size).sort((a, b) => b - a);
-    // Keep roughly the top 20% of prints, and never fewer than the top 12.
-    const cutIdx = Math.min(sizes.length - 1, Math.max(11, Math.floor(sizes.length * 0.2)));
-    return Math.max(sizes[cutIdx] ?? 0, 100);
-  }, [visiblePrints]);
-
   const chartData = useMemo(
     () =>
       visiblePrints.map((p) => ({
         t: p.t,
         price: p.price,
         cvd: p.cvd,
-        buySize: p.side === "BUY" && p.size >= dotThreshold ? p.size : null,
-        sellSize: p.side === "SELL" && p.size >= dotThreshold ? p.size : null,
       })),
-    [visiblePrints, dotThreshold],
+    [visiblePrints],
   );
 
   // Summary strip reflects the same rolling window as the chart so the
@@ -820,7 +805,7 @@ export function AggressorTapeCVD({
         <>
           {/* Top pane: price line + colored buy/sell prints sized by trade volume */}
           <div style={{ fontSize: 9, color: "#8b949e", fontFamily: mono, padding: "0 4px 2px" }}>
-            PRICE · aggressor prints
+            PRICE · persistent directional regime
           </div>
           <ResponsiveContainer width="100%" height={210}>
             <ComposedChart data={chartData} margin={{ top: 4, right: 44, left: 0, bottom: 0 }}>
@@ -856,8 +841,6 @@ export function AggressorTapeCVD({
                 formatter={(val: unknown, name: string) => {
                   if (val == null) return ["—", name];
                   if (name === "price") return [`$${Number(val).toFixed(2)}`, "price"];
-                  if (name === "buySize") return [`${fmtVol(Number(val))} @ ask`, "BUY"];
-                  if (name === "sellSize") return [`${fmtVol(Number(val))} @ bid`, "SELL"];
                   return [String(val), name];
                 }}
               />
@@ -870,86 +853,54 @@ export function AggressorTapeCVD({
                 dot={false}
                 isAnimationActive={false}
               />
-              {/* Exactly one active regime marker; it is replaced, never appended. */}
+              {/* One physical marker renderer. Its data array has zero or one row,
+                  so opposite markers cannot coexist even during a state change. */}
               <Scatter
                 yAxisId="p"
                 dataKey="price"
-                data={activeSignal?.action === "B" ? activeMark : []}
+                data={activeMark}
                 isAnimationActive={false}
-                shape={(props: { cx?: number; cy?: number }) => (
-                  <g>
-                    <line
-                      x1={props.cx}
-                      y1={(props.cy ?? 0) + 4}
-                      x2={props.cx}
-                      y2={(props.cy ?? 0) + 20}
-                      stroke="#39d353"
-                      strokeWidth={1}
-                      strokeOpacity={0.6}
-                    />
-                    <circle
-                      cx={props.cx}
-                      cy={(props.cy ?? 0) + 28}
-                      r={9}
-                      fill="#39d353"
-                      fillOpacity={0.95}
-                      stroke="#010409"
-                      strokeWidth={1.5}
-                    />
-                    <text
-                      x={props.cx}
-                      y={(props.cy ?? 0) + 28}
-                      textAnchor="middle"
-                      dominantBaseline="central"
-                      fontSize={11}
-                      fontWeight={900}
-                      fontFamily={mono}
-                      fill="#010409"
-                    >
-                      B
-                    </text>
-                  </g>
-                )}
-              />
-              <Scatter
-                yAxisId="p"
-                dataKey="price"
-                data={activeSignal?.action === "S" ? activeMark : []}
-                isAnimationActive={false}
-                shape={(props: { cx?: number; cy?: number }) => (
-                  <g>
-                    <line
-                      x1={props.cx}
-                      y1={(props.cy ?? 0) - 4}
-                      x2={props.cx}
-                      y2={(props.cy ?? 0) - 20}
-                      stroke="#f85149"
-                      strokeWidth={1}
-                      strokeOpacity={0.6}
-                    />
-                    <circle
-                      cx={props.cx}
-                      cy={(props.cy ?? 0) - 28}
-                      r={9}
-                      fill="#f85149"
-                      fillOpacity={0.95}
-                      stroke="#010409"
-                      strokeWidth={1.5}
-                    />
-                    <text
-                      x={props.cx}
-                      y={(props.cy ?? 0) - 28}
-                      textAnchor="middle"
-                      dominantBaseline="central"
-                      fontSize={11}
-                      fontWeight={900}
-                      fontFamily={mono}
-                      fill="#010409"
-                    >
-                      S
-                    </text>
-                  </g>
-                )}
+                shape={(props: { cx?: number; cy?: number; payload?: Signal }) => {
+                  const action = props.payload?.action;
+                  if (action !== "B" && action !== "S") return <g />;
+                  const isBuy = action === "B";
+                  const markerY = (props.cy ?? 0) + (isBuy ? 28 : -28);
+                  const color = isBuy ? "#39d353" : "#f85149";
+                  return (
+                    <g>
+                      <line
+                        x1={props.cx}
+                        y1={(props.cy ?? 0) + (isBuy ? 4 : -4)}
+                        x2={props.cx}
+                        y2={(props.cy ?? 0) + (isBuy ? 20 : -20)}
+                        stroke={color}
+                        strokeWidth={1}
+                        strokeOpacity={0.6}
+                      />
+                      <circle
+                        cx={props.cx}
+                        cy={markerY}
+                        r={10}
+                        fill={color}
+                        fillOpacity={0.98}
+                        stroke="#010409"
+                        strokeWidth={2}
+                      />
+                      <text
+                        x={props.cx}
+                        y={markerY}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fontSize={11}
+                        fontWeight={900}
+                        fontFamily={mono}
+                        fill="#010409"
+                      >
+                        {action}
+                      </text>
+                    </g>
+                  );
+                }}
               />
             </ComposedChart>
           </ResponsiveContainer>

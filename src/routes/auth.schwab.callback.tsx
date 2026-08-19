@@ -51,11 +51,15 @@ function SchwabCallback() {
         // Always persist to the public shared-owner row so the OptionsFlow /
         // shared Schwab feed keeps working across sessions and devices even
         // when nobody is signed into BryanTrade.
+        let sharedSyncFailed = false;
         await persistSharedPublic({ data: payload })
           .then(() => console.info("[schwab] public shared owner token persisted"))
           .catch((e) => {
-            console.warn("[schwab] could not persist public shared token", e);
-            throw e;
+            // The OAuth exchange already succeeded and this browser has the
+            // tokens. A paused/unavailable database must not turn a valid
+            // Schwab login into a failed connection screen.
+            sharedSyncFailed = true;
+            console.warn("[schwab] shared token sync deferred", e);
           });
         // Additionally persist per-user if the caller is signed into BryanTrade.
         void persistOwner({ data: payload })
@@ -67,7 +71,11 @@ function SchwabCallback() {
           : null;
         const destination = returnOrigin ? `${returnOrigin}/?schwab=connected` : "/?schwab=connected";
         setReturnHref(destination);
-        setStatus("✅ Schwab connected — returning to BryanTrade…");
+        setStatus(
+          sharedSyncFailed
+            ? "Schwab connected on this device — shared feed sync is temporarily unavailable. Returning to BryanTrade…"
+            : "Schwab connected — returning to BryanTrade…",
+        );
         setDone(true);
         setTimeout(() => {
           if (returnOrigin) window.location.href = destination;
