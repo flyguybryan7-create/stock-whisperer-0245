@@ -194,12 +194,14 @@ function confirmedMovement(
   // The three-bucket trend must also clear the range immediately preceding it.
   // This prevents alternating B/S calls inside the same sideways price chop.
   const reference = buckets.slice(-(TREND_RUN_REQUIRED + 6), -TREND_RUN_REQUIRED);
-  if (reference.length === 0) return { confirmed: false, movePct };
+  const displaced = dir === 1 ? movePct >= minimumMove : movePct <= -minimumMove;
+  if (reference.length === 0) return { confirmed: displaced, movePct };
   const priorHigh = Math.max(...reference.map((bucket) => Math.max(bucket.open, bucket.close)));
   const priorLow = Math.min(...reference.map((bucket) => Math.min(bucket.open, bucket.close)));
-  const displaced = dir === 1 ? movePct >= minimumMove : movePct <= -minimumMove;
-  const brokeRange = dir === 1 ? last.close > priorHigh : last.close < priorLow;
-  return { confirmed: displaced && brokeRange, movePct };
+  const brokeRange = dir === 1 ? last.close >= priorHigh : last.close <= priorLow;
+  // Either a clean range break, or a move twice the minimum, is enough.
+  const strong = dir === 1 ? movePct >= minimumMove * 2 : movePct <= -minimumMove * 2;
+  return { confirmed: displaced && (brokeRange || strong), movePct };
 }
 // Empty gutter kept on the right of the time axis so the newest prints and
 // B/S marks never render flush against the panel edge.
