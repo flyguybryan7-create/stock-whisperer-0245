@@ -105,21 +105,23 @@ const SIGNAL_LOOKBACK = 24; // prints used for slope / imbalance
 // Trend-run model: the tape is chopped into fixed time buckets. A bucket is
 // "positive" when net aggressor delta AND price both move up over it (and the
 // mirror for negative). Three consecutive same-sign buckets = conviction.
-const TREND_BUCKET_MS = 30_000;
-const TREND_RUN_REQUIRED = 3;
+const TREND_BUCKET_MS = 20_000;
+const TREND_RUN_REQUIRED = 2;
 // Breakout model: a mark only fires when price clears the recent range in the
 // SAME direction the flow imbalance is pushing. Only one direction can be
 // active at a time — the opposite letter cannot print until the regime flips.
 // Consecutive polls that must agree before a mark is stamped.
-const SIGNAL_CONFIRM_POLLS = 3;
+const SIGNAL_CONFIRM_POLLS = 2;
 // Breakout gates.
-const MIN_IMBALANCE = 0.35; // required directional flow bias
-const MIN_RUN_PRICE_MOVE = 0.0015; // require a real 0.15% move, not tape noise
+const MIN_IMBALANCE = 0.18; // required directional flow bias
+const MIN_RUN_PRICE_MOVE = 0.0004; // real move, but reachable on a normal tape
 // A live regime only flips on materially stronger evidence than the evidence
 // needed to establish it. This keeps ordinary counter-trend noise from
 // alternating BUY and SELL calls.
-const REVERSAL_IMBALANCE = 0.55;
-const REVERSAL_PRICE_MOVE = 0.0025;
+const REVERSAL_IMBALANCE = 0.35;
+const REVERSAL_PRICE_MOVE = 0.001;
+// Fallback: with no regime yet, a strong blended score alone can open one.
+const OPENING_SCORE = 0.45;
 
 type Bucket = {
   t: number;
@@ -192,12 +194,14 @@ function confirmedMovement(
   // The three-bucket trend must also clear the range immediately preceding it.
   // This prevents alternating B/S calls inside the same sideways price chop.
   const reference = buckets.slice(-(TREND_RUN_REQUIRED + 6), -TREND_RUN_REQUIRED);
-  if (reference.length === 0) return { confirmed: false, movePct };
+  const displaced = dir === 1 ? movePct >= minimumMove : movePct <= -minimumMove;
+  if (reference.length === 0) return { confirmed: displaced, movePct };
   const priorHigh = Math.max(...reference.map((bucket) => Math.max(bucket.open, bucket.close)));
   const priorLow = Math.min(...reference.map((bucket) => Math.min(bucket.open, bucket.close)));
-  const displaced = dir === 1 ? movePct >= minimumMove : movePct <= -minimumMove;
-  const brokeRange = dir === 1 ? last.close > priorHigh : last.close < priorLow;
-  return { confirmed: displaced && brokeRange, movePct };
+  const brokeRange = dir === 1 ? last.close >= priorHigh : last.close <= priorLow;
+  // Either a clean range break, or a move twice the minimum, is enough.
+  const strong = dir === 1 ? movePct >= minimumMove * 2 : movePct <= -minimumMove * 2;
+  return { confirmed: displaced && (brokeRange || strong), movePct };
 }
 // Empty gutter kept on the right of the time axis so the newest prints and
 // B/S marks never render flush against the panel edge.
@@ -508,14 +512,22 @@ export function AggressorTapeCVD({
     let action: "B" | "S" | "WAIT" = "WAIT";
     if (convicted && dir === 1 && imb >= requiredImbalance) action = "B";
     else if (convicted && dir === -1 && imb <= -requiredImbalance) action = "S";
+    // Opening call: with no regime established yet, a decisive blended score
+    // plus agreeing flow is enough to put the first B/S on the tape.
+    let opened = false;
+    if (action === "WAIT" && regimeRef.current == null && Math.abs(s.score) >= OPENING_SCORE) {
+      if (s.score > 0 && imb > 0) { action = "B"; opened = true; }
+      else if (s.score < 0 && imb < 0) { action = "S"; opened = true; }
+    }
 
-    const reason =
-      action === "B"
+    const reason = opened
+      ? `flow score ${(s.score * 100).toFixed(0)}% · ${s.reason}`
+      : action === "B"
         ? `${run} straight up trends · breakout +${(movement.movePct * 100).toFixed(2)}%`
         : action === "S"
           ? `${run} straight down trends · breakdown ${(movement.movePct * 100).toFixed(2)}%`
           : regimeRef.current
-            ? `${regimeRef.current === "B" ? "buy" : "sell"} held · waiting for massive confirmed reversal`
+            ? `${regimeRef.current === "B" ? "buy" : "sell"} held · waiting for confirmed reversal`
             : dir !== 0 && run > 0
               ? `${Math.min(run, TREND_RUN_REQUIRED)}/${TREND_RUN_REQUIRED} ${dir === 1 ? "up" : "down"} trends — waiting for breakout`
               : s.reason;
@@ -957,9 +969,9 @@ export function AggressorTapeCVD({
           </ResponsiveContainer>
 
           <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "4px 0 0" }}>
-            One active signal only · requires 3 consecutive 30s price-and-flow trends plus a range
-            break · BUY or SELL stays active until an opposite 0.25% breakout with at least 55%
-            imbalance is confirmed · polls every 2s · not financial advice
+            One active signal only · opens on decisive flow, then needs 2 consecutive 20s
+            price-and-flow trends with a range break · flips only on an opposite 0.10% move with
+            35%+ imbalance · polls every 2s · not financial advice
           </div>
         </>
       )}
