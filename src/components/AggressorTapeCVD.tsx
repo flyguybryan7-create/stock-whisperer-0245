@@ -969,9 +969,9 @@ export function AggressorTapeCVD({
           </ResponsiveContainer>
 
           <div style={{ fontSize: 9, color: "#6e7681", textAlign: "center", padding: "4px 0 0" }}>
-            One active signal only · requires 3 consecutive 30s price-and-flow trends plus a range
-            break · BUY or SELL stays active until an opposite 0.25% breakout with at least 55%
-            imbalance is confirmed · polls every 2s · not financial advice
+            One active signal only · opens on decisive flow, then needs 2 consecutive 20s
+            price-and-flow trends with a range break · flips only on an opposite 0.10% move with
+            35%+ imbalance · polls every 2s · not financial advice
           </div>
         </>
       )}
