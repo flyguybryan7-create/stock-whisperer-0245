@@ -512,14 +512,22 @@ export function AggressorTapeCVD({
     let action: "B" | "S" | "WAIT" = "WAIT";
     if (convicted && dir === 1 && imb >= requiredImbalance) action = "B";
     else if (convicted && dir === -1 && imb <= -requiredImbalance) action = "S";
+    // Opening call: with no regime established yet, a decisive blended score
+    // plus agreeing flow is enough to put the first B/S on the tape.
+    let opened = false;
+    if (action === "WAIT" && regimeRef.current == null && Math.abs(s.score) >= OPENING_SCORE) {
+      if (s.score > 0 && imb > 0) { action = "B"; opened = true; }
+      else if (s.score < 0 && imb < 0) { action = "S"; opened = true; }
+    }
 
-    const reason =
-      action === "B"
+    const reason = opened
+      ? `flow score ${(s.score * 100).toFixed(0)}% · ${s.reason}`
+      : action === "B"
         ? `${run} straight up trends · breakout +${(movement.movePct * 100).toFixed(2)}%`
         : action === "S"
           ? `${run} straight down trends · breakdown ${(movement.movePct * 100).toFixed(2)}%`
           : regimeRef.current
-            ? `${regimeRef.current === "B" ? "buy" : "sell"} held · waiting for massive confirmed reversal`
+            ? `${regimeRef.current === "B" ? "buy" : "sell"} held · waiting for confirmed reversal`
             : dir !== 0 && run > 0
               ? `${Math.min(run, TREND_RUN_REQUIRED)}/${TREND_RUN_REQUIRED} ${dir === 1 ? "up" : "down"} trends — waiting for breakout`
               : s.reason;
