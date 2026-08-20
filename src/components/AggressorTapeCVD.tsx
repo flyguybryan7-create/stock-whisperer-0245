@@ -105,21 +105,23 @@ const SIGNAL_LOOKBACK = 24; // prints used for slope / imbalance
 // Trend-run model: the tape is chopped into fixed time buckets. A bucket is
 // "positive" when net aggressor delta AND price both move up over it (and the
 // mirror for negative). Three consecutive same-sign buckets = conviction.
-const TREND_BUCKET_MS = 30_000;
-const TREND_RUN_REQUIRED = 3;
+const TREND_BUCKET_MS = 20_000;
+const TREND_RUN_REQUIRED = 2;
 // Breakout model: a mark only fires when price clears the recent range in the
 // SAME direction the flow imbalance is pushing. Only one direction can be
 // active at a time — the opposite letter cannot print until the regime flips.
 // Consecutive polls that must agree before a mark is stamped.
-const SIGNAL_CONFIRM_POLLS = 3;
+const SIGNAL_CONFIRM_POLLS = 2;
 // Breakout gates.
-const MIN_IMBALANCE = 0.35; // required directional flow bias
-const MIN_RUN_PRICE_MOVE = 0.0015; // require a real 0.15% move, not tape noise
+const MIN_IMBALANCE = 0.18; // required directional flow bias
+const MIN_RUN_PRICE_MOVE = 0.0004; // real move, but reachable on a normal tape
 // A live regime only flips on materially stronger evidence than the evidence
 // needed to establish it. This keeps ordinary counter-trend noise from
 // alternating BUY and SELL calls.
-const REVERSAL_IMBALANCE = 0.55;
-const REVERSAL_PRICE_MOVE = 0.0025;
+const REVERSAL_IMBALANCE = 0.35;
+const REVERSAL_PRICE_MOVE = 0.001;
+// Fallback: with no regime yet, a strong blended score alone can open one.
+const OPENING_SCORE = 0.45;
 
 type Bucket = {
   t: number;
