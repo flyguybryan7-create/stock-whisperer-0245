@@ -307,8 +307,25 @@ export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpi
               </div>
             )}
           </div>
+          {magnets && (
+            <div style={{ gridColumn: "1 / -1", display: "flex", flexWrap: "wrap", gap: 12, fontFamily: mono, fontSize: 10, borderTop: "1px solid #21262d", paddingTop: 6 }}>
+              <span style={{ color: "#39d353" }}>
+                TOP CALL ${magnets.call.strike} · {fmtVol(magnets.call.volume)}
+              </span>
+              <span style={{ color: "#f85149" }}>
+                TOP PUT ${magnets.put.strike} · {fmtVol(magnets.put.volume)}
+              </span>
+              <span style={{ color: "#8b949e" }}>
+                TOTALS {fmtVol(totals.call)}C vs {fmtVol(totals.put)}P ·{" "}
+                <span style={{ color: totals.call >= totals.put ? "#39d353" : "#f85149", fontWeight: 700 }}>
+                  {totals.call >= totals.put ? "CALL" : "PUT"}-HEAVY
+                </span>
+              </span>
+            </div>
+          )}
         </div>
       )}
+
 
       {empty ? (
         <div style={{ padding: 20, textAlign: "center", fontSize: 10, color: "#6e7681" }}>
