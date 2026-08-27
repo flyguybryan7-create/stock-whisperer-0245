@@ -129,14 +129,13 @@ export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpi
     };
   }, [ladder]);
 
-  const magnet = useMemo(() => {
+  const magnets = useMemo(() => {
     if (!data.length) return null;
-    // The "target strike" must be a plausible price magnet, not a deep OTM
-    // hedge/spread leg — but the band was so tight it hid the true heaviest
-    // strike just outside it (e.g. $100 on an $88 spot). Widen to a realistic
-    // expected-move window: ≈±15% for weeklies, up to ±30% for far-dated.
+    // Window must be wide enough to include the genuinely heaviest strike on
+    // either side — a tight band was hiding e.g. a 9.8k call at +23% and
+    // handing the "magnet" callout to a smaller put, which reads as a lie.
     const dte = Math.max(0, ladder?.dte ?? 0);
-    const band = Math.min(0.3, Math.max(0.15, 0.12 + 0.02 * Math.sqrt(dte)));
+    const band = Math.min(0.45, Math.max(0.25, 0.22 + 0.02 * Math.sqrt(dte)));
     const inBand = spot && spot > 0
       ? data.filter((d) => Math.abs(d.strike - spot) / spot <= band)
       : data;
@@ -148,13 +147,15 @@ export function OptionsFlowChart({ symbol, spot, ladder, expiryIndex = 0, onExpi
       if (d.putVol > bestP.volume) bestP = { strike: d.strike, volume: d.putVol };
     }
     if (bestC.volume === 0 && bestP.volume === 0) return null;
-    return bestC.volume >= bestP.volume
-      ? { side: "CALL" as const, strike: bestC.strike, volume: bestC.volume, pct: totals.call > 0 ? bestC.volume / totals.call : 0 }
-      : { side: "PUT" as const, strike: bestP.strike, volume: bestP.volume, pct: totals.put > 0 ? bestP.volume / totals.put : 0 };
+    const call = { side: "CALL" as const, strike: bestC.strike, volume: bestC.volume, pct: totals.call > 0 ? bestC.volume / totals.call : 0 };
+    const put = { side: "PUT" as const, strike: bestP.strike, volume: bestP.volume, pct: totals.put > 0 ? bestP.volume / totals.put : 0 };
+    return { call, put, dominant: bestC.volume >= bestP.volume ? call : put };
   }, [data, totals, spot, ladder?.dte]);
 
+  const magnet = magnets?.dominant ?? null;
   const distance = magnet && spot ? magnet.strike - spot : null;
   const distancePct = magnet && spot ? ((magnet.strike - spot) / spot) * 100 : null;
+
 
   const maxVol = useMemo(() => {
     if (!data.length) return 0;
